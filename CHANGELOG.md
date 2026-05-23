@@ -1,10 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.18.2] - 2026-05-23
+
+### Bug Fixes
+
+- *(decorator)* Guard FunctionBuilder._function._func access with actionable error 
+
+### Other
+
+- Bump version to 0.18.2 
 ## [0.18.1] - 2026-05-14
 
 ### Documentation
 
+- Update changelog 
 - Fix ecosystem table names, badges, and Part of intro line 
 - Mark cookbook as dogfood, fix ecosystem table description 
 - Fix ecosystem table — add knowledge row, fix labels and links 
