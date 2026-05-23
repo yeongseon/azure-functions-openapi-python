@@ -332,3 +332,18 @@ def test_openapi_registers_request_body_required_false() -> None:
     spec = generate_openapi_spec(route_prefix="")
     rb = spec["paths"]["/optional-body"]["post"]["requestBody"]
     assert rb["required"] is False
+
+
+
+def test_openapi_raises_runtime_error_when_function_builder_internals_change() -> None:
+    """Regression #212: defensive guard around FunctionBuilder._function._func."""
+    from azure.functions.decorators.function_app import FunctionBuilder
+    import pytest
+
+    # Build a FunctionBuilder-shaped object whose ``_function`` lacks ``_func``,
+    # simulating an SDK internal restructure.
+    fake_builder = FunctionBuilder.__new__(FunctionBuilder)
+    fake_builder._function = object()  # type: ignore[assignment]
+
+    with pytest.raises(RuntimeError, match="azure-functions SDK appears incompatible"):
+        openapi(summary="x")(fake_builder)

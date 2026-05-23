@@ -25,7 +25,19 @@ logger = logging.getLogger(__name__)
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     """Return the original decorated object and the underlying callable used for metadata."""
     if isinstance(func, FunctionBuilder):
-        return func, func._function._func
+        # ``FunctionBuilder._function._func`` is a private attribute of the
+        # ``azure-functions`` SDK. Guard against future renames/restructures so
+        # callers get an actionable error instead of an opaque AttributeError.
+        try:
+            return func, func._function._func
+        except AttributeError as exc:  # pragma: no cover - depends on SDK internals
+            raise RuntimeError(
+                "Unable to access FunctionBuilder._function._func; the installed "
+                "azure-functions SDK appears incompatible with @openapi. "
+                "Please report this issue at "
+                "https://github.com/yeongseon/azure-functions-openapi-python/issues "
+                f"with your azure-functions version. (underlying error: {exc})"
+            ) from exc
 
     if not callable(func):
         raise TypeError(f"Unsupported decorated object: {type(func).__name__}")
@@ -252,7 +264,11 @@ def openapi(
         except OpenAPISpecConfigError as e:
             logger.error(f"Failed to register OpenAPI metadata for '{target_name}': {str(e)}")
             raise
-        except ValueError as e:
+        except (ValueError, RuntimeError, TypeError) as e:
+            # ValueError/TypeError: validation failures (input contract).
+            # RuntimeError: SDK-internal access failures from _resolve_metadata_target;
+            # already carries an actionable message — re-raise unchanged to avoid
+            # double-wrapping.
             logger.error(f"Failed to register OpenAPI metadata for '{target_name}': {str(e)}")
             raise
         except Exception as e:
