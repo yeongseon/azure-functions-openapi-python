@@ -249,6 +249,7 @@ def generate_openapi_spec(
 
             except (KeyError, TypeError, ValueError):
                 if strict:
+                    logger.error("Failed to process function %s (strict mode)", func_name)
                     raise
                 logger.exception("Failed to process function %s", func_name)
                 continue
@@ -301,9 +302,11 @@ def generate_openapi_spec(
         )
         return spec
 
-    except (OpenAPISpecConfigError, KeyError, TypeError, ValueError):
+    except OpenAPISpecConfigError:
         raise
     except Exception as e:
+        if strict and isinstance(e, (KeyError, TypeError, ValueError)):
+            raise
         logger.error(f"Failed to generate OpenAPI specification: {str(e)}")
         raise RuntimeError("Failed to generate OpenAPI specification") from e
 
