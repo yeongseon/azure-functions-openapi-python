@@ -138,12 +138,12 @@ def render_swagger_ui(
 
 
 def _sanitize_html_content(content: str) -> str:
-    """Sanitize HTML content to prevent XSS attacks.
+    """Sanitize content for use in HTML contexts.
 
-    Uses :func:`html.escape` for proper entity encoding (``&`` → ``&amp;``,
-    ``<`` → ``&lt;``, etc.) instead of stripping characters, which avoids
-    data loss for titles like "AT&T API".  Control characters are still
-    stripped since they have no valid use in a page title.
+    Strips control characters and limits length.  Does **not** perform
+    HTML entity encoding — callers are responsible for applying
+    :func:`html.escape` in the appropriate context so there is no
+    double-escaping.
     """
     if not content or not isinstance(content, str):
         return "API Documentation"
@@ -151,11 +151,8 @@ def _sanitize_html_content(content: str) -> str:
     # Strip control characters that have no place in a title
     sanitized = content.replace("\n", "").replace("\r", "").replace("\t", "")
 
-    # Limit length before escaping so the cap applies to logical characters
-    sanitized = sanitized[:100]
-
-    # Proper HTML entity encoding
-    return html.escape(sanitized, quote=True)
+    # Limit length
+    return sanitized[:100]
 
 
 def _sanitize_url(url: str) -> str:

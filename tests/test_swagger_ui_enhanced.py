@@ -157,13 +157,11 @@ class TestSanitizeHtmlContent:
         assert result == "Normal Title"
 
     def test_sanitize_html_content_with_dangerous_chars(self) -> None:
-        """Test sanitizing HTML content with dangerous characters."""
+        """_sanitize_html_content only strips control chars; escaping is caller's job."""
         dangerous_content = "<script>alert('xss')</script>"
         result = _sanitize_html_content(dangerous_content)
-        # Should be HTML-escaped, not stripped
-        assert "<script>" not in result
-        assert "&lt;" in result
-        assert "&gt;" in result
+        # Passes through — render_swagger_ui() applies html.escape()
+        assert result == "<script>alert('xss')</script>"
 
     def test_sanitize_html_content_empty(self) -> None:
         """Test sanitizing empty content."""
@@ -196,10 +194,9 @@ class TestSanitizeHtmlContent:
         assert "\r" not in result
 
     def test_sanitize_html_content_preserves_ampersand(self) -> None:
-        """Test that ampersand is escaped, not stripped."""
+        """Ampersand is preserved (escaping done by caller)."""
         result = _sanitize_html_content("AT&T API")
-        assert "&amp;" in result
-        assert "AT" in result
+        assert result == "AT&T API"
 
 
 class TestSanitizeUrl:
@@ -310,3 +307,10 @@ class TestSwaggerUIJsEscaping:
         body = response.get_body().decode()
         # The meta tag should contain the CSP; verify it's present
         assert 'http-equiv="Content-Security-Policy"' in body
+
+    def test_title_with_ampersand_not_double_escaped(self) -> None:
+        """Regression: AT&T should become AT&amp;T, not AT&amp;amp;T."""
+        response = render_swagger_ui(title="AT&T API")
+        body = response.get_body().decode()
+        assert "<title>AT&amp;T API</title>" in body
+        assert "&amp;amp;" not in body
