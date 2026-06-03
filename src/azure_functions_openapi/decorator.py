@@ -220,6 +220,7 @@ def openapi(
 
             # Enhanced input validation and sanitization
             validated_route = _validate_and_sanitize_route(effective_route, metadata_func.__name__)
+            validated_method = _validate_method(effective_method, metadata_func.__name__)
             sanitized_operation_id = _validate_and_sanitize_operation_id(
                 operation_id, metadata_func.__name__
             )
@@ -289,7 +290,7 @@ def openapi(
                     "operation_id": sanitized_operation_id,
                     # ── routing info ─────────────────────────────────────────
                     "route": validated_route,
-                    "method": effective_method,
+                    "method": validated_method,
                     "parameters": validated_parameters,
                     "security": validated_security,
                     "security_scheme": validated_security_scheme,
@@ -409,31 +410,28 @@ def register_openapi_metadata(
     if not method or not isinstance(method, str):
         raise ValueError("method must be a non-empty string")
 
-    method_upper = method.upper()
-    valid_methods = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-    if method_upper not in valid_methods:
-        raise ValueError(f"Invalid HTTP method: {method!r}. Must be one of {sorted(valid_methods)}")
+    # Reuse shared method validation (normalizes to lowercase)
+    validated_method = _validate_method(method, f"register_openapi_metadata({path})")
+    if validated_method is None:
+        raise ValueError("method must be a non-empty string")
 
     if request_model is not None and request_body is not None:
         raise ValueError(
-            f"Cannot provide both 'request_model' and 'request_body' for {method_upper} {path}."
+            f"Cannot provide both 'request_model' and 'request_body' "
+            f"for {validated_method.upper()} {path}."
         )
 
-    # Fix #2: Validate route using existing validation (consistent with decorator)
-    _validate_and_sanitize_route(path, f"{method_upper} {path}")
+    _validate_and_sanitize_route(path, f"{validated_method.upper()} {path}")
 
-    # Fix #1: Collision-safe registry key preserving exact path
-    registry_key = f"{method.lower()}::{path}"
+    registry_key = f"{validated_method}::{path}"
 
-    # Validate and sanitize operation_id
-    # If user-provided: use decorator-grade validation (rejects invalid IDs)
-    # If auto-generated: use raw sanitize (our fallback is always valid)
     if operation_id:
         sanitized_op_id = _validate_and_sanitize_operation_id(operation_id, registry_key)
-        # _validate_and_sanitize_operation_id returns str|None; if None it already raised
     else:
         clean_path = path.strip("/").replace("/", "_").replace("{", "").replace("}", "")
-        fallback_op_id = f"{method.lower()}_{clean_path}" if clean_path else method.lower()
+        fallback_op_id = (
+            f"{validated_method}_{clean_path}" if clean_path else validated_method
+        )
         sanitized_op_id = sanitize_operation_id(fallback_op_id)
 
     validated_parameters = _validate_parameters(parameters, registry_key) if parameters else []
@@ -452,13 +450,12 @@ def register_openapi_metadata(
             "description": description,
             "tags": validated_tags,
             "operation_id": sanitized_op_id,
-            # Fix #3: Store route unchanged; generate_openapi_spec() normalizes with lstrip("/")
             "route": path,
-            "method": method.lower(),
+            "method": validated_method,
             "parameters": validated_parameters,
             "security": validated_security,
             "security_scheme": validated_security_scheme,
-        "request_model": request_model,
+            "request_model": request_model,
             "request_body": request_body,
             "request_body_required": request_body_required,
             "response_model": response_model,
@@ -467,7 +464,32 @@ def register_openapi_metadata(
             "_function_id": f"programmatic.{registry_key}",
         }
 
-    logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", method_upper, path)
+    logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
+
+
+_VALID_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
+
+
+def _validate_method(method: str | None, func_name: str) -> str | None:
+    """Validate and normalize HTTP method.
+
+    Returns the lowercased method string, or ``None`` when *method* is not
+    provided (the spec generator will default to ``"get"``).
+    """
+    if method is None:
+        return None
+
+    if not isinstance(method, str) or not method.strip():
+        raise ValueError(f"method must be a non-empty string for function '{func_name}'")
+
+    normalized = method.strip().upper()
+    if normalized not in _VALID_HTTP_METHODS:
+        raise ValueError(
+            f"Invalid HTTP method: {method!r} for function '{func_name}'. "
+            f"Must be one of {sorted(_VALID_HTTP_METHODS)}"
+        )
+
+    return normalized.lower()
 
 
 def _validate_and_sanitize_route(route: str | None, func_name: str) -> str | None:
