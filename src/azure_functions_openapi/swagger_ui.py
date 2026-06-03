@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import html
+import json
 import logging
+import re
 import secrets
 
 from azure.functions import HttpResponse
@@ -51,6 +54,12 @@ def render_swagger_ui(
     # Validate and sanitize inputs
     sanitized_title = _sanitize_html_content(title)
     sanitized_url = _sanitize_url(openapi_url)
+
+    # Escape for safe embedding in HTML attributes and JS string literals
+    safe_title = html.escape(sanitized_title, quote=True)
+    safe_csp = html.escape(csp_policy, quote=True)
+    safe_url_js = json.dumps(sanitized_url)  # produces "..." with proper escaping
+
     response_interceptor = """
             responseInterceptor: function(response) {
               return response;
@@ -70,14 +79,14 @@ def render_swagger_ui(
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="Content-Security-Policy" content="{csp_policy}">
+        <meta http-equiv="Content-Security-Policy" content="{safe_csp}">
         <meta http-equiv="X-Content-Type-Options" content="nosniff">
         <meta http-equiv="X-Frame-Options" content="DENY">
         <meta http-equiv="X-XSS-Protection" content="1; mode=block">
         <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
-        <title>{sanitized_title}</title>
-        <link rel="stylesheet" 
-              type="text/css" 
+        <title>{safe_title}</title>
+        <link rel="stylesheet"
+              type="text/css"
               href="{_SWAGGER_UI_CDN_BASE}/swagger-ui.css" />
       </head>
       <body>
@@ -86,7 +95,7 @@ def render_swagger_ui(
         <script nonce="{nonce}">
           // Enhanced security configuration
           const ui = SwaggerUIBundle({{
-            url: '{sanitized_url}',
+            url: {safe_url_js},
             dom_id: '#swagger-ui',
             presets: [SwaggerUIBundle.presets.apis],
             layout: 'BaseLayout',
@@ -129,35 +138,50 @@ def render_swagger_ui(
 
 
 def _sanitize_html_content(content: str) -> str:
-    """Sanitize HTML content to prevent XSS attacks."""
+    """Sanitize HTML content to prevent XSS attacks.
+
+    Uses :func:`html.escape` for proper entity encoding (``&`` → ``&amp;``,
+    ``<`` → ``&lt;``, etc.) instead of stripping characters, which avoids
+    data loss for titles like "AT&T API".  Control characters are still
+    stripped since they have no valid use in a page title.
+    """
     if not content or not isinstance(content, str):
         return "API Documentation"
 
-    # Remove potentially dangerous characters
-    dangerous_chars = ["<", ">", '"', "'", "&", "\n", "\r", "\t"]
-    sanitized = content
-    for char in dangerous_chars:
-        sanitized = sanitized.replace(char, "")
+    # Strip control characters that have no place in a title
+    sanitized = content.replace("\n", "").replace("\r", "").replace("\t", "")
 
-    # Limit length
-    return sanitized[:100] if len(sanitized) > 100 else sanitized
+    # Limit length before escaping so the cap applies to logical characters
+    sanitized = sanitized[:100]
+
+    # Proper HTML entity encoding
+    return html.escape(sanitized, quote=True)
 
 
 def _sanitize_url(url: str) -> str:
-    """Sanitize URL to prevent injection attacks."""
+    """Sanitize URL to prevent injection attacks.
+
+    Returns a safe root-relative path.  Any URL that does not match the
+    allowed character set is replaced with the default ``/api/openapi.json``.
+    """
     if not url or not isinstance(url, str):
         return "/api/openapi.json"
 
-    # Remove dangerous patterns
+    # Block dangerous URI schemes and HTML event handlers
     dangerous_patterns = ["javascript:", "data:", "vbscript:", "<script", "onload="]
-    sanitized = url
     for pattern in dangerous_patterns:
-        if pattern.lower() in sanitized.lower():
-            logger.warning(f"Potentially dangerous URL pattern detected: {pattern}")
+        if pattern.lower() in url.lower():
+            logger.warning("Potentially dangerous URL pattern detected: %s", pattern)
             return "/api/openapi.json"
 
     # Ensure URL starts with /
-    if not sanitized.startswith("/"):
-        sanitized = "/" + sanitized
+    sanitized = url if url.startswith("/") else "/" + url
+
+    # Whitelist: only allow characters safe in a URL path + query string.
+    # This blocks quotes, backslashes, angle brackets, and other characters
+    # that could break out of JS string literals or HTML attributes.
+    if not re.match(r"^[a-zA-Z0-9/_\-.~:?#\[\]@!$&()*+,;=%]+$", sanitized):
+        logger.warning("URL contains disallowed characters, falling back to default: %s", url)
+        return "/api/openapi.json"
 
     return sanitized

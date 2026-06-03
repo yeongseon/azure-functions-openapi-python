@@ -59,7 +59,11 @@ class TestRenderSwaggerUI:
         response = render_swagger_ui(custom_csp=custom_csp)
 
         html_content = response.get_body().decode()
-        assert custom_csp in html_content
+        # In the meta tag, the CSP is HTML-escaped (quotes become &#x27;)
+        import html as _html
+
+        assert _html.escape(custom_csp, quote=True) in html_content
+        # The HTTP header carries the raw (unescaped) CSP
         assert response.headers["Content-Security-Policy"] == custom_csp
 
     def test_render_swagger_ui_security_headers(self) -> None:
@@ -156,10 +160,10 @@ class TestSanitizeHtmlContent:
         """Test sanitizing HTML content with dangerous characters."""
         dangerous_content = "<script>alert('xss')</script>"
         result = _sanitize_html_content(dangerous_content)
-        assert "<" not in result
-        assert ">" not in result
-        assert "'" not in result
-        assert '"' not in result
+        # Should be HTML-escaped, not stripped
+        assert "<script>" not in result
+        assert "&lt;" in result
+        assert "&gt;" in result
 
     def test_sanitize_html_content_empty(self) -> None:
         """Test sanitizing empty content."""
@@ -190,6 +194,12 @@ class TestSanitizeHtmlContent:
         assert "\n" not in result
         assert "\t" not in result
         assert "\r" not in result
+
+    def test_sanitize_html_content_preserves_ampersand(self) -> None:
+        """Test that ampersand is escaped, not stripped."""
+        result = _sanitize_html_content("AT&T API")
+        assert "&amp;" in result
+        assert "AT" in result
 
 
 class TestSanitizeUrl:
@@ -251,9 +261,9 @@ class TestSanitizeUrl:
         _sanitize_url("javascript:alert('xss')")
 
         mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args[0][0]
-        assert "Potentially dangerous URL pattern detected" in call_args
-        assert "javascript:" in call_args
+        call_args = mock_logger.warning.call_args[0]
+        assert "Potentially dangerous URL pattern detected" in call_args[0]
+        assert "javascript:" in call_args[1]
 
     def test_sanitize_url_case_insensitive(self) -> None:
         """Test that dangerous pattern detection is case insensitive."""
@@ -264,3 +274,39 @@ class TestSanitizeUrl:
         assert result1 == "/api/openapi.json"
         assert result2 == "/api/openapi.json"
         assert result3 == "/api/openapi.json"
+
+    def test_sanitize_url_blocks_single_quotes(self) -> None:
+        """Test that URLs with single quotes are rejected (JS injection vector)."""
+        result = _sanitize_url("/api/openapi.json'; alert(1); '")
+        assert result == "/api/openapi.json"
+
+    def test_sanitize_url_blocks_backslash(self) -> None:
+        """Test that URLs with backslashes are rejected."""
+        result = _sanitize_url("/api\\openapi.json")
+        assert result == "/api/openapi.json"
+
+    def test_sanitize_url_blocks_angle_brackets(self) -> None:
+        """Test that URLs with angle brackets are rejected."""
+        result = _sanitize_url("/api/</script><script>alert(1)</script>")
+        # Caught by dangerous_patterns for <script
+        assert result == "/api/openapi.json"
+
+
+class TestSwaggerUIJsEscaping:
+    """Test that the rendered HTML uses safe JS/HTML escaping."""
+
+    def test_openapi_url_uses_json_dumps_in_js(self) -> None:
+        """Verify openapi_url is embedded via json.dumps, not bare quotes."""
+        response = render_swagger_ui(openapi_url="/api/openapi.json")
+        body = response.get_body().decode()
+        # json.dumps produces: "/api/openapi.json" (with double quotes)
+        assert 'url: "/api/openapi.json"' in body
+        # Must NOT have the old single-quote pattern
+        assert "url: '/api/openapi.json'" not in body
+
+    def test_csp_is_html_escaped_in_meta_tag(self) -> None:
+        """Verify CSP in meta tag is HTML-escaped."""
+        response = render_swagger_ui()
+        body = response.get_body().decode()
+        # The meta tag should contain the CSP; verify it's present
+        assert 'http-equiv="Content-Security-Policy"' in body
