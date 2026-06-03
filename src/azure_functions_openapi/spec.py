@@ -106,10 +106,10 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
             result["type"] = "string"
             result["nullable"] = True
 
-    # examples → example (3.0 uses singular)
-    if "examples" in result and "example" not in result:
+    # examples → example (3.0 uses singular; always remove examples)
+    if "examples" in result:
         examples = result.pop("examples")
-        if isinstance(examples, list) and examples:
+        if "example" not in result and isinstance(examples, list) and examples:
             result["example"] = examples[0]
 
     # const → enum (3.0 doesn't have const)

@@ -106,6 +106,13 @@ class TestConvertSchemaTo30:
         result = _convert_schema_to_3_0("not a dict")  # type: ignore[arg-type]
         assert result == "not a dict"  # type: ignore[comparison-overlap]
 
+    def test_examples_always_removed_even_when_example_exists(self) -> None:
+        """examples is invalid in 3.0 and must always be removed."""
+        schema = {"type": "string", "example": "keep", "examples": ["discard"]}
+        result = _convert_schema_to_3_0(schema)
+        assert result["example"] == "keep"
+        assert "examples" not in result
+
 
 class TestConvertSchemasTo30:
     def test_converts_multiple_schemas(self) -> None:
