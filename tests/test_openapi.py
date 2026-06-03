@@ -693,6 +693,35 @@ def test_malformed_registry_entry_skipped() -> None:
     # Broken endpoint should be skipped (not crash the whole spec generation)
 
 
+def test_malformed_registry_entry_raises_in_strict_mode() -> None:
+    """In strict mode, a malformed registry entry should raise instead of being skipped."""
+    from azure_functions_openapi.decorator import get_openapi_registry
+
+    @openapi(
+        route="/valid-strict",
+        summary="Valid",
+        response={200: {"description": "OK"}},
+    )
+    def valid_strict_func() -> None:
+        pass
+
+    real_registry = get_openapi_registry()
+    malformed_registry = dict(real_registry)
+    malformed_registry["broken_strict_func"] = {
+        "route": "/broken-strict",
+        "method": "get",
+        "response": {200: 42},  # detail=42 → dict(42) raises TypeError
+    }
+
+    with patch.object(
+        OPENAPI_MODULE,
+        "get_openapi_registry",
+        return_value=malformed_registry,
+    ):
+        with pytest.raises(TypeError):
+            generate_openapi_spec(route_prefix="", strict=True)
+
+
 def test_security_scheme_collision_raises_value_error() -> None:
     """Conflicting security scheme definitions across decorators raise ValueError."""
 
