@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 import yaml
@@ -307,14 +308,15 @@ def generate_openapi_spec(
         raise RuntimeError("Failed to generate OpenAPI specification") from e
 
 
-_PATH_PARAM_RE = __import__("re").compile(r"\{([^}]+)\}")
+_PATH_PARAM_RE = re.compile(r"\{([^}]+)\}")
 
 
 def _validate_spec(spec: dict[str, Any]) -> list[str]:
     """Post-generation validation of the OpenAPI spec.
 
-    Returns a list of warning messages. Does **not** raise; callers decide
-    whether to log or raise based on policy (e.g. strict mode).
+    Returns a list of warning messages.  The caller (``generate_openapi_spec``)
+    currently logs them; combine with a ``strict`` parameter (see PR #224) to
+    raise ``OpenAPISpecConfigError`` when any warnings are present.
 
     Checks performed:
     - Route template variables have matching ``in: "path"`` parameters.
