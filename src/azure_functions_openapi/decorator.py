@@ -49,8 +49,8 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
     """Extract route and method from a FunctionBuilder's HTTP trigger binding.
 
     Returns ``(route, method)`` where either may be ``None`` if the
-    information is not available.  Only reads the *first* method when
-    ``methods`` is a list.
+    information is not available. Only reads the first method when
+    ``methods`` is a list or tuple.
     """
     if not isinstance(func, FunctionBuilder):
         return None, None
