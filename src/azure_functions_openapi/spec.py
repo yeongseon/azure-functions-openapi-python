@@ -52,6 +52,99 @@ def _ensure_default_response(
     }
 
 
+def _convert_anyof_null_to_nullable(schema: dict[str, Any]) -> dict[str, Any]:
+    """Convert Pydantic v2 ``anyOf`` nullable patterns to OpenAPI 3.0 ``nullable``.
+
+    Pydantic v2 emits ``{"anyOf": [{"type": "string"}, {"type": "null"}]}``
+    for ``Optional[str]``.  OpenAPI 3.0 represents this as
+    ``{"type": "string", "nullable": true}``.
+
+    Only converts the pattern when *exactly* two elements are present and one
+    of them is ``{"type": "null"}``.  More complex unions are left unchanged.
+    """
+    result = schema.copy()
+    any_of = result.get("anyOf")
+    if not isinstance(any_of, list) or len(any_of) != 2:
+        return result
+
+    null_entries = [s for s in any_of if isinstance(s, dict) and s.get("type") == "null"]
+    non_null_entries = [s for s in any_of if isinstance(s, dict) and s.get("type") != "null"]
+
+    if len(null_entries) == 1 and len(non_null_entries) == 1:
+        non_null = non_null_entries[0]
+        del result["anyOf"]
+        result.update(non_null)
+        result["nullable"] = True
+
+    return result
+
+
+def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively downgrade a JSON Schema 2020-12 / OpenAPI 3.1 schema to 3.0.
+
+    Handles:
+    - ``anyOf: [{type: T}, {type: null}]`` → ``{type: T, nullable: true}``
+    - ``type: [T, "null"]`` array → ``{type: T, nullable: true}``
+    - ``examples`` array → ``example`` (first element)
+    - ``const`` → ``enum: [value]``
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    result = _convert_anyof_null_to_nullable(schema)
+
+    # type: ["string", "null"] → {type: "string", nullable: true}
+    type_val = result.get("type")
+    if isinstance(type_val, list):
+        non_null = [t for t in type_val if t != "null"]
+        has_null = "null" in type_val
+        if len(non_null) == 1:
+            result["type"] = non_null[0]
+            if has_null:
+                result["nullable"] = True
+        elif len(non_null) == 0 and has_null:
+            result["type"] = "string"
+            result["nullable"] = True
+
+    # examples → example (3.0 uses singular)
+    if "examples" in result and "example" not in result:
+        examples = result.pop("examples")
+        if isinstance(examples, list) and examples:
+            result["example"] = examples[0]
+
+    # const → enum (3.0 doesn't have const)
+    if "const" in result:
+        result["enum"] = [result.pop("const")]
+
+    # Recurse into nested structures
+    if "properties" in result:
+        result["properties"] = {
+            k: _convert_schema_to_3_0(v) for k, v in result["properties"].items()
+        }
+
+    if "items" in result:
+        result["items"] = _convert_schema_to_3_0(result["items"])
+
+    if "allOf" in result:
+        result["allOf"] = [_convert_schema_to_3_0(s) for s in result["allOf"]]
+
+    if "anyOf" in result:
+        result["anyOf"] = [_convert_schema_to_3_0(s) for s in result["anyOf"]]
+
+    if "oneOf" in result:
+        result["oneOf"] = [_convert_schema_to_3_0(s) for s in result["oneOf"]]
+
+    if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
+        result["additionalProperties"] = _convert_schema_to_3_0(result["additionalProperties"])
+
+    return result
+
+
+def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> dict[str, Any]:
+    """Convert all schemas in components to OpenAPI 3.0 format."""
+    return {name: _convert_schema_to_3_0(schema) for name, schema in schemas.items()}
+
+
 def _convert_nullable_to_type_array(schema: dict[str, Any]) -> dict[str, Any]:
     """Convert OpenAPI 3.0 nullable to 3.1 type array syntax."""
     result = schema.copy()
@@ -282,7 +375,9 @@ def generate_openapi_spec(
             components["securitySchemes"] = all_security_schemes
 
         if components.get("schemas"):
-            if openapi_version == OPENAPI_VERSION_3_1:
+            if openapi_version == OPENAPI_VERSION_3_0:
+                components["schemas"] = _convert_schemas_to_3_0(components["schemas"])
+            elif openapi_version == OPENAPI_VERSION_3_1:
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
 
         if components.get("schemas") or components.get("securitySchemes"):

@@ -5,13 +5,122 @@ import pytest
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    _convert_anyof_null_to_nullable,
     _convert_nullable_to_type_array,
+    _convert_schema_to_3_0,
     _convert_schema_to_3_1,
+    _convert_schemas_to_3_0,
     _convert_schemas_to_3_1,
     generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
 )
+
+
+class TestConvertAnyOfNullToNullable:
+    """Test Pydantic v2 anyOf-null → OpenAPI 3.0 nullable conversion."""
+
+    def test_anyof_string_null(self) -> None:
+        schema = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert result == {"type": "string", "nullable": True}
+
+    def test_anyof_integer_null(self) -> None:
+        schema = {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert result == {"type": "integer", "nullable": True}
+
+    def test_anyof_null_first(self) -> None:
+        schema = {"anyOf": [{"type": "null"}, {"type": "number"}]}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert result == {"type": "number", "nullable": True}
+
+    def test_anyof_three_types_not_converted(self) -> None:
+        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}]}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert "anyOf" in result  # not converted — complex union
+
+    def test_anyof_no_null_not_converted(self) -> None:
+        schema = {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert "anyOf" in result
+
+    def test_no_anyof(self) -> None:
+        schema = {"type": "string"}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert result == {"type": "string"}
+
+    def test_preserves_extra_keys(self) -> None:
+        schema = {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "X"}
+        result = _convert_anyof_null_to_nullable(schema)
+        assert result["type"] == "string"
+        assert result["nullable"] is True
+        assert result["default"] is None
+        assert result["title"] == "X"
+        assert "anyOf" not in result
+
+
+class TestConvertSchemaTo30:
+    """Test recursive OpenAPI 3.1 → 3.0 downgrade."""
+
+    def test_anyof_nullable_in_properties(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+            },
+        }
+        result = _convert_schema_to_3_0(schema)
+        prop = result["properties"]["name"]
+        assert prop["type"] == "string"
+        assert prop["nullable"] is True
+        assert "anyOf" not in prop
+
+    def test_type_array_with_null(self) -> None:
+        schema = {"type": ["string", "null"]}
+        result = _convert_schema_to_3_0(schema)
+        assert result == {"type": "string", "nullable": True}
+
+    def test_examples_to_example(self) -> None:
+        schema = {"type": "string", "examples": ["foo", "bar"]}
+        result = _convert_schema_to_3_0(schema)
+        assert result["example"] == "foo"
+        assert "examples" not in result
+
+    def test_const_to_enum(self) -> None:
+        schema = {"const": "fixed_value"}
+        result = _convert_schema_to_3_0(schema)
+        assert result == {"enum": ["fixed_value"]}
+
+    def test_nested_items(self) -> None:
+        schema = {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "null"}]}}
+        result = _convert_schema_to_3_0(schema)
+        assert result["items"] == {"type": "string", "nullable": True}
+
+    def test_nested_allof(self) -> None:
+        schema = {"allOf": [{"anyOf": [{"type": "string"}, {"type": "null"}]}]}
+        result = _convert_schema_to_3_0(schema)
+        assert result["allOf"][0] == {"type": "string", "nullable": True}
+
+    def test_non_dict_passthrough(self) -> None:
+        result = _convert_schema_to_3_0("not a dict")  # type: ignore[arg-type]
+        assert result == "not a dict"  # type: ignore[comparison-overlap]
+
+
+class TestConvertSchemasTo30:
+    def test_converts_multiple_schemas(self) -> None:
+        schemas = {
+            "User": {
+                "type": "object",
+                "properties": {
+                    "email": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                },
+            },
+            "Item": {"type": "string", "examples": ["a"]},
+        }
+        result = _convert_schemas_to_3_0(schemas)
+        assert result["User"]["properties"]["email"] == {"type": "string", "nullable": True}
+        assert result["Item"]["example"] == "a"
 
 
 class TestConvertNullableToTypeArray:

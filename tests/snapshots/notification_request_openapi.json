@@ -104,17 +104,11 @@
             "type": "string"
           },
           "body_html": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
             "description": "Optional HTML email body.",
-            "title": "Body Html"
+            "title": "Body Html",
+            "type": "string",
+            "nullable": true
           },
           "priority": {
             "default": "normal",
@@ -169,17 +163,11 @@
             "type": "string"
           },
           "delivered_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
             "description": "Delivery timestamp.",
-            "title": "Delivered At"
+            "title": "Delivered At",
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
