@@ -16,6 +16,7 @@ from azure_functions_openapi.decorator import (
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     _ensure_default_response,
+    _validate_spec,
     generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
@@ -904,3 +905,110 @@ def test_get_openapi_json_default_route_prefix_matches_runtime_url() -> None:
     spec = json.loads(get_openapi_json())
 
     assert "/api/users" in spec["paths"]
+
+
+class TestValidateSpec:
+    """Tests for _validate_spec post-generation validation."""
+
+    def test_missing_path_parameter_definition(self) -> None:
+        spec = {
+            "paths": {
+                "/items/{id}": {
+                    "get": {
+                        "operationId": "get_item",
+                        "parameters": [],
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("{id}" in w and "no matching path parameter" in w for w in warnings)
+
+    def test_path_param_not_required(self) -> None:
+        spec = {
+            "paths": {
+                "/items/{id}": {
+                    "get": {
+                        "operationId": "get_item",
+                        "parameters": [
+                            {"name": "id", "in": "path", "required": False},
+                        ],
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("must be required" in w for w in warnings)
+
+    def test_duplicate_operation_id(self) -> None:
+        spec = {
+            "paths": {
+                "/a": {"get": {"operationId": "dup_op"}},
+                "/b": {"get": {"operationId": "dup_op"}},
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("Duplicate operationId" in w and "dup_op" in w for w in warnings)
+
+    def test_duplicate_parameter_name_in(self) -> None:
+        spec = {
+            "paths": {
+                "/items": {
+                    "get": {
+                        "operationId": "list_items",
+                        "parameters": [
+                            {"name": "q", "in": "query"},
+                            {"name": "q", "in": "query"},
+                        ],
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("Duplicate parameter" in w and "q" in w for w in warnings)
+
+    def test_valid_spec_no_warnings(self) -> None:
+        spec = {
+            "paths": {
+                "/items/{id}": {
+                    "get": {
+                        "operationId": "get_item",
+                        "parameters": [
+                            {"name": "id", "in": "path", "required": True},
+                        ],
+                    }
+                },
+                "/items": {
+                    "get": {
+                        "operationId": "list_items",
+                        "parameters": [
+                            {"name": "q", "in": "query"},
+                        ],
+                    }
+                },
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert warnings == []
+
+    def test_multiple_template_vars(self) -> None:
+        spec = {
+            "paths": {
+                "/users/{user_id}/items/{item_id}": {
+                    "get": {
+                        "operationId": "get_user_item",
+                        "parameters": [
+                            {"name": "user_id", "in": "path", "required": True},
+                            # item_id missing
+                        ],
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("{item_id}" in w and "no matching path parameter" in w for w in warnings)
+        # user_id is provided — no "no matching" warning for it
+        assert not any(
+            "no matching path parameter" in w and "{user_id}" in w and "{item_id}" not in w
+            for w in warnings
+        )

@@ -290,6 +290,10 @@ def generate_openapi_spec(
 
         spec = _normalize_spec_output(spec)
 
+        validation_warnings = _validate_spec(spec)
+        for warning in validation_warnings:
+            logger.warning("OpenAPI spec validation: %s", warning)
+
         logger.info(
             f"Generated OpenAPI {openapi_version} spec with {len(paths)} paths "
             f"for {len(registry)} functions"
@@ -301,6 +305,75 @@ def generate_openapi_spec(
     except Exception as e:
         logger.error(f"Failed to generate OpenAPI specification: {str(e)}")
         raise RuntimeError("Failed to generate OpenAPI specification") from e
+
+
+_PATH_PARAM_RE = __import__("re").compile(r"\{([^}]+)\}")
+
+
+def _validate_spec(spec: dict[str, Any]) -> list[str]:
+    """Post-generation validation of the OpenAPI spec.
+
+    Returns a list of warning messages. Does **not** raise; callers decide
+    whether to log or raise based on policy (e.g. strict mode).
+
+    Checks performed:
+    - Route template variables have matching ``in: "path"`` parameters.
+    - Path parameters have ``required: true``.
+    - ``(name, in)`` pairs are unique within each operation.
+    - ``operationId`` is unique across the whole spec.
+    """
+    warnings: list[str] = []
+    seen_operation_ids: dict[str, str] = {}  # operationId → "METHOD path"
+
+    for path, methods in spec.get("paths", {}).items():
+        template_vars = set(_PATH_PARAM_RE.findall(path))
+
+        for method, operation in methods.items():
+            op_label = f"{method.upper()} {path}"
+
+            # --- operationId uniqueness ---
+            op_id = operation.get("operationId")
+            if op_id:
+                if op_id in seen_operation_ids:
+                    warnings.append(
+                        f"Duplicate operationId '{op_id}': "
+                        f"used by {seen_operation_ids[op_id]} and {op_label}"
+                    )
+                else:
+                    seen_operation_ids[op_id] = op_label
+
+            # --- parameter validation ---
+            params = operation.get("parameters", [])
+            path_param_names: set[str] = set()
+            seen_param_keys: set[tuple[str, str]] = set()
+
+            for param in params:
+                name = param.get("name", "")
+                location = param.get("in", "")
+                key = (name, location)
+
+                if key in seen_param_keys:
+                    warnings.append(
+                        f"Duplicate parameter ({location}:{name}) in {op_label}"
+                    )
+                seen_param_keys.add(key)
+
+                if location == "path":
+                    path_param_names.add(name)
+                    if not param.get("required", False):
+                        warnings.append(
+                            f"Path parameter '{name}' in {op_label} must be required"
+                        )
+
+            # --- template var ↔ path parameter matching ---
+            missing = template_vars - path_param_names
+            for var in sorted(missing):
+                warnings.append(
+                    f"Route template variable '{{{var}}}' in {op_label} "
+                    "has no matching path parameter definition"
+                )
+
+    return warnings
 
 
 def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
