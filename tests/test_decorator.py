@@ -106,6 +106,40 @@ def test_openapi_accepts_function_builder_when_decorator_is_outermost() -> None:
     assert "/hello" in spec["paths"]
 
 
+def test_openapi_auto_detects_route_and_method_from_function_builder() -> None:
+    """When @openapi omits route/method, they should be extracted from @app.route."""
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(summary="Create user")
+    @app.route(route="users", methods=["POST"])
+    def create_user(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("Created", status_code=201)
+
+    registry = get_openapi_registry()
+    assert registry["create_user"]["route"] == "users"
+    assert registry["create_user"]["method"] == "post"
+
+    spec = generate_openapi_spec(route_prefix="")
+    assert "/users" in spec["paths"]
+    assert "post" in spec["paths"]["/users"]
+
+
+def test_openapi_explicit_route_overrides_binding() -> None:
+    """Explicit route/method in @openapi should take precedence over binding."""
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(summary="Custom", route="/custom-path", method="put")
+    @app.route(route="users", methods=["POST"])
+    def override_func(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=200)
+
+    registry = get_openapi_registry()
+    assert registry["override_func"]["route"] == "/custom-path"
+    assert registry["override_func"]["method"] == "put"
+
+
 def test_openapi_keeps_function_builder_chain_intact() -> None:
     _clear_registry()
     app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)

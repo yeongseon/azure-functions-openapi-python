@@ -45,6 +45,41 @@ def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     return func, cast(Callable[..., Any], func)
 
 
+def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
+    """Extract route and method from a FunctionBuilder's HTTP trigger binding.
+
+    Returns ``(route, method)`` where either may be ``None`` if the
+    information is not available. Only reads the first method when
+    ``methods`` is a list or tuple.
+    """
+    if not isinstance(func, FunctionBuilder):
+        return None, None
+
+    try:
+        function_obj = func._function
+        bindings = getattr(function_obj, "_bindings", [])
+    except AttributeError:
+        return None, None
+
+    for binding in bindings:
+        if str(getattr(binding, "type", "")).lower() != "httptrigger":
+            continue
+
+        binding_route = getattr(binding, "route", None)
+        methods_attr = getattr(binding, "methods", None)
+
+        binding_method: str | None = None
+        if isinstance(methods_attr, str):
+            binding_method = methods_attr.lower()
+        elif isinstance(methods_attr, (list, tuple)) and methods_attr:
+            val = methods_attr[0]
+            binding_method = str(getattr(val, "value", val)).lower()
+
+        return binding_route, binding_method
+
+    return None, None
+
+
 def openapi(
     # ── basic metadata ───────────────────────────────────────────
     summary: str = "",
@@ -173,8 +208,18 @@ def openapi(
             original_func, metadata_func = _resolve_metadata_target(func)
             target_name = f"{metadata_func.__module__}.{metadata_func.__qualname__}"
 
+            # Auto-detect route/method from FunctionBuilder bindings when
+            # not explicitly provided by the caller.
+            effective_route = route
+            effective_method = method
+            binding_route, binding_method = _extract_binding_hints(func)
+            if effective_route is None and binding_route is not None:
+                effective_route = binding_route
+            if effective_method is None and binding_method is not None:
+                effective_method = binding_method
+
             # Enhanced input validation and sanitization
-            validated_route = _validate_and_sanitize_route(route, metadata_func.__name__)
+            validated_route = _validate_and_sanitize_route(effective_route, metadata_func.__name__)
             sanitized_operation_id = _validate_and_sanitize_operation_id(
                 operation_id, metadata_func.__name__
             )
@@ -244,7 +289,7 @@ def openapi(
                     "operation_id": sanitized_operation_id,
                     # ── routing info ─────────────────────────────────────────
                     "route": validated_route,
-                    "method": method,
+                    "method": effective_method,
                     "parameters": validated_parameters,
                     "security": validated_security,
                     "security_scheme": validated_security_scheme,
