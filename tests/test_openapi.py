@@ -723,6 +723,23 @@ def test_malformed_registry_entry_raises_in_strict_mode() -> None:
             generate_openapi_spec(route_prefix="", strict=True)
 
 
+def test_strict_mode_raises_on_validation_warnings() -> None:
+    """In strict mode, post-generation validation warnings raise OpenAPISpecConfigError."""
+    from azure_functions_openapi.spec import OpenAPISpecConfigError
+
+    @openapi(
+        route="/items/{id}",
+        method="get",
+        summary="Get item",
+        parameters=[],  # Missing path parameter for {id}
+    )
+    def strict_validation_func() -> None:
+        pass
+
+    with pytest.raises(OpenAPISpecConfigError, match="Strict mode"):
+        generate_openapi_spec(route_prefix="", strict=True)
+
+
 def test_security_scheme_collision_raises_value_error() -> None:
     """Conflicting security scheme definitions across decorators raise ValueError."""
 

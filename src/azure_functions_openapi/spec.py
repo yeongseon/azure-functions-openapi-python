@@ -106,6 +106,116 @@ def _convert_schemas_to_3_1(schemas: dict[str, Any]) -> dict[str, Any]:
     return {name: _convert_schema_to_3_1(schema) for name, schema in schemas.items()}
 
 
+def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
+    """Check if a schema contains constructs incompatible with OpenAPI 3.0.
+
+    Detects:
+    - ``anyOf`` containing ``{"type": "null"}`` (Pydantic v2 nullable pattern)
+    - ``type`` as a list (JSON Schema 2020-12 / OpenAPI 3.1 syntax)
+    """
+    if not isinstance(schema, dict):
+        return False
+
+    # type as list is 3.1-only
+    if isinstance(schema.get("type"), list):
+        return True
+
+    # anyOf containing {type: "null"} is the Pydantic v2 nullable pattern
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list):
+        for item in any_of:
+            if isinstance(item, dict) and item.get("type") == "null":
+                return True
+
+    # Recurse into nested structures
+    for key in ("properties", "items", "allOf", "anyOf", "oneOf",
+                "additionalProperties", "$defs"):
+        val = schema.get(key)
+        if isinstance(val, dict):
+            if key == "properties":
+                for prop_schema in val.values():
+                    if isinstance(prop_schema, dict) and _has_3_1_only_constructs(prop_schema):
+                        return True
+            elif _has_3_1_only_constructs(val):
+                return True
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and _has_3_1_only_constructs(item):
+                    return True
+
+    return False
+
+
+def _check_schemas_3_0_compatible(
+    schemas: dict[str, Any], strict: bool
+) -> list[str]:
+    """Check component schemas for OpenAPI 3.1-only constructs when targeting 3.0.
+
+    Returns a list of warning messages for incompatible schemas.
+    In strict mode, raises OpenAPISpecConfigError if any are found.
+    """
+    warnings: list[str] = []
+    for name, schema in schemas.items():
+        if _has_3_1_only_constructs(schema):
+            warnings.append(
+                f"Schema '{name}' contains OpenAPI 3.1-only constructs "
+                f"(e.g., anyOf with null type) incompatible with OpenAPI 3.0. "
+                f"Use openapi_version='3.1.0' (default) or provide a manual "
+                f"3.0-compatible schema instead of a Pydantic model."
+            )
+
+    if strict and warnings:
+        raise OpenAPISpecConfigError(
+            "OpenAPI 3.0 compatibility error:\n" + "\n".join(f"  - {w}" for w in warnings)
+        )
+
+    return warnings
+
+
+
+def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
+    """Apply 3.1 schema conversion to inline schemas in operations.
+
+    Converts schemas in:
+    - requestBody.content.*.schema
+    - responses.*.content.*.schema
+    - parameters[].schema
+    """
+    for _path, methods in paths.items():
+        for _method, operation in methods.items():
+            if not isinstance(operation, dict):
+                continue
+
+            # requestBody
+            rb = operation.get("requestBody")
+            if isinstance(rb, dict):
+                content = rb.get("content")
+                if isinstance(content, dict):
+                    for _media, media_obj in content.items():
+                        if isinstance(media_obj, dict) and "schema" in media_obj:
+                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+
+            # responses
+            responses = operation.get("responses")
+            if isinstance(responses, dict):
+                for _status, resp in responses.items():
+                    if not isinstance(resp, dict):
+                        continue
+                    content = resp.get("content")
+                    if isinstance(content, dict):
+                        for _media, media_obj in content.items():
+                            if isinstance(media_obj, dict) and "schema" in media_obj:
+                                media_obj["schema"] = _convert_schema_to_3_1(
+                                    media_obj["schema"]
+                                )
+
+            # parameters
+            for param in operation.get("parameters", []):
+                if isinstance(param, dict) and "schema" in param:
+                    param["schema"] = _convert_schema_to_3_1(param["schema"])
+
+    return paths
+
 def generate_openapi_spec(
     title: str = "API",
     version: str = "1.0.0",
@@ -267,6 +377,7 @@ def generate_openapi_spec(
 
         if openapi_version == OPENAPI_VERSION_3_1:
             spec["info"]["summary"] = title
+            _convert_operation_schemas_to_3_1(paths)
 
         # Merge security schemes: explicit param + per-operation schemes from registry.
         # Raises OpenAPISpecConfigError on collision (same name, different definition).
@@ -291,7 +402,12 @@ def generate_openapi_spec(
         if components.get("schemas"):
             if openapi_version == OPENAPI_VERSION_3_1:
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
-
+            elif openapi_version == OPENAPI_VERSION_3_0:
+                compat_warnings = _check_schemas_3_0_compatible(
+                    components["schemas"], strict
+                )
+                for w in compat_warnings:
+                    logger.warning("OpenAPI 3.0 compatibility: %s", w)
         if components.get("schemas") or components.get("securitySchemes"):
             spec["components"] = components
 
@@ -300,6 +416,12 @@ def generate_openapi_spec(
         validation_warnings = _validate_spec(spec)
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
+
+        if strict and validation_warnings:
+            raise OpenAPISpecConfigError(
+                "Strict mode: generated spec has validation errors:\n"
+                + "\n".join(f"  - {w}" for w in validation_warnings)
+            )
 
         logger.info(
             f"Generated OpenAPI {openapi_version} spec with {len(paths)} paths "
