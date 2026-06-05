@@ -66,7 +66,7 @@ def test_generate_openapi_spec_structure() -> None:
 
     spec = generate_openapi_spec(title="My API", version="1.2.3", route_prefix="")
 
-    assert spec["openapi"] == "3.0.0"
+    assert spec["openapi"] == "3.1.0"
     assert spec["info"]["title"] == "My API"
     assert spec["info"]["version"] == "1.2.3"
     assert "/sample_func" in spec["paths"]

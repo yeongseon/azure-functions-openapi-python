@@ -156,10 +156,10 @@ class TestConvertSchemasTo31:
 
 
 class TestGenerateOpenapiSpec:
-    def test_default_version_is_3_0(self) -> None:
+    def test_default_version_is_3_1(self) -> None:
         spec = generate_openapi_spec()
 
-        assert spec["openapi"] == "3.0.0"
+        assert spec["openapi"] == "3.1.0"
 
     def test_explicit_3_0_version(self) -> None:
         spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_0)
@@ -192,10 +192,10 @@ class TestGetOpenapiJson:
         assert isinstance(result, str)
         assert '"openapi"' in result
 
-    def test_default_3_0(self) -> None:
+    def test_default_3_1(self) -> None:
         result = get_openapi_json()
 
-        assert '"3.0.0"' in result
+        assert '"3.1.0"' in result
 
     def test_3_1_version(self) -> None:
         result = get_openapi_json(openapi_version=OPENAPI_VERSION_3_1)
@@ -210,10 +210,10 @@ class TestGetOpenapiYaml:
         assert isinstance(result, str)
         assert "openapi:" in result
 
-    def test_default_3_0(self) -> None:
+    def test_default_3_1(self) -> None:
         result = get_openapi_yaml()
 
-        assert "3.0.0" in result
+        assert "3.1.0" in result
 
     def test_3_1_version(self) -> None:
         result = get_openapi_yaml(openapi_version=OPENAPI_VERSION_3_1)

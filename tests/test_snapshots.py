@@ -85,7 +85,7 @@ class TestWebhookReceiverSnapshot:
     def test_openapi_3_0_spec(self) -> None:
         """webhook_receiver OpenAPI 3.0 spec matches golden file."""
         _reload_example("examples.webhook_receiver.function_app")
-        spec = generate_openapi_spec("Webhook Receiver API", "1.0.0")
+        spec = generate_openapi_spec("Webhook Receiver API", "1.0.0", openapi_version="3.0.0")
         _assert_snapshot(spec, "webhook_receiver_openapi.json")
 
     def test_paths_are_deterministically_ordered(self) -> None:
@@ -109,7 +109,7 @@ class TestReportJobsSnapshot:
     def test_openapi_3_0_spec(self) -> None:
         """report_jobs OpenAPI 3.0 spec matches golden file."""
         _reload_example("examples.report_jobs.function_app")
-        spec = generate_openapi_spec("Report Jobs API", "1.0.0")
+        spec = generate_openapi_spec("Report Jobs API", "1.0.0", openapi_version="3.0.0")
         _assert_snapshot(spec, "report_jobs_openapi.json")
 
     def test_paths_are_deterministically_ordered(self) -> None:
@@ -133,7 +133,7 @@ class TestNotificationRequestSnapshot:
     def test_openapi_3_0_spec(self) -> None:
         """notification_request OpenAPI 3.0 spec matches golden file."""
         _reload_example("examples.notification_request.function_app")
-        spec = generate_openapi_spec("Notification API", "1.0.0")
+        spec = generate_openapi_spec("Notification API", "1.0.0", openapi_version="3.0.0")
         _assert_snapshot(spec, "notification_request_openapi.json")
 
     def test_paths_are_deterministically_ordered(self) -> None:
@@ -198,7 +198,7 @@ class TestPartnerImportBridgeSnapshot:
     def test_openapi_3_0_spec(self) -> None:
         """partner_import_bridge OpenAPI 3.0 spec matches golden file."""
         _reload_example("examples.partner_import_bridge.function_app")
-        spec = generate_openapi_spec("Partner Import API", "1.0.0")
+        spec = generate_openapi_spec("Partner Import API", "1.0.0", openapi_version="3.0.0")
         _assert_snapshot(spec, "partner_import_bridge_openapi.json")
 
     def test_paths_are_deterministically_ordered(self) -> None:

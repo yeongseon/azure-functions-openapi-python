@@ -109,7 +109,7 @@ def _convert_schemas_to_3_1(schemas: dict[str, Any]) -> dict[str, Any]:
 def generate_openapi_spec(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
@@ -403,7 +403,7 @@ def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
 def get_openapi_json(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
@@ -447,7 +447,7 @@ def get_openapi_json(
 def get_openapi_yaml(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,

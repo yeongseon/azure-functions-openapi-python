@@ -56,7 +56,7 @@ class TestGenerateOpenAPISpecEnhanced:
         with patch.object(OPENAPI_MODULE, "get_openapi_registry", return_value=mock_registry):
             spec = generate_openapi_spec("Test API", "1.0.0", route_prefix="")
 
-            assert spec["openapi"] == "3.0.0"
+            assert spec["openapi"] == "3.1.0"
             assert spec["info"]["title"] == "Test API"
             assert spec["info"]["version"] == "1.0.0"
             assert "/test" in spec["paths"]
@@ -87,7 +87,7 @@ class TestGenerateOpenAPISpecEnhanced:
 
                 spec = generate_openapi_spec("Test API", "1.0.0", route_prefix="")
 
-                assert spec["openapi"] == "3.0.0"
+                assert spec["openapi"] == "3.1.0"
                 assert "/test" in spec["paths"]
                 assert "post" in spec["paths"]["/test"]
 
@@ -134,7 +134,7 @@ class TestGenerateOpenAPISpecEnhanced:
                 original_spec = generate_openapi_spec("Test API", "1.0.0", route_prefix="")
 
                 # Should still generate spec for good functions
-                assert original_spec["openapi"] == "3.0.0"
+                assert original_spec["openapi"] == "3.1.0"
                 assert "/good" in original_spec["paths"]
                 # bad_func might be excluded due to processing error
 
@@ -184,7 +184,7 @@ class TestGetOpenAPIJSONEnhanced:
             mock_generate.assert_called_once_with(
                 "Test API",
                 "1.0.0",
-                "3.0.0",
+                "3.1.0",
                 description="Auto-generated OpenAPI documentation. "
                 "Markdown supported in descriptions (CommonMark).",
                 security_schemes=None,
@@ -213,7 +213,7 @@ class TestGetOpenAPIJSONEnhanced:
             mock_generate.assert_called_once_with(
                 "Test API",
                 "1.0.0",
-                "3.0.0",
+                "3.1.0",
                 description="Custom description",
                 security_schemes=None,
                 route_prefix="/api",
@@ -249,7 +249,7 @@ class TestGetOpenAPIYAMLEnhanced:
             mock_generate.assert_called_once_with(
                 "Test API",
                 "1.0.0",
-                "3.0.0",
+                "3.1.0",
                 description="Auto-generated OpenAPI documentation. "
                 "Markdown supported in descriptions (CommonMark).",
                 security_schemes=None,
@@ -278,7 +278,7 @@ class TestGetOpenAPIYAMLEnhanced:
             mock_generate.assert_called_once_with(
                 "Test API",
                 "1.0.0",
-                "3.0.0",
+                "3.1.0",
                 description="Custom description",
                 security_schemes=None,
                 route_prefix="/api",
@@ -341,7 +341,7 @@ class TestOpenAPISpecComplexScenarios:
 
                 spec = generate_openapi_spec("Complex API", "2.0.0", route_prefix="")
 
-                assert spec["openapi"] == "3.0.0"
+                assert spec["openapi"] == "3.1.0"
                 assert spec["info"]["title"] == "Complex API"
                 assert spec["info"]["version"] == "2.0.0"
 

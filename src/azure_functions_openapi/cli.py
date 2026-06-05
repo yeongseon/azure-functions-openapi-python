@@ -107,8 +107,8 @@ Examples:
     generate_parser.add_argument(
         "--openapi-version",
         choices=["3.0", "3.1"],
-        default="3.0",
-        help="OpenAPI version (default: 3.0)",
+        default="3.1",
+        help="OpenAPI version (default: 3.1)",
     )
     generate_parser.add_argument(
         "--route-prefix",
