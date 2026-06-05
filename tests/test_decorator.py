@@ -369,6 +369,28 @@ def test_openapi_registers_request_body_required_false() -> None:
 
 
 
+def test_openapi_raises_error_for_invalid_method() -> None:
+    """Test that @openapi rejects invalid HTTP methods like typos."""
+    import pytest
+
+    with pytest.raises(ValueError, match="Invalid HTTP method"):
+
+        @openapi(summary="Bad method", method="posts")
+        def bad_method_func() -> None:
+            pass
+
+
+def test_openapi_normalizes_method_to_lowercase() -> None:
+    """Test that @openapi normalizes method to lowercase."""
+
+    @openapi(summary="Uppercase method", method="POST")
+    def uppercase_method_func() -> None:
+        pass
+
+    registry = get_openapi_registry()
+    assert registry["uppercase_method_func"]["method"] == "post"
+
+
 def test_openapi_raises_runtime_error_when_function_builder_internals_change() -> None:
     """Regression #212: defensive guard around FunctionBuilder._function._func."""
     from azure.functions.decorators.function_app import FunctionBuilder
