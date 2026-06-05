@@ -591,6 +591,12 @@ def _validate_security_scheme(
 
     Each key is a scheme name and each value must be a dict with at least a 'type' field.
     Valid types: 'apiKey', 'http', 'oauth2', 'openIdConnect'.
+
+    Also validates required sub-fields per type as defined by the OpenAPI spec:
+    - apiKey: requires 'name' and 'in' (query/header/cookie)
+    - http: requires 'scheme'
+    - oauth2: requires 'flows' (dict)
+    - openIdConnect: requires 'openIdConnectUrl' (non-empty string)
     """
     if not security_scheme:
         return {}
@@ -616,6 +622,35 @@ def _validate_security_scheme(
                 f"Security scheme '{scheme_name}' must have a valid 'type' field. "
                 f"Valid types: {', '.join(sorted(valid_types))}"
             )
+
+        # Validate required sub-fields per scheme type
+        if scheme_type == "apiKey":
+            if not isinstance(scheme_def.get("name"), str) or not scheme_def["name"].strip():
+                raise ValueError(
+                    f"apiKey security scheme '{scheme_name}' must define a non-empty 'name'"
+                )
+            if scheme_def.get("in") not in {"query", "header", "cookie"}:
+                raise ValueError(
+                    f"apiKey security scheme '{scheme_name}' must define "
+                    f"'in' as one of: query, header, cookie"
+                )
+        elif scheme_type == "http":
+            if not isinstance(scheme_def.get("scheme"), str) or not scheme_def["scheme"].strip():
+                raise ValueError(
+                    f"http security scheme '{scheme_name}' must define a non-empty 'scheme'"
+                )
+        elif scheme_type == "oauth2":
+            if not isinstance(scheme_def.get("flows"), dict):
+                raise ValueError(
+                    f"oauth2 security scheme '{scheme_name}' must define 'flows' as a dict"
+                )
+        elif scheme_type == "openIdConnect":
+            url = scheme_def.get("openIdConnectUrl")
+            if not isinstance(url, str) or not url.strip():
+                raise ValueError(
+                    f"openIdConnect security scheme '{scheme_name}' "
+                    f"must define a non-empty 'openIdConnectUrl'"
+                )
 
         validated[scheme_name] = scheme_def
 
