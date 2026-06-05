@@ -112,6 +112,7 @@ def generate_openapi_spec(
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    strict: bool = False,
 ) -> dict[str, Any]:
     """
     Compile an OpenAPI specification from the registry.
@@ -128,6 +129,9 @@ def generate_openapi_spec(
             ``""`` for hosts that disable the prefix or a custom value such
             as ``"/v1"``. Routes that already start with the prefix are not
             re-prefixed.
+        strict: When ``True``, raise on any registry entry processing failure
+            instead of logging and skipping. Useful for CI/build-time
+            validation where a missing path should fail the build.
 
     Returns:
         OpenAPI specification dictionary
@@ -244,8 +248,10 @@ def generate_openapi_spec(
                 paths.setdefault(path, {})[method] = op
 
             except (KeyError, TypeError, ValueError):
+                if strict:
+                    logger.error("Failed to process function %s (strict mode)", func_name)
+                    raise
                 logger.exception("Failed to process function %s", func_name)
-                # Continue processing other functions
                 continue
 
         spec: dict[str, Any] = {
@@ -299,6 +305,8 @@ def generate_openapi_spec(
     except OpenAPISpecConfigError:
         raise
     except Exception as e:
+        if strict and isinstance(e, (KeyError, TypeError, ValueError)):
+            raise
         logger.error(f"Failed to generate OpenAPI specification: {str(e)}")
         raise RuntimeError("Failed to generate OpenAPI specification") from e
 
@@ -324,6 +332,7 @@ def get_openapi_json(
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    strict: bool = False,
 ) -> str:
     """Return the spec as pretty-printed JSON (UTF-8).
 
@@ -337,6 +346,7 @@ def get_openapi_json(
             (``extensions.http.routePrefix``). Defaults to ``"/api"``. Pass
             ``""`` for hosts that disable the prefix or a custom value such
             as ``"/v1"``.
+        strict: When ``True``, raise on any registry entry processing failure.
 
     Returns:
         OpenAPI spec in JSON format.
@@ -349,6 +359,7 @@ def get_openapi_json(
             description=description,
             security_schemes=security_schemes,
             route_prefix=route_prefix,
+            strict=strict,
         )
         return json.dumps(spec, indent=2, ensure_ascii=False)
     except OpenAPISpecConfigError:
@@ -365,6 +376,7 @@ def get_openapi_yaml(
     description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    strict: bool = False,
 ) -> str:
     """Return the spec as YAML.
 
@@ -378,6 +390,7 @@ def get_openapi_yaml(
             (``extensions.http.routePrefix``). Defaults to ``"/api"``. Pass
             ``""`` for hosts that disable the prefix or a custom value such
             as ``"/v1"``.
+        strict: When ``True``, raise on any registry entry processing failure.
 
     Returns:
         OpenAPI spec in YAML format.
@@ -390,6 +403,7 @@ def get_openapi_yaml(
             description=description,
             security_schemes=security_schemes,
             route_prefix=route_prefix,
+            strict=strict,
         )
         return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
     except OpenAPISpecConfigError:

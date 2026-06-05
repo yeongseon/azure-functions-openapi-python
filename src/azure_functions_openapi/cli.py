@@ -119,6 +119,15 @@ Examples:
             "the prefix, or a custom value such as /v1 for a custom deployment."
         ),
     )
+    generate_parser.add_argument(
+        "--strict",
+        action="store_true",
+        default=False,
+        help=(
+            "Fail on any malformed registry entry instead of skipping it. "
+            "Recommended for CI pipelines where a missing path should break the build."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -165,6 +174,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             openapi_version,
             description=description,
             route_prefix=getattr(args, "route_prefix", "/api"),
+            strict=getattr(args, "strict", False),
         )
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
