@@ -413,7 +413,8 @@ def register_openapi_metadata(
     # Reuse shared method validation (normalizes to lowercase).
     # method is guaranteed non-empty at this point by the check above.
     validated_method = _validate_method(method, f"register_openapi_metadata({path})")
-    assert validated_method is not None  # for type narrowing; unreachable given guard above
+    if validated_method is None:  # pragma: no cover — unreachable; guard above ensures non-empty
+        raise ValueError("method must be a non-empty string")
 
     if request_model is not None and request_body is not None:
         raise ValueError(
