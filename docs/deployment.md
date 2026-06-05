@@ -246,6 +246,16 @@ For Swagger UI, confirm these headers exist:
 - `X-Frame-Options: DENY`
 - `Strict-Transport-Security`
 
+You can also verify visually by opening these URLs in a browser:
+
+![Swagger UI showing the Report Jobs API with three endpoints](assets/deployment_report_jobs_swagger_ui.png)
+
+*Swagger UI at `/api/docs` — lists all decorated endpoints with request/response schemas.*
+
+![OpenAPI JSON document served at /api/openapi.json](assets/deployment_report_jobs_openapi_json.png)
+
+*Generated OpenAPI spec at `/api/openapi.json` — always in sync with your `@openapi` decorators.*
+
 ### Step 13 — Optional: watch live logs
 
 ```bash
