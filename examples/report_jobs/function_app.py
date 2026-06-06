@@ -115,7 +115,6 @@ def _check_bearer_auth(req: func.HttpRequest) -> func.HttpResponse | None:
 # ---------------------------------------------------------------------------
 
 
-@app.route(route="reports", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/reports",
     method="post",
@@ -131,7 +130,8 @@ def _check_bearer_auth(req: func.HttpRequest) -> func.HttpResponse | None:
     },
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
-)
+    )
+@app.route(route="reports", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     auth_error = _check_bearer_auth(req)
     if auth_error:
@@ -163,7 +163,6 @@ def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="reports/{job_id}/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/reports/{job_id}/status",
     method="get",
@@ -187,7 +186,8 @@ def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     },
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
-)
+    )
+@app.route(route="reports/{job_id}/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_report_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_error = _check_bearer_auth(req)
     if auth_error:
@@ -214,7 +214,6 @@ def get_report_status(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="reports/{job_id}/download", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/reports/{job_id}/download",
     method="get",
@@ -240,6 +239,7 @@ def get_report_status(req: func.HttpRequest) -> func.HttpResponse:
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
 )
+@app.route(route="reports/{job_id}/download", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def download_report(req: func.HttpRequest) -> func.HttpResponse:
     auth_error = _check_bearer_auth(req)
     if auth_error:

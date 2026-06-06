@@ -30,13 +30,13 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(json.dumps({"status": "ok"}), mimetype="application/json")
 
 
-@app.route(route="items", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/items",
     summary="List items",
     tags=["items"],
     response={200: {"description": "OK", "content": {"application/json": {}}}},
 )
+@app.route(route="items", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def list_items(req: func.HttpRequest) -> func.HttpResponse:
     logging.info("list_items called")
     items = [{"id": 1, "name": "widget"}, {"id": 2, "name": "gadget"}]

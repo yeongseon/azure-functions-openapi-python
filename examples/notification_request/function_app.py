@@ -68,7 +68,6 @@ _notifications: dict[str, dict[str, str]] = {}
 
 
 @app.function_name(name="send_notification")
-@app.route(route="notifications/email", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/notifications/email",
     method="post",
@@ -81,7 +80,8 @@ _notifications: dict[str, dict[str, str]] = {}
         202: {"description": "Notification queued for delivery"},
         422: {"description": "Validation error"},
     },
-)
+    )
+@app.route(route="notifications/email", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @validate_http(body=EmailNotificationRequest, response_model=NotificationAcceptedResponse)
 def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> func.HttpResponse:
     logger.info("Queuing email notification to %d recipients", len(body.to))
@@ -103,7 +103,6 @@ def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> 
 
 
 @app.function_name(name="get_notification_status")
-@app.route(route="notifications/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/notifications/status",
     method="get",
@@ -124,7 +123,8 @@ def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> 
         200: {"description": "Notification status"},
         404: {"description": "Notification not found"},
     },
-)
+    )
+@app.route(route="notifications/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @validate_http(query=NotificationStatusQuery, response_model=NotificationStatusResponse)
 def get_notification_status(
     req: func.HttpRequest, query: NotificationStatusQuery

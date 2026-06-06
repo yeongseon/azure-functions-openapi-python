@@ -55,8 +55,8 @@ from azure_functions_openapi import (
 ### Minimal endpoint
 
 ```python
-@app.route(route="ping", methods=["GET"])
 @openapi(summary="Ping", description="Health check endpoint")
+@app.route(route="ping", methods=["GET"])
 def ping(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse("ok", status_code=200)
 ```
@@ -73,7 +73,6 @@ class ItemResponse(BaseModel):
     name: str
 
 
-@app.route(route="items", methods=["POST"])
 @openapi(
     summary="Create item",
     method="post",
@@ -81,7 +80,8 @@ class ItemResponse(BaseModel):
     request_model=CreateItemRequest,
     response_model=ItemResponse,
     response={201: {"description": "Created"}},
-)
+    )
+@app.route(route="items", methods=["POST"])
 def create_item(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```
@@ -89,7 +89,6 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
 ### With raw schema dictionaries
 
 ```python
-@app.route(route="raw", methods=["POST"])
 @openapi(
     summary="Raw schema example",
     method="post",
@@ -111,7 +110,8 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
             },
         }
     },
-)
+    )
+@app.route(route="raw", methods=["POST"])
 def raw(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```

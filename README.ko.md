@@ -67,7 +67,6 @@ app = func.FunctionApp()
 
 
 @app.function_name(name="http_trigger")
-@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 @openapi(
     summary="Greet user",
     route="/api/http_trigger",
@@ -91,7 +90,8 @@ app = func.FunctionApp()
         }
     },
     tags=["Example"],
-)
+    )
+@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     data = req.get_json()
     name = data.get("name", "world")

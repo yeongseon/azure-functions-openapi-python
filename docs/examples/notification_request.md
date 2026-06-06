@@ -56,7 +56,6 @@ class NotificationStatusResponse(BaseModel):
 Both decorators share the same Pydantic model:
 
 ```python
-@app.route(route="notifications/email", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/notifications/email",
     method="post",
@@ -69,7 +68,8 @@ Both decorators share the same Pydantic model:
         202: {"description": "Notification queued for delivery"},
         422: {"description": "Validation error"},
     },
-)
+    )
+@app.route(route="notifications/email", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @validate_http(body=EmailNotificationRequest, response_model=NotificationAcceptedResponse)
 def send_notification(
     req: func.HttpRequest, body: EmailNotificationRequest

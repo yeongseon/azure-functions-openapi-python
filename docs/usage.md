@@ -35,7 +35,6 @@ class EchoResponse(BaseModel):
 
 
 @app.function_name(name="echo")
-@app.route(route="echo", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     summary="Echo message",
     description="Returns the same message received in the request body.",
@@ -46,7 +45,8 @@ class EchoResponse(BaseModel):
     request_model=EchoRequest,
     response_model=EchoResponse,
     response={200: {"description": "Echoed message"}, 400: {"description": "Invalid body"}},
-)
+    )
+@app.route(route="echo", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def echo(req: func.HttpRequest) -> func.HttpResponse:
     try:
         data = EchoRequest.model_validate_json(req.get_body())
