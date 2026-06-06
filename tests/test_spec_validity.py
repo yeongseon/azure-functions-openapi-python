@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from openapi_spec_validator import validate
 from pydantic import BaseModel
+import pytest
 
 from azure_functions_openapi.decorator import _openapi_registry, _registry_lock, openapi
 from azure_functions_openapi.spec import generate_openapi_spec
@@ -301,7 +301,6 @@ class TestPydanticV2Compat30:
 
     def test_nullable_model_3_0_non_strict_warns(self) -> None:
         """Non-strict mode warns but still generates (potentially invalid) spec."""
-        import logging
 
         @openapi(
             route="/users",
@@ -373,7 +372,10 @@ class TestInlineSchemaConversion31:
         )
 
         # In 3.1, nullable should be converted to type array
-        schema = spec["paths"]["/items"]["post"]["requestBody"]["content"]["application/json"]["schema"]
+        schema = (
+            spec["paths"]["/items"]["post"]["requestBody"]
+            ["content"]["application/json"]["schema"]
+        )
         name_prop = schema["properties"]["name"]
         assert "nullable" not in name_prop
         assert name_prop["type"] == ["string", "null"]

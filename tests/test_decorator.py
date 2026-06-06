@@ -410,8 +410,9 @@ def test_openapi_raises_on_multiple_binding_methods_without_explicit_method() ->
     _clear_registry()
     app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-    from azure_functions_openapi.exceptions import OpenAPISpecConfigError
     import pytest
+
+    from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
     with pytest.raises(OpenAPISpecConfigError, match="multiple methods"):
         @openapi(summary="Ambiguous")
