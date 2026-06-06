@@ -1,11 +1,54 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.19.0] - 2026-06-06
+
+### Bug Fixes
+
+- *(spec)* Accept OpenAPI wildcard range codes (2XX–5XX) in _valid_response_status (#241) 
+- Address all OpenAPI spec quality gaps — validation, decorator order, and spec correctness 
+- *(docs)* Correct remaining decorator stacking order in PRD, index, troubleshooting, and docstring 
+- *(docs)* Correct @openapi + @app.route stacking order in examples and docs 
+- *(spec)* Detect duplicate path+method and expand _validate_spec checks 
+- *(decorator)* Raise on ambiguous multi-method binding 
+- *(readme)* Correct Codecov badge URL (remove duplicate -python suffix) 
+- *(spec)* Add strict raise, 3.0 compat check, and inline 3.1 schema conversion 
+- *(decorator)* Add type-specific security scheme field validation 
+- *(decorator)* Validate and normalize HTTP method in @openapi (#222) 
+- *(spec)* Add path parameter and operationId validation (#225) 
+- *(security)* Use proper JS/HTML escaping in Swagger UI (#221) 
+
+### Documentation
+
+- *(agents)* Mandate issue-first workflow before opening PRs 
+- *(deployment)* Add real Azure deployment screenshots (#230) 
+
+### Features
+
+- *(spec)* Change default OpenAPI version to 3.1 (#229) 
+- *(decorator)* Auto-detect route/method from FunctionBuilder (#226) 
+- *(spec)* Add strict mode for fail-fast on malformed entries (#224) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Add openapi-spec-validator>=0.7.0 to dev extras 
+- *(deps)* Bump ruff from 0.15.12 to 0.15.15 (#228) 
+- *(deps)* Bump github/codeql-action from 4.35.2 to 4.36.1 (#227) 
+- *(deps)* Bump actions/stale from 10.2.0 to 10.3.0 (#210) 
+- *(deps)* Bump codecov/codecov-action from 6.0.0 to 6.0.1 (#207) 
+
+### Other
+
+- Bump version to 0.19.0 
 ## [0.18.2] - 2026-05-23
 
 ### Bug Fixes
 
 - *(decorator)* Guard FunctionBuilder._function._func access with actionable error 
+
+### Documentation
+
+- Update changelog 
 
 ### Other
 
