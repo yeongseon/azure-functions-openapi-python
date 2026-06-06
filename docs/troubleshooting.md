@@ -104,8 +104,8 @@ If they diverge, behavior and docs diverge.
 Keep them aligned by design:
 
 ```python
-@app.route(route="users/{user_id}", methods=["GET"])
 @openapi(route="/api/users/{user_id}", method="get")
+@app.route(route="users/{user_id}", methods=["GET"])
 ```
 
 !!! tip

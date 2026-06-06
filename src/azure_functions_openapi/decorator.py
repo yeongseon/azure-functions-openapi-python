@@ -114,8 +114,8 @@ def openapi(
     ### 1 · Minimal “Hello World”
 
     ```python
+    @openapi(summary="Hello", description="Returns plain text.", method="get")
     @app.route(route="hello")
-    @openapi(summary="Hello", description="Returns plain text.")
     def hello(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Hello, world!", status_code=200)
     ```
@@ -134,16 +134,16 @@ def openapi(
         title: str
         done: bool
 
-    @app.route(route="todos/{id}", method="put")
     @openapi(
         summary="Update a todo item",
-        description=\"""Update a todo and return the updated document.\""",
+        description="Update a todo and return the updated document.",
         tags=["Todo"],
         parameters=[{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
         request_model=TodoRequest,
         response_model=TodoResponse,
         operation_id="updateTodo",
     )
+    @app.route(route="todos/{id}", methods=["PUT"])
     def update_todo(req: func.HttpRequest) -> func.HttpResponse:
         # ... business logic ...
         body = TodoRequest.model_validate_json(req.get_body())
