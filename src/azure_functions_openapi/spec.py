@@ -355,8 +355,17 @@ def generate_openapi_spec(
                                 "content": {"application/json": {"schema": {"type": "object"}}},
                             }
 
-                # merge into paths (support multiple methods per route) ----------
-                paths.setdefault(path, {})[method] = op
+                # merge into paths — detect duplicate path+method registrations
+                path_item = paths.setdefault(path, {})
+                if method in path_item:
+                    _dup_msg = (
+                        f"Duplicate operation: {method.upper()} {path} — "
+                        "only the last @openapi registration will appear in the spec"
+                    )
+                    if strict:
+                        raise OpenAPISpecConfigError(_dup_msg)
+                    logger.warning("OpenAPI spec: %s", _dup_msg)
+                path_item[method] = op
 
             except (KeyError, TypeError, ValueError):
                 if strict:
@@ -445,15 +454,25 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     """Post-generation validation of the OpenAPI spec.
 
     Returns a list of warning messages.  The caller (``generate_openapi_spec``)
-    currently logs them; combine with a ``strict`` parameter (see PR #224) to
-    raise ``OpenAPISpecConfigError`` when any warnings are present.
+    logs them and raises ``OpenAPISpecConfigError`` when ``strict=True``.
 
     Checks performed:
-    - Route template variables have matching ``in: "path"`` parameters.
-    - Path parameters have ``required: true``.
-    - ``(name, in)`` pairs are unique within each operation.
     - ``operationId`` is unique across the whole spec.
+    - ``operationId`` is not an empty string.
+    - ``(name, in)`` pairs are unique within each operation.
+    - ``parameter['in']`` is one of path / query / header / cookie.
+    - Path parameters have ``required: true``.
+    - Route template variables have matching ``in: 'path'`` parameters.
+    - No extra ``in: 'path'`` parameters absent from the route template.
+    - Response status keys are 100–599 or ``'default'``.
     """
+    _VALID_PARAM_LOCATIONS = {"path", "query", "header", "cookie"}
+
+    def _valid_response_status(status: str) -> bool:
+        if status == "default":
+            return True
+        return status.isdigit() and 100 <= int(status) <= 599
+
     warnings: list[str] = []
     seen_operation_ids: dict[str, str] = {}  # operationId → "METHOD path"
 
@@ -463,10 +482,12 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
         for method, operation in methods.items():
             op_label = f"{method.upper()} {path}"
 
-            # --- operationId uniqueness ---
+            # --- operationId uniqueness + non-empty ---
             op_id = operation.get("operationId")
-            if op_id:
-                if op_id in seen_operation_ids:
+            if op_id is not None:
+                if op_id == "":
+                    warnings.append(f"Empty operationId in {op_label}")
+                elif op_id in seen_operation_ids:
                     warnings.append(
                         f"Duplicate operationId '{op_id}': "
                         f"used by {seen_operation_ids[op_id]} and {op_label}"
@@ -490,6 +511,12 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                     )
                 seen_param_keys.add(key)
 
+                if location not in _VALID_PARAM_LOCATIONS:
+                    warnings.append(
+                        f"Invalid parameter location '{location}' for '{name}' in {op_label}; "
+                        f"must be one of: {', '.join(sorted(_VALID_PARAM_LOCATIONS))}"
+                    )
+
                 if location == "path":
                     path_param_names.add(name)
                     if not param.get("required", False):
@@ -504,6 +531,20 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                     f"Route template variable '{{{var}}}' in {op_label} "
                     "has no matching path parameter definition"
                 )
+
+            extra = path_param_names - template_vars
+            for var in sorted(extra):
+                warnings.append(
+                    f"Path parameter '{var}' in {op_label} is not present in route template"
+                )
+
+            # --- response status validation ---
+            for status in operation.get("responses", {}):
+                if not _valid_response_status(str(status)):
+                    warnings.append(
+                        f"Invalid response status '{status}' in {op_label}; "
+                        "must be an integer 100–599 or 'default'"
+                    )
 
     return warnings
 

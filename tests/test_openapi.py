@@ -1058,3 +1058,130 @@ class TestValidateSpec:
             "no matching path parameter" in w and "{user_id}" in w and "{item_id}" not in w
             for w in warnings
         )
+
+
+# ---------------------------------------------------------------------------
+# _validate_spec — new checks (empty operationId, invalid 'in', extra path param,
+#                   invalid response status)
+# ---------------------------------------------------------------------------
+
+
+class TestValidateSpecExpanded:
+    def test_empty_operation_id_warns(self) -> None:
+        spec = {"paths": {"/ping": {"get": {"operationId": "", "responses": {}}}}}
+        warnings = _validate_spec(spec)
+        assert any("Empty operationId" in w for w in warnings)
+
+    def test_invalid_parameter_location_warns(self) -> None:
+        spec = {
+            "paths": {
+                "/items": {
+                    "get": {
+                        "operationId": "list_items",
+                        "parameters": [{"name": "x", "in": "body"}],
+                        "responses": {},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("Invalid parameter location" in w and "body" in w for w in warnings)
+
+    def test_extra_path_param_not_in_template_warns(self) -> None:
+        spec = {
+            "paths": {
+                "/users": {
+                    "get": {
+                        "operationId": "list_users",
+                        "parameters": [{"name": "id", "in": "path", "required": True}],
+                        "responses": {},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("not present in route template" in w and "'id'" in w for w in warnings)
+
+    def test_invalid_response_status_warns(self) -> None:
+        spec = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {"999": {"description": "bad"}},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("Invalid response status" in w and "999" in w for w in warnings)
+
+    def test_valid_response_default_key_no_warning(self) -> None:
+        spec = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {"default": {"description": "ok"}},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert not any("Invalid response status" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# duplicate path+method detection in generate_openapi_spec
+# ---------------------------------------------------------------------------
+
+
+class TestDuplicatePathMethod:
+    def test_duplicate_path_method_warns_by_default(self) -> None:
+        clear_openapi_registry()
+
+        @openapi(route="/items", method="get", summary="First")
+        def list_items_a() -> None:
+            pass
+
+        @openapi(route="/items", method="get", summary="Second")
+        def list_items_b() -> None:
+            pass
+
+        import logging
+
+        with patch("azure_functions_openapi.spec.logger") as mock_log:
+            generate_openapi_spec(route_prefix="")
+        calls = [str(c) for c in mock_log.warning.call_args_list]
+        assert any("Duplicate operation" in c and "GET" in c and "/items" in c for c in calls)
+
+    def test_duplicate_path_method_raises_in_strict(self) -> None:
+        clear_openapi_registry()
+
+        @openapi(route="/items", method="get", summary="First")
+        def dup_a() -> None:
+            pass
+
+        @openapi(route="/items", method="get", summary="Second")
+        def dup_b() -> None:
+            pass
+
+        from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+
+        with pytest.raises(OpenAPISpecConfigError, match="Duplicate operation"):
+            generate_openapi_spec(route_prefix="", strict=True)
+
+    def test_same_path_different_method_no_warning(self) -> None:
+        clear_openapi_registry()
+
+        @openapi(route="/things", method="get", summary="List")
+        def list_things() -> None:
+            pass
+
+        @openapi(route="/things", method="post", summary="Create")
+        def create_thing() -> None:
+            pass
+
+        spec = generate_openapi_spec(route_prefix="")
+        assert "get" in spec["paths"]["/things"]
+        assert "post" in spec["paths"]["/things"]
