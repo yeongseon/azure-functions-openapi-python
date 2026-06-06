@@ -471,6 +471,10 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     def _valid_response_status(status: str) -> bool:
         if status == "default":
             return True
+        # Wildcard range codes (OpenAPI 3.x §4.8.16): 1XX-5XX, case-insensitive
+        upper = status.upper()
+        if len(upper) == 3 and upper[0] in "12345" and upper[1:] == "XX":
+            return True
         return status.isdigit() and 100 <= int(status) <= 599
 
     warnings: list[str] = []

@@ -725,7 +725,7 @@ def test_malformed_registry_entry_raises_in_strict_mode() -> None:
 
 def test_strict_mode_raises_on_validation_warnings() -> None:
     """In strict mode, post-generation validation warnings raise OpenAPISpecConfigError."""
-    from azure_functions_openapi.spec import OpenAPISpecConfigError
+    from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
     @openapi(
         route="/items/{id}",
@@ -1130,6 +1130,77 @@ class TestValidateSpecExpanded:
         warnings = _validate_spec(spec)
         assert not any("Invalid response status" in w for w in warnings)
 
+    # ------------------------------------------------------------------
+    # Wildcard range codes: 1XX-5XX (OpenAPI 3.x §4.8.16)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize("code", ["1XX", "2XX", "3XX", "4XX", "5XX"])
+    def test_wildcard_range_code_is_valid(self, code: str) -> None:
+        spec = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {code: {"description": "ok"}},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert not any("Invalid response status" in w for w in warnings)
+
+    @pytest.mark.parametrize("code", ["1xx", "2xx", "3xx", "4xx", "5xx"])
+    def test_wildcard_range_code_lowercase_is_valid(self, code: str) -> None:
+        spec = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {code: {"description": "ok"}},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert not any("Invalid response status" in w for w in warnings)
+
+    @pytest.mark.parametrize("code", ["20X", "6XX", "0XX", "2X", "2XXX", "600", "099"])
+    def test_invalid_wildcard_or_out_of_range_warns(self, code: str) -> None:
+        spec = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {code: {"description": "bad"}},
+                    }
+                }
+            }
+        }
+        warnings = _validate_spec(spec)
+        assert any("Invalid response status" in w for w in warnings)
+
+    def test_wildcard_range_code_strict_mode_does_not_raise(self) -> None:
+        """strict=True in generate_openapi_spec must not raise for valid wildcard keys.
+
+        We test _validate_spec directly with a pre-built spec containing '2XX'
+        because the @openapi decorator's response= parameter uses int keys for
+        convenience and converts them to strings internally.
+        """
+        spec: dict[str, Any] = {
+            "paths": {
+                "/ping": {
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {"2XX": {"description": "ok"}},
+                    }
+                }
+            }
+        }
+        # _validate_spec is what generate_openapi_spec calls with strict=True;
+        # it must return zero warnings for a '2XX' response key.
+        warnings = _validate_spec(spec)
+        assert not any("Invalid response status" in w for w in warnings)
+
 
 # ---------------------------------------------------------------------------
 # duplicate path+method detection in generate_openapi_spec
@@ -1148,7 +1219,6 @@ class TestDuplicatePathMethod:
         def list_items_b() -> None:
             pass
 
-        import logging
 
         with patch("azure_functions_openapi.spec.logger") as mock_log:
             generate_openapi_spec(route_prefix="")
