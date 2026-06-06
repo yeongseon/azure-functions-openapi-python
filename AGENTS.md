@@ -18,6 +18,17 @@
 - Keep documentation examples, generated schema expectations, and tests synchronized.
 - Prefer focused changes inside the existing extension points.
 
+## PR Workflow
+
+**Always issue-first.** Before opening any PR:
+
+1. Run `gh issue list` to check whether a tracking issue already exists for the change.
+2. If no issue exists, create one following the Issue Conventions below before writing any code.
+3. Open the PR only after the issue exists. The PR body **must** include `Closes #N` for every
+   issue it resolves — never open a PR that cannot be traced back to an issue.
+
+**Non-negotiable:** a PR without a linked issue will be rejected at review.
+
 ## Issue Conventions
 
 Follow these conventions when opening issues so the backlog stays consistent with sibling DX Toolkit repositories.

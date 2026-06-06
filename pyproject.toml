@@ -46,6 +46,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "ruff==0.15.15",
+    "openapi-spec-validator>=0.7.0",
     "types-PyYAML",
     "requests",
     "types-requests",

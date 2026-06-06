@@ -106,6 +106,116 @@ def _convert_schemas_to_3_1(schemas: dict[str, Any]) -> dict[str, Any]:
     return {name: _convert_schema_to_3_1(schema) for name, schema in schemas.items()}
 
 
+def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
+    """Check if a schema contains constructs incompatible with OpenAPI 3.0.
+
+    Detects:
+    - ``anyOf`` containing ``{"type": "null"}`` (Pydantic v2 nullable pattern)
+    - ``type`` as a list (JSON Schema 2020-12 / OpenAPI 3.1 syntax)
+    """
+    if not isinstance(schema, dict):
+        return False
+
+    # type as list is 3.1-only
+    if isinstance(schema.get("type"), list):
+        return True
+
+    # anyOf containing {type: "null"} is the Pydantic v2 nullable pattern
+    any_of = schema.get("anyOf")
+    if isinstance(any_of, list):
+        for item in any_of:
+            if isinstance(item, dict) and item.get("type") == "null":
+                return True
+
+    # Recurse into nested structures
+    for key in ("properties", "items", "allOf", "anyOf", "oneOf",
+                "additionalProperties", "$defs"):
+        val = schema.get(key)
+        if isinstance(val, dict):
+            if key == "properties":
+                for prop_schema in val.values():
+                    if isinstance(prop_schema, dict) and _has_3_1_only_constructs(prop_schema):
+                        return True
+            elif _has_3_1_only_constructs(val):
+                return True
+        elif isinstance(val, list):
+            for item in val:
+                if isinstance(item, dict) and _has_3_1_only_constructs(item):
+                    return True
+
+    return False
+
+
+def _check_schemas_3_0_compatible(
+    schemas: dict[str, Any], strict: bool
+) -> list[str]:
+    """Check component schemas for OpenAPI 3.1-only constructs when targeting 3.0.
+
+    Returns a list of warning messages for incompatible schemas.
+    In strict mode, raises OpenAPISpecConfigError if any are found.
+    """
+    warnings: list[str] = []
+    for name, schema in schemas.items():
+        if _has_3_1_only_constructs(schema):
+            warnings.append(
+                f"Schema '{name}' contains OpenAPI 3.1-only constructs "
+                f"(e.g., anyOf with null type) incompatible with OpenAPI 3.0. "
+                f"Use openapi_version='3.1.0' (default) or provide a manual "
+                f"3.0-compatible schema instead of a Pydantic model."
+            )
+
+    if strict and warnings:
+        raise OpenAPISpecConfigError(
+            "OpenAPI 3.0 compatibility error:\n" + "\n".join(f"  - {w}" for w in warnings)
+        )
+
+    return warnings
+
+
+
+def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
+    """Apply 3.1 schema conversion to inline schemas in operations.
+
+    Converts schemas in:
+    - requestBody.content.*.schema
+    - responses.*.content.*.schema
+    - parameters[].schema
+    """
+    for _path, methods in paths.items():
+        for _method, operation in methods.items():
+            if not isinstance(operation, dict):
+                continue
+
+            # requestBody
+            rb = operation.get("requestBody")
+            if isinstance(rb, dict):
+                content = rb.get("content")
+                if isinstance(content, dict):
+                    for _media, media_obj in content.items():
+                        if isinstance(media_obj, dict) and "schema" in media_obj:
+                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+
+            # responses
+            responses = operation.get("responses")
+            if isinstance(responses, dict):
+                for _status, resp in responses.items():
+                    if not isinstance(resp, dict):
+                        continue
+                    content = resp.get("content")
+                    if isinstance(content, dict):
+                        for _media, media_obj in content.items():
+                            if isinstance(media_obj, dict) and "schema" in media_obj:
+                                media_obj["schema"] = _convert_schema_to_3_1(
+                                    media_obj["schema"]
+                                )
+
+            # parameters
+            for param in operation.get("parameters", []):
+                if isinstance(param, dict) and "schema" in param:
+                    param["schema"] = _convert_schema_to_3_1(param["schema"])
+
+    return paths
+
 def generate_openapi_spec(
     title: str = "API",
     version: str = "1.0.0",
@@ -245,8 +355,17 @@ def generate_openapi_spec(
                                 "content": {"application/json": {"schema": {"type": "object"}}},
                             }
 
-                # merge into paths (support multiple methods per route) ----------
-                paths.setdefault(path, {})[method] = op
+                # merge into paths — detect duplicate path+method registrations
+                path_item = paths.setdefault(path, {})
+                if method in path_item:
+                    _dup_msg = (
+                        f"Duplicate operation: {method.upper()} {path} — "
+                        "only the last @openapi registration will appear in the spec"
+                    )
+                    if strict:
+                        raise OpenAPISpecConfigError(_dup_msg)
+                    logger.warning("OpenAPI spec: %s", _dup_msg)
+                path_item[method] = op
 
             except (KeyError, TypeError, ValueError):
                 if strict:
@@ -267,6 +386,7 @@ def generate_openapi_spec(
 
         if openapi_version == OPENAPI_VERSION_3_1:
             spec["info"]["summary"] = title
+            _convert_operation_schemas_to_3_1(paths)
 
         # Merge security schemes: explicit param + per-operation schemes from registry.
         # Raises OpenAPISpecConfigError on collision (same name, different definition).
@@ -291,7 +411,12 @@ def generate_openapi_spec(
         if components.get("schemas"):
             if openapi_version == OPENAPI_VERSION_3_1:
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
-
+            elif openapi_version == OPENAPI_VERSION_3_0:
+                compat_warnings = _check_schemas_3_0_compatible(
+                    components["schemas"], strict
+                )
+                for w in compat_warnings:
+                    logger.warning("OpenAPI 3.0 compatibility: %s", w)
         if components.get("schemas") or components.get("securitySchemes"):
             spec["components"] = components
 
@@ -300,6 +425,12 @@ def generate_openapi_spec(
         validation_warnings = _validate_spec(spec)
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
+
+        if strict and validation_warnings:
+            raise OpenAPISpecConfigError(
+                "Strict mode: generated spec has validation errors:\n"
+                + "\n".join(f"  - {w}" for w in validation_warnings)
+            )
 
         logger.info(
             f"Generated OpenAPI {openapi_version} spec with {len(paths)} paths "
@@ -323,15 +454,25 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     """Post-generation validation of the OpenAPI spec.
 
     Returns a list of warning messages.  The caller (``generate_openapi_spec``)
-    currently logs them; combine with a ``strict`` parameter (see PR #224) to
-    raise ``OpenAPISpecConfigError`` when any warnings are present.
+    logs them and raises ``OpenAPISpecConfigError`` when ``strict=True``.
 
     Checks performed:
-    - Route template variables have matching ``in: "path"`` parameters.
-    - Path parameters have ``required: true``.
-    - ``(name, in)`` pairs are unique within each operation.
     - ``operationId`` is unique across the whole spec.
+    - ``operationId`` is not an empty string.
+    - ``(name, in)`` pairs are unique within each operation.
+    - ``parameter['in']`` is one of path / query / header / cookie.
+    - Path parameters have ``required: true``.
+    - Route template variables have matching ``in: 'path'`` parameters.
+    - No extra ``in: 'path'`` parameters absent from the route template.
+    - Response status keys are 100–599 or ``'default'``.
     """
+    _VALID_PARAM_LOCATIONS = {"path", "query", "header", "cookie"}
+
+    def _valid_response_status(status: str) -> bool:
+        if status == "default":
+            return True
+        return status.isdigit() and 100 <= int(status) <= 599
+
     warnings: list[str] = []
     seen_operation_ids: dict[str, str] = {}  # operationId → "METHOD path"
 
@@ -341,10 +482,12 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
         for method, operation in methods.items():
             op_label = f"{method.upper()} {path}"
 
-            # --- operationId uniqueness ---
+            # --- operationId uniqueness + non-empty ---
             op_id = operation.get("operationId")
-            if op_id:
-                if op_id in seen_operation_ids:
+            if op_id is not None:
+                if op_id == "":
+                    warnings.append(f"Empty operationId in {op_label}")
+                elif op_id in seen_operation_ids:
                     warnings.append(
                         f"Duplicate operationId '{op_id}': "
                         f"used by {seen_operation_ids[op_id]} and {op_label}"
@@ -368,6 +511,12 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                     )
                 seen_param_keys.add(key)
 
+                if location not in _VALID_PARAM_LOCATIONS:
+                    warnings.append(
+                        f"Invalid parameter location '{location}' for '{name}' in {op_label}; "
+                        f"must be one of: {', '.join(sorted(_VALID_PARAM_LOCATIONS))}"
+                    )
+
                 if location == "path":
                     path_param_names.add(name)
                     if not param.get("required", False):
@@ -382,6 +531,20 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                     f"Route template variable '{{{var}}}' in {op_label} "
                     "has no matching path parameter definition"
                 )
+
+            extra = path_param_names - template_vars
+            for var in sorted(extra):
+                warnings.append(
+                    f"Path parameter '{var}' in {op_label} is not present in route template"
+                )
+
+            # --- response status validation ---
+            for status in operation.get("responses", {}):
+                if not _valid_response_status(str(status)):
+                    warnings.append(
+                        f"Invalid response status '{status}' in {op_label}; "
+                        "must be an integer 100–599 or 'default'"
+                    )
 
     return warnings
 

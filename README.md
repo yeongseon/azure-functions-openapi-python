@@ -7,7 +7,7 @@
 [![CI](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml)
 [![Release](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml)
 [![Security Scans](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml)
-[![codecov](https://codecov.io/gh/yeongseon/azure-functions-openapi-python-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-openapi-python-python)
+[![codecov](https://codecov.io/gh/yeongseon/azure-functions-openapi-python/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/azure-functions-openapi-python)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -59,12 +59,12 @@ Spec drifts. Consumers guess. No Swagger UI.
 **✅ With azure-functions-openapi** — spec lives next to the handler
 
 ```python
-@app.route(route="users", methods=["POST"])
 @openapi(
     summary="Create user",
     request_body={"type": "object", "properties": {"name": {"type": "string"}}},
     response={200: {"description": "User created"}},
-)
+    )
+@app.route(route="users", methods=["POST"])
 def create_user(req):
     ...
 
@@ -174,7 +174,6 @@ app = func.FunctionApp()
 
 
 @app.function_name(name="http_trigger")
-@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 @openapi(
     summary="Greet user",
     route="/api/http_trigger",
@@ -198,7 +197,8 @@ app = func.FunctionApp()
         }
     },
     tags=["Example"],
-)
+    )
+@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     data = req.get_json()
     name = data.get("name", "world")

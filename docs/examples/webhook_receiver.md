@@ -42,7 +42,6 @@ class WebhookAcceptedResponse(BaseModel):
 ## How the docs are configured
 
 ```python
-@app.route(route="webhooks/orders", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/webhooks/orders",
     method="post",
@@ -63,7 +62,8 @@ class WebhookAcceptedResponse(BaseModel):
         401: {"description": "Invalid webhook signature or expired timestamp"},
         409: {"description": "Duplicate delivery (replay)"},
     },
-)
+    )
+@app.route(route="webhooks/orders", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```

@@ -403,3 +403,32 @@ def test_openapi_raises_runtime_error_when_function_builder_internals_change() -
 
     with pytest.raises(RuntimeError, match="azure-functions SDK appears incompatible"):
         openapi(summary="x")(fake_builder)
+
+
+def test_openapi_raises_on_multiple_binding_methods_without_explicit_method() -> None:
+    """When @app.route has multiple methods, @openapi must require an explicit method=."""
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+    import pytest
+
+    with pytest.raises(OpenAPISpecConfigError, match="multiple methods"):
+        @openapi(summary="Ambiguous")
+        @app.route(route="items", methods=["GET", "POST"])
+        def items(req: func.HttpRequest) -> func.HttpResponse:
+            return func.HttpResponse("OK")
+
+
+def test_openapi_explicit_method_wins_over_multiple_binding_methods() -> None:
+    """Explicit method= in @openapi bypasses the ambiguity check."""
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(summary="List items", method="get")
+    @app.route(route="items", methods=["GET", "POST"])
+    def list_items(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    registry = get_openapi_registry()
+    assert registry["list_items"]["method"] == "get"

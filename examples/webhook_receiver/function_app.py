@@ -71,7 +71,6 @@ def _verify_signature(payload: bytes, timestamp: str, signature: str, secret: st
 # ---------------------------------------------------------------------------
 
 
-@app.route(route="webhooks/orders", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/webhooks/orders",
     method="post",
@@ -92,7 +91,8 @@ def _verify_signature(payload: bytes, timestamp: str, signature: str, secret: st
         401: {"description": "Invalid webhook signature or expired timestamp"},
         409: {"description": "Duplicate delivery (replay)"},
     },
-)
+    )
+@app.route(route="webhooks/orders", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
     # --- Replay protection: delivery ID deduplication ---
     delivery_header_id = req.headers.get("X-Delivery-Id", "")

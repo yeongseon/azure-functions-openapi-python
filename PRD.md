@@ -81,8 +81,8 @@ app = func.FunctionApp()
 
 
 @app.function_name(name="hello")
-@app.route(route="hello", methods=["GET"])
 @openapi(summary="Say hello", route="/api/hello", method="get")
+@app.route(route="hello", methods=["GET"])
 def hello(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(json.dumps({"message": "Hello!"}), mimetype="application/json")
 

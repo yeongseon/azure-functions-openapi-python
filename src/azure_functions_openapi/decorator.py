@@ -45,21 +45,23 @@ def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     return func, cast(Callable[..., Any], func)
 
 
-def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
+def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool]:
     """Extract route and method from a FunctionBuilder's HTTP trigger binding.
 
-    Returns ``(route, method)`` where either may be ``None`` if the
-    information is not available. Only reads the first method when
-    ``methods`` is a list or tuple.
+    Returns ``(route, method, multiple_methods)`` where:
+    - ``route`` and ``method`` may each be ``None`` if not available.
+    - ``multiple_methods`` is ``True`` when the binding declares more than one
+      HTTP method; in that case ``method`` is ``None`` and the caller must
+      require an explicit ``method=`` argument from the user.
     """
     if not isinstance(func, FunctionBuilder):
-        return None, None
+        return None, None, False
 
     try:
         function_obj = func._function
         bindings = getattr(function_obj, "_bindings", [])
     except AttributeError:
-        return None, None
+        return None, None, False
 
     for binding in bindings:
         if str(getattr(binding, "type", "")).lower() != "httptrigger":
@@ -71,13 +73,16 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
         binding_method: str | None = None
         if isinstance(methods_attr, str):
             binding_method = methods_attr.lower()
-        elif isinstance(methods_attr, (list, tuple)) and methods_attr:
-            val = methods_attr[0]
-            binding_method = str(getattr(val, "value", val)).lower()
+        elif isinstance(methods_attr, (list, tuple)):
+            if len(methods_attr) > 1:
+                return binding_route, None, True  # ambiguous — caller must require explicit method
+            if methods_attr:
+                val = methods_attr[0]
+                binding_method = str(getattr(val, "value", val)).lower()
 
-        return binding_route, binding_method
+        return binding_route, binding_method, False
 
-    return None, None
+    return None, None, False
 
 
 def openapi(
@@ -109,8 +114,8 @@ def openapi(
     ### 1 · Minimal “Hello World”
 
     ```python
+    @openapi(summary="Hello", description="Returns plain text.", method="get")
     @app.route(route="hello")
-    @openapi(summary="Hello", description="Returns plain text.")
     def hello(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("Hello, world!", status_code=200)
     ```
@@ -129,16 +134,16 @@ def openapi(
         title: str
         done: bool
 
-    @app.route(route="todos/{id}", method="put")
     @openapi(
         summary="Update a todo item",
-        description=\"""Update a todo and return the updated document.\""",
+        description="Update a todo and return the updated document.",
         tags=["Todo"],
         parameters=[{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
         request_model=TodoRequest,
         response_model=TodoResponse,
         operation_id="updateTodo",
     )
+    @app.route(route="todos/{id}", methods=["PUT"])
     def update_todo(req: func.HttpRequest) -> func.HttpResponse:
         # ... business logic ...
         body = TodoRequest.model_validate_json(req.get_body())
@@ -212,11 +217,19 @@ def openapi(
             # not explicitly provided by the caller.
             effective_route = route
             effective_method = method
-            binding_route, binding_method = _extract_binding_hints(func)
+            binding_route, binding_method, binding_multi = _extract_binding_hints(func)
             if effective_route is None and binding_route is not None:
                 effective_route = binding_route
-            if effective_method is None and binding_method is not None:
-                effective_method = binding_method
+            if effective_method is None:
+                if binding_method is not None:
+                    effective_method = binding_method
+                elif binding_multi:
+                    raise OpenAPISpecConfigError(
+                        f"Cannot infer a single HTTP method for '{metadata_func.__name__}': "
+                        "@app.route declares multiple methods. "
+                        "Pass method=... explicitly to @openapi, "
+                        "or create a separate @openapi-decorated function per method."
+                    )
 
             # Enhanced input validation and sanitization
             validated_route = _validate_and_sanitize_route(effective_route, metadata_func.__name__)
@@ -591,6 +604,12 @@ def _validate_security_scheme(
 
     Each key is a scheme name and each value must be a dict with at least a 'type' field.
     Valid types: 'apiKey', 'http', 'oauth2', 'openIdConnect'.
+
+    Also validates required sub-fields per type as defined by the OpenAPI spec:
+    - apiKey: requires 'name' and 'in' (query/header/cookie)
+    - http: requires 'scheme'
+    - oauth2: requires 'flows' (dict)
+    - openIdConnect: requires 'openIdConnectUrl' (non-empty string)
     """
     if not security_scheme:
         return {}
@@ -616,6 +635,35 @@ def _validate_security_scheme(
                 f"Security scheme '{scheme_name}' must have a valid 'type' field. "
                 f"Valid types: {', '.join(sorted(valid_types))}"
             )
+
+        # Validate required sub-fields per scheme type
+        if scheme_type == "apiKey":
+            if not isinstance(scheme_def.get("name"), str) or not scheme_def["name"].strip():
+                raise ValueError(
+                    f"apiKey security scheme '{scheme_name}' must define a non-empty 'name'"
+                )
+            if scheme_def.get("in") not in {"query", "header", "cookie"}:
+                raise ValueError(
+                    f"apiKey security scheme '{scheme_name}' must define "
+                    f"'in' as one of: query, header, cookie"
+                )
+        elif scheme_type == "http":
+            if not isinstance(scheme_def.get("scheme"), str) or not scheme_def["scheme"].strip():
+                raise ValueError(
+                    f"http security scheme '{scheme_name}' must define a non-empty 'scheme'"
+                )
+        elif scheme_type == "oauth2":
+            if not isinstance(scheme_def.get("flows"), dict):
+                raise ValueError(
+                    f"oauth2 security scheme '{scheme_name}' must define 'flows' as a dict"
+                )
+        elif scheme_type == "openIdConnect":
+            url = scheme_def.get("openIdConnectUrl")
+            if not isinstance(url, str) or not url.strip():
+                raise ValueError(
+                    f"openIdConnect security scheme '{scheme_name}' "
+                    f"must define a non-empty 'openIdConnectUrl'"
+                )
 
         validated[scheme_name] = scheme_def
 

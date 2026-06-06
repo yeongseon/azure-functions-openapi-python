@@ -73,7 +73,6 @@ _BEARER_SCHEME = {
 _BEARER_SECURITY = [{"BearerAuth": []}]
 
 
-@app.route(route="reports", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     route="/api/reports",
     method="post",
@@ -89,7 +88,8 @@ _BEARER_SECURITY = [{"BearerAuth": []}]
     },
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
-)
+    )
+@app.route(route="reports", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```

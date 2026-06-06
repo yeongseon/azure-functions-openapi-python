@@ -49,7 +49,6 @@ class HelloResponse(BaseModel):
 
 
 @app.function_name(name="http_trigger")
-@app.route(route="http_trigger", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @openapi(
     summary="Greet user",
     description="Returns a greeting using the `name` query parameter.",
@@ -71,7 +70,8 @@ class HelloResponse(BaseModel):
         200: {"description": "Successful greeting"},
         400: {"description": "Missing name"},
     },
-)
+    )
+@app.route(route="http_trigger", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     name = req.params.get("name")
     if not name:
