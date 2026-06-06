@@ -45,21 +45,23 @@ def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     return func, cast(Callable[..., Any], func)
 
 
-def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
+def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool]:
     """Extract route and method from a FunctionBuilder's HTTP trigger binding.
 
-    Returns ``(route, method)`` where either may be ``None`` if the
-    information is not available. Only reads the first method when
-    ``methods`` is a list or tuple.
+    Returns ``(route, method, multiple_methods)`` where:
+    - ``route`` and ``method`` may each be ``None`` if not available.
+    - ``multiple_methods`` is ``True`` when the binding declares more than one
+      HTTP method; in that case ``method`` is ``None`` and the caller must
+      require an explicit ``method=`` argument from the user.
     """
     if not isinstance(func, FunctionBuilder):
-        return None, None
+        return None, None, False
 
     try:
         function_obj = func._function
         bindings = getattr(function_obj, "_bindings", [])
     except AttributeError:
-        return None, None
+        return None, None, False
 
     for binding in bindings:
         if str(getattr(binding, "type", "")).lower() != "httptrigger":
@@ -71,13 +73,16 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None]:
         binding_method: str | None = None
         if isinstance(methods_attr, str):
             binding_method = methods_attr.lower()
-        elif isinstance(methods_attr, (list, tuple)) and methods_attr:
-            val = methods_attr[0]
-            binding_method = str(getattr(val, "value", val)).lower()
+        elif isinstance(methods_attr, (list, tuple)):
+            if len(methods_attr) > 1:
+                return binding_route, None, True  # ambiguous — caller must require explicit method
+            if methods_attr:
+                val = methods_attr[0]
+                binding_method = str(getattr(val, "value", val)).lower()
 
-        return binding_route, binding_method
+        return binding_route, binding_method, False
 
-    return None, None
+    return None, None, False
 
 
 def openapi(
@@ -212,11 +217,19 @@ def openapi(
             # not explicitly provided by the caller.
             effective_route = route
             effective_method = method
-            binding_route, binding_method = _extract_binding_hints(func)
+            binding_route, binding_method, binding_multi = _extract_binding_hints(func)
             if effective_route is None and binding_route is not None:
                 effective_route = binding_route
-            if effective_method is None and binding_method is not None:
-                effective_method = binding_method
+            if effective_method is None:
+                if binding_method is not None:
+                    effective_method = binding_method
+                elif binding_multi:
+                    raise OpenAPISpecConfigError(
+                        f"Cannot infer a single HTTP method for '{metadata_func.__name__}': "
+                        "@app.route declares multiple methods. "
+                        "Pass method=... explicitly to @openapi, "
+                        "or create a separate @openapi-decorated function per method."
+                    )
 
             # Enhanced input validation and sanitization
             validated_route = _validate_and_sanitize_route(effective_route, metadata_func.__name__)
