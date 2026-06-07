@@ -148,13 +148,13 @@ func start
 
 생성된 OpenAPI 파일은 같은 예제 실행 결과에서 정적 미리보기로 캡처되었습니다. 따라서 이 README에는 대표 함수가 실제로 생성한 문서가 그대로 표시됩니다.
 
-![OpenAPI spec preview](docs/assets/webhook_receiver_openapi_spec_preview.png)
+![OpenAPI spec preview](docs/assets/hello_openapi_spec_preview.png)
 
 ### Swagger UI Result
 
 아래 웹 미리보기 역시 같은 대표 예제에서 생성되었으며, 해당 예제 흐름이 만든 Swagger UI 페이지를 자동으로 렌더링해 캡처한 결과입니다.
 
-![OpenAPI Swagger UI preview](docs/assets/webhook_receiver_swagger_ui_preview.png)
+![OpenAPI Swagger UI preview](docs/assets/hello_openapi_swagger_ui_preview.png)
 
 ## Documentation
 
