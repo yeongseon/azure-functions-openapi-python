@@ -167,6 +167,8 @@ Expected behavior:
 - request body editor shows `WebhookEvent` fields
 - `Try it out` sends request to your local function app
 
+![Swagger UI for the Webhook Receiver API showing the POST /api/webhooks/orders operation expanded with request body and response codes](../assets/webhook_receiver_swagger_ui.png)
+
 ## Production takeaways
 
 - Always verify webhook signatures when accepting external events
