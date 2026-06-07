@@ -10,6 +10,7 @@ SWAGGER_PREVIEW_DIR := demo/.preview/swagger-ui
 SPEC_PREVIEW_DIR := demo/.preview/spec-preview
 SWAGGER_PREVIEW_PORT := 8123
 SPEC_PREVIEW_PORT := 8124
+EXAMPLES_PREVIEW_PORT := 8130
 
 .PHONY: bootstrap
 bootstrap:
@@ -205,7 +206,7 @@ docs-serve: ensure-hatch
 	@$(HATCH) run docs
 
 .PHONY: demo
-demo: demo-swagger
+demo: demo-swagger demo-examples
 
 .PHONY: demo-swagger
 demo-swagger: ensure-hatch
@@ -237,6 +238,62 @@ demo-swagger: ensure-hatch
 		--wait-for-timeout 2000 \
 		"http://127.0.0.1:$(SWAGGER_PREVIEW_PORT)/index.html" \
 		"docs/assets/hello_openapi_swagger_ui_preview.png" > /dev/null; \
+	kill $$SERVER_PID 2>/dev/null || true; \
+	wait $$SERVER_PID 2>/dev/null || true
+
+.PHONY: demo-examples
+demo-examples: ensure-hatch
+	@mkdir -p docs/assets
+	@PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) install chromium > /dev/null
+	@$(HATCH) run python demo/generate_example_swagger.py \
+		--example webhook_receiver \
+		--title "Webhook Receiver API" \
+		--output-dir demo/.preview/webhook_receiver
+	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/webhook_receiver > /tmp/openapi-webhook.log 2>&1 & \
+	SERVER_PID=$$!; \
+	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
+	sleep 2; \
+	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
+		--device="Desktop Chrome" \
+		--full-page \
+		--wait-for-selector ".opblock" \
+		--wait-for-timeout 2000 \
+		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
+		"docs/assets/webhook_receiver_swagger_ui.png" > /dev/null; \
+	kill $$SERVER_PID 2>/dev/null || true; \
+	wait $$SERVER_PID 2>/dev/null || true
+	@$(HATCH) run python demo/generate_example_swagger.py \
+		--example notification_request \
+		--title "Notification API" \
+		--output-dir demo/.preview/notification_request
+	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/notification_request > /tmp/openapi-notification.log 2>&1 & \
+	SERVER_PID=$$!; \
+	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
+	sleep 2; \
+	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
+		--device="Desktop Chrome" \
+		--full-page \
+		--wait-for-selector ".opblock" \
+		--wait-for-timeout 2000 \
+		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
+		"docs/assets/notification_request_swagger_ui.png" > /dev/null; \
+	kill $$SERVER_PID 2>/dev/null || true; \
+	wait $$SERVER_PID 2>/dev/null || true
+	@$(HATCH) run python demo/generate_example_swagger.py \
+		--example partner_import_bridge \
+		--title "Partner Import API" \
+		--output-dir demo/.preview/partner_import_bridge
+	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/partner_import_bridge > /tmp/openapi-partner.log 2>&1 & \
+	SERVER_PID=$$!; \
+	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
+	sleep 2; \
+	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
+		--device="Desktop Chrome" \
+		--full-page \
+		--wait-for-selector ".opblock" \
+		--wait-for-timeout 2000 \
+		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
+		"docs/assets/partner_import_bridge_swagger_ui.png" > /dev/null; \
 	kill $$SERVER_PID 2>/dev/null || true; \
 	wait $$SERVER_PID 2>/dev/null || true
 
