@@ -22,11 +22,11 @@ would conflict with the first import's registrations.
 from __future__ import annotations
 
 import argparse
-from importlib import import_module, reload
+from importlib import import_module
 from pathlib import Path
 import sys
 
-from azure_functions_openapi import get_openapi_json, get_openapi_yaml
+from azure_functions_openapi import get_openapi_json
 import azure_functions_openapi.decorator as decorator_module
 from azure_functions_openapi.swagger_ui import render_swagger_ui
 
@@ -36,7 +36,18 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def _expand_swagger_ui(html: str) -> str:
-    """Patch Swagger UI config to expand all operations on load."""
+    """Patch Swagger UI config to expand all operations on load.
+
+    Raises ValueError if the expected anchor string is not found so that
+    a template change is caught immediately rather than silently producing
+    collapsed screenshots.
+    """
+    anchor = "layout: 'BaseLayout',"
+    if anchor not in html:
+        raise ValueError(
+            f"_expand_swagger_ui: anchor {anchor!r} not found in Swagger UI template. "
+            "The template may have changed — update the anchor string."
+        )
     expanded_layout = (
         "layout: 'BaseLayout',\n"
         "            docExpansion: 'full',\n"
@@ -44,7 +55,7 @@ def _expand_swagger_ui(html: str) -> str:
         "            tryItOutEnabled: false,\n"
         "            supportedSubmitMethods: [],"
     )
-    return html.replace("layout: 'BaseLayout',", expanded_layout)
+    return html.replace(anchor, expanded_layout)
 
 
 def main() -> None:
@@ -77,7 +88,7 @@ def main() -> None:
         decorator_module._openapi_registry.clear()
 
     module_path = f"examples.{args.example}.function_app"
-    module = import_module(module_path)
+    import_module(module_path)
 
     openapi_json = get_openapi_json(title=args.title, version="1.0.0")
     swagger_response = render_swagger_ui(
