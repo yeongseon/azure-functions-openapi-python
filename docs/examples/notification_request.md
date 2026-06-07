@@ -208,6 +208,8 @@ Expected behavior:
 - request body editor for `POST /api/notifications/email`
 - query parameter input for `notification_id`
 
+![Swagger UI for the Notification API showing POST /api/notifications/email and GET /api/notifications/status both expanded](../assets/notification_request_swagger_ui.png)
+
 ## Production takeaways
 
 - Stack `@openapi` and `@validate_http` on the same handler for synchronized docs and validation

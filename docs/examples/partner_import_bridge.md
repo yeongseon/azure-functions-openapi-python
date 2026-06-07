@@ -235,6 +235,8 @@ Expected behavior:
 - `Authorize` button for API key input
 - nested `PartnerRecord` model visible in request body editor
 
+![Swagger UI for the Partner Import API showing three operations grouped under the partners tag with an Authorize button for API key auth](../assets/partner_import_bridge_swagger_ui.png)
+
 ## Production takeaways
 
 - Use `request_model` instead of raw `model_json_schema()` for proper schema references
