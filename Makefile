@@ -243,6 +243,7 @@ demo-swagger: ensure-hatch
 
 .PHONY: demo-examples
 demo-examples: ensure-hatch
+	@rm -rf demo/.preview/webhook_receiver demo/.preview/notification_request demo/.preview/partner_import_bridge
 	@mkdir -p docs/assets
 	@PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) install chromium > /dev/null
 	@$(HATCH) run python demo/generate_example_swagger.py \
@@ -256,7 +257,7 @@ demo-examples: ensure-hatch
 	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
 		--device="Desktop Chrome" \
 		--full-page \
-		--wait-for-selector ".opblock" \
+		--wait-for-selector ".opblock.is-open" \
 		--wait-for-timeout 2000 \
 		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
 		"docs/assets/webhook_receiver_swagger_ui.png" > /dev/null; \
@@ -273,7 +274,7 @@ demo-examples: ensure-hatch
 	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
 		--device="Desktop Chrome" \
 		--full-page \
-		--wait-for-selector ".opblock" \
+		--wait-for-selector ".opblock.is-open" \
 		--wait-for-timeout 2000 \
 		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
 		"docs/assets/notification_request_swagger_ui.png" > /dev/null; \
@@ -290,7 +291,7 @@ demo-examples: ensure-hatch
 	PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) screenshot \
 		--device="Desktop Chrome" \
 		--full-page \
-		--wait-for-selector ".opblock" \
+		--wait-for-selector ".opblock.is-open" \
 		--wait-for-timeout 2000 \
 		"http://127.0.0.1:$(EXAMPLES_PREVIEW_PORT)/index.html" \
 		"docs/assets/partner_import_bridge_swagger_ui.png" > /dev/null; \
