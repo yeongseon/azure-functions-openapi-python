@@ -223,6 +223,8 @@ Expected behavior:
 - request body editor for `POST /api/reports`
 - path parameter field for `{job_id}`
 
+![Swagger UI for the Report Jobs API showing three operations grouped under the reports tag with an Authorize button for Bearer token](../assets/deployment_report_jobs_swagger_ui.png)
+
 ## Production takeaways
 
 - Use `security_scheme` to declare auth requirements in the generated spec

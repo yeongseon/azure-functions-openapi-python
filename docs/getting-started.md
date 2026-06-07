@@ -164,6 +164,10 @@ Fetch YAML spec:
 curl "http://localhost:7071/api/openapi.yaml"
 ```
 
+The generated spec is served as a JSON document — the same format a client generator reads to produce SDKs:
+
+![OpenAPI spec preview for the Hello API generated from the @openapi decorator](assets/hello_openapi_spec_preview.png)
+
 ## View Swagger UI
 
 Open:
@@ -176,6 +180,8 @@ You should see:
 - operation summary and description
 - query parameter `name`
 - response schema generated from `HelloResponse`
+
+![Swagger UI showing the Hello API with the greetUser GET operation, query parameter, and response schema](assets/hello_openapi_swagger_ui_preview.png)
 
 ## Next steps
 
