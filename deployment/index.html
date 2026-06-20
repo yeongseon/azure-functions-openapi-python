@@ -1,0 +1,2979 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="OpenAPI (Swagger) integration for Python-based Azure Functions">
+      
+      
+        <meta name="author" content="Yeongseon Choe">
+      
+      
+        <link rel="canonical" href="https://yeongseon.github.io/azure-functions-openapi-python/deployment/">
+      
+      
+        <link rel="prev" href="../choose-a-plan/">
+      
+      
+        <link rel="next" href="../examples/webhook_receiver/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../images/favicon.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Deploy to Azure - Azure Functions OpenAPI</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    <body dir="ltr">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#deploy-to-azure" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="Azure Functions OpenAPI" class="md-header__button md-logo" aria-label="Azure Functions OpenAPI" data-md-component="logo">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Azure Functions OpenAPI
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Deploy to Azure
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/yeongseon/azure-functions-openapi-python" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../installation/" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../usage/" class="md-tabs__link">
+          
+  
+  
+  User Guide
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../choose-a-plan/" class="md-tabs__link">
+          
+  
+  
+  Deployment
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/webhook_receiver/" class="md-tabs__link">
+          
+  
+  
+  Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../api/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../development/" class="md-tabs__link">
+          
+  
+  
+  Contributing
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../faq/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  FAQ
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../security/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Security
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../release_process/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Release Process
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="Azure Functions OpenAPI" class="md-nav__button md-logo" aria-label="Azure Functions OpenAPI" data-md-component="logo">
+      
+  <img src="../images/logo.png" alt="logo">
+
+    </a>
+    Azure Functions OpenAPI
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/yeongseon/azure-functions-openapi-python" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User Guide
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    User Guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../route-prefix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Route Prefix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Deployment
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../choose-a-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose a Plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy to Azure
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploy to Azure
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#who-this-guide-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who this guide is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-are-deploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you are deploying
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#azure-concepts-you-need-for-this-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Azure concepts you need for this guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-plan-for-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended plan for this repo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-these-warnings-before-provisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read these warnings before provisioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-1-report_jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example 1: report_jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example 1: report_jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-a-function-app-project-from-the-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — Create a Function App project from the example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-create-and-activate-a-virtual-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — Create and activate a virtual environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Install dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-verify-local-app-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Verify local app starts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-sign-in-to-azure-and-select-subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5 — Sign in to Azure and select subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-define-deployment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6 — Define deployment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-create-azure-resource-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7 — Create Azure resource group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-8-create-storage-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 8 — Create storage account
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-9-create-function-app-on-flex-consumption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 9 — Create Function App on Flex Consumption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-10-publish-the-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 10 — Publish the app
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-11-verify-report-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 11 — Verify report API endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-12-verify-openapi-json-yaml-and-swagger-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 12 — Verify OpenAPI JSON, YAML, and Swagger UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-13-optional-watch-live-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 13 — Optional: watch live logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-2-notification_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example 2: notification_request
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example 2: notification_request">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-a-function-app-project-from-the-example_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — Create a Function App project from the example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — Install dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-set-variables-and-create-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Set variables and create resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-publish-and-verify-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Publish and verify endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-spec-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI spec generation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-you-need-a-different-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If you need a different plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="If you need a different plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#premium-ep1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Premium (EP1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-b1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated (B1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#provisioning-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provisioning failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-and-swagger-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI and Swagger issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logs-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logs and monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#before-opening-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before opening an issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clean-up-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clean up resources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/webhook_receiver/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Webhook Receiver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/report_jobs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report Jobs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/notification_request/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Notification Request
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/partner_import_bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Partner Import Bridge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Testing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../faq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release_process/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Process
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#who-this-guide-is-for" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who this guide is for
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-are-deploying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you are deploying
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#azure-concepts-you-need-for-this-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Azure concepts you need for this guide
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recommended-plan-for-this-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recommended plan for this repo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#before-you-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before you start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-these-warnings-before-provisioning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read these warnings before provisioning
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-1-report_jobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example 1: report_jobs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example 1: report_jobs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-a-function-app-project-from-the-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — Create a Function App project from the example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-create-and-activate-a-virtual-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — Create and activate a virtual environment
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Install dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-verify-local-app-starts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Verify local app starts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-sign-in-to-azure-and-select-subscription" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5 — Sign in to Azure and select subscription
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-6-define-deployment-variables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6 — Define deployment variables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-7-create-azure-resource-group" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 7 — Create Azure resource group
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-8-create-storage-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 8 — Create storage account
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-9-create-function-app-on-flex-consumption" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 9 — Create Function App on Flex Consumption
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-10-publish-the-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 10 — Publish the app
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-11-verify-report-api-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 11 — Verify report API endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-12-verify-openapi-json-yaml-and-swagger-ui" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 12 — Verify OpenAPI JSON, YAML, and Swagger UI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-13-optional-watch-live-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 13 — Optional: watch live logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-2-notification_request" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example 2: notification_request
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example 2: notification_request">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-a-function-app-project-from-the-example_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — Create a Function App project from the example
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-install-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — Install dependencies
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-set-variables-and-create-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Set variables and create resources
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-publish-and-verify-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Publish and verify endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-spec-generation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI spec generation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#if-you-need-a-different-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        If you need a different plan
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="If you need a different plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#premium-ep1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Premium (EP1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dedicated-b1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dedicated (B1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#provisioning-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provisioning failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deployment-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deployment failed
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#openapi-and-swagger-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OpenAPI and Swagger issues
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#logs-and-monitoring" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logs and monitoring
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#before-opening-an-issue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Before opening an issue
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#clean-up-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Clean up resources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sources
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See Also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="deploy-to-azure">Deploy to Azure<a class="headerlink" href="#deploy-to-azure" title="Permanent link">&para;</a></h1>
+<p>This guide walks you through deploying <code>azure-functions-openapi</code> to Azure, step by step.
+No Azure experience required.</p>
+<h2 id="who-this-guide-is-for">Who this guide is for<a class="headerlink" href="#who-this-guide-is-for" title="Permanent link">&para;</a></h2>
+<p>You know Python and pip, and you can run the examples locally.
+Now you want to deploy to Azure Functions and verify both your API endpoints and OpenAPI docs endpoints.</p>
+<h2 id="what-you-are-deploying">What you are deploying<a class="headerlink" href="#what-you-are-deploying" title="Permanent link">&para;</a></h2>
+<p><code>azure-functions-openapi</code> adds OpenAPI support to Azure Functions Python apps.
+In this guide, you deploy example apps that provide:</p>
+<ul>
+<li>Runtime API endpoints (<code>report_jobs</code>, <code>notification_request</code>)</li>
+<li>Generated OpenAPI documents at <code>/api/openapi.json</code> and <code>/api/openapi.yaml</code></li>
+<li>Swagger UI at <code>/api/docs</code></li>
+<li>Security-focused response headers on the docs page (<code>Content-Security-Policy</code>, <code>X-Frame-Options</code>, HSTS, and others)</li>
+</ul>
+<h2 id="azure-concepts-you-need-for-this-guide">Azure concepts you need for this guide<a class="headerlink" href="#azure-concepts-you-need-for-this-guide" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>New to Azure? Read <a href="../choose-a-plan/">Choose an Azure Functions Hosting Plan</a> first.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>What it means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Function App</strong></td>
+<td>Your deployed app in Azure. It can contain multiple HTTP functions.</td>
+</tr>
+<tr>
+<td><strong>Hosting plan</strong></td>
+<td>The compute model for your Function App (scaling, timeout, cost).</td>
+</tr>
+<tr>
+<td><strong>Resource Group</strong></td>
+<td>A container for related resources. Delete it to clean up everything.</td>
+</tr>
+<tr>
+<td><strong>Storage Account</strong></td>
+<td>Required by Azure Functions for runtime state and deployment internals.</td>
+</tr>
+<tr>
+<td><strong>Application Insights</strong></td>
+<td>Monitoring resource Azure creates for logs and telemetry.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="recommended-plan-for-this-repo">Recommended plan for this repo<a class="headerlink" href="#recommended-plan-for-this-repo" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Default plan</strong></td>
+<td>Flex Consumption</td>
+</tr>
+<tr>
+<td><strong>Why</strong></td>
+<td>Cheapest entry point, scale-to-zero, and enough timeout for these examples.</td>
+</tr>
+<tr>
+<td><strong>Switch to Premium if</strong></td>
+<td>You need lower cold-start latency or large dependency footprints.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="before-you-start">Before you start<a class="headerlink" href="#before-you-start" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>How to check</th>
+<th>Install if missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Azure account</td>
+<td><a href="https://portal.azure.com">portal.azure.com</a></td>
+<td><a href="https://azure.microsoft.com/free/">Create free account</a></td>
+</tr>
+<tr>
+<td>Azure CLI</td>
+<td><code>az --version</code></td>
+<td><a href="https://learn.microsoft.com/cli/azure/install-azure-cli">Install Azure CLI</a></td>
+</tr>
+<tr>
+<td>Azure Functions Core Tools v4</td>
+<td><code>func --version</code></td>
+<td><a href="https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools">Install Core Tools</a></td>
+</tr>
+<tr>
+<td>Python 3.10-3.13</td>
+<td><code>python3 --version</code></td>
+<td><a href="https://www.python.org/downloads/">python.org</a></td>
+</tr>
+<tr>
+<td>Package examples available</td>
+<td><code>ls examples</code></td>
+<td>Clone this repo again if missing</td>
+</tr>
+<tr>
+<td>Local example works</td>
+<td><code>func start</code> + local <code>curl</code></td>
+<td>See <a href="https://github.com/yeongseon/azure-functions-openapi-python/blob/main/README.md">README</a></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Verify locally first. If it fails locally, deployment troubleshooting is much harder.</p>
+</blockquote>
+<h2 id="read-these-warnings-before-provisioning">Read these warnings before provisioning<a class="headerlink" href="#read-these-warnings-before-provisioning" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Storage account names are globally unique.</strong> Only lowercase letters and numbers, 3–24 characters.</li>
+<li><strong>Use one region across all resources.</strong> Mixed regions can increase latency and failures.</li>
+<li><strong>Deploy from the correct example directory.</strong> Publishing from the wrong folder gives wrong functions and wrong OpenAPI output.</li>
+<li><strong>OpenAPI and Swagger routes are regular functions.</strong> If <code>auth_level</code> for <code>openapi.json</code>, <code>openapi.yaml</code>, or <code>docs</code> is not anonymous, direct <code>curl</code> checks can return <code>401/403</code>.</li>
+<li><strong>Swagger UI route path is <code>/api/docs</code> by default.</strong> If your host config or route prefix changes, docs URL changes too.</li>
+<li><strong>First publish is slower.</strong> Azure performs a remote build and installs dependencies.</li>
+</ol>
+<hr />
+<h2 id="example-1-report_jobs">Example 1: report_jobs<a class="headerlink" href="#example-1-report_jobs" title="Permanent link">&para;</a></h2>
+<p>This is the primary guided path. It demonstrates Bearer token authentication, async job submission, status polling, and file download.</p>
+<h3 id="step-1-create-a-function-app-project-from-the-example">Step 1 — Create a Function App project from the example<a class="headerlink" href="#step-1-create-a-function-app-project-from-the-example" title="Permanent link">&para;</a></h3>
+<p>The <code>examples/</code> directories contain source modules, not standalone Azure Functions projects.
+Copy the example into a new project directory that has the required scaffolding:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>my-report-app
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>cp<span class="w"> </span>examples/report_jobs/function_app.py<span class="w"> </span>my-report-app/
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Create the required host.json (Azure Functions project root marker)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>my-report-app/host.json<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">{</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">  &quot;version&quot;: &quot;2.0&quot;,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">  &quot;extensionBundle&quot;: {</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">    &quot;id&quot;: &quot;Microsoft.Azure.Functions.ExtensionBundle&quot;,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="s">    &quot;version&quot;: &quot;[4.*, 5.0.0)&quot;</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="s">  }</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="s">}</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="s">EOF</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="nb">cd</span><span class="w"> </span>my-report-app
+</code></pre></div>
+<h3 id="step-2-create-and-activate-a-virtual-environment">Step 2 — Create and activate a virtual environment<a class="headerlink" href="#step-2-create-and-activate-a-virtual-environment" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+</code></pre></div>
+<h3 id="step-3-install-dependencies">Step 3 — Install dependencies<a class="headerlink" href="#step-3-install-dependencies" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>azure-functions<span class="w"> </span>azure-functions-openapi<span class="w"> </span>pydantic<span class="w"> </span>pyyaml
+</code></pre></div>
+<h3 id="step-4-verify-local-app-starts">Step 4 — Verify local app starts<a class="headerlink" href="#step-4-verify-local-app-starts" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>func<span class="w"> </span>start
+</code></pre></div>
+<p>In another terminal, verify one endpoint:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://localhost:7071/api/reports<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer test-token-123&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;report_type&quot;:&quot;monthly_sales&quot;,&quot;date_from&quot;:&quot;2026-01-01&quot;,&quot;date_to&quot;:&quot;2026-01-31&quot;}&#39;</span>
+</code></pre></div>
+<p>Stop the local server with <code>Ctrl+C</code>.</p>
+<h3 id="step-5-sign-in-to-azure-and-select-subscription">Step 5 — Sign in to Azure and select subscription<a class="headerlink" href="#step-5-sign-in-to-azure-and-select-subscription" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>az<span class="w"> </span>login
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>az<span class="w"> </span>account<span class="w"> </span>list<span class="w"> </span>-o<span class="w"> </span>table
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">SUBSCRIPTION_ID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>az<span class="w"> </span>account<span class="w"> </span>show<span class="w"> </span>--query<span class="w"> </span>id<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>az<span class="w"> </span>account<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--subscription<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SUBSCRIPTION_ID</span><span class="s2">&quot;</span>
+</code></pre></div>
+<h3 id="step-6-define-deployment-variables">Step 6 — Define deployment variables<a class="headerlink" href="#step-6-define-deployment-variables" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">RESOURCE_GROUP</span><span class="o">=</span><span class="s2">&quot;rg-openapi-reports&quot;</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">LOCATION</span><span class="o">=</span><span class="s2">&quot;koreacentral&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nv">STORAGE_ACCOUNT</span><span class="o">=</span><span class="s2">&quot;stopenapirpt</span><span class="k">$(</span>date<span class="w"> </span>+%s<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-c<span class="w"> </span><span class="m">6</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nv">FUNCTIONAPP_NAME</span><span class="o">=</span><span class="s2">&quot;func-openapi-reports&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nv">BASE_URL</span><span class="o">=</span><span class="s2">&quot;https://</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">.azurewebsites.net&quot;</span>
+</code></pre></div>
+<p>If needed, list Flex Consumption regions:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>az<span class="w"> </span>functionapp<span class="w"> </span>list-flexconsumption-locations<span class="w"> </span>-o<span class="w"> </span>table
+</code></pre></div>
+<h3 id="step-7-create-azure-resource-group">Step 7 — Create Azure resource group<a class="headerlink" href="#step-7-create-azure-resource-group" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>az<span class="w"> </span>group<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span>
+</code></pre></div>
+<h3 id="step-8-create-storage-account">Step 8 — Create storage account<a class="headerlink" href="#step-8-create-storage-account" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>az<span class="w"> </span>storage<span class="w"> </span>account<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span>--sku<span class="w"> </span>Standard_LRS
+</code></pre></div>
+<h3 id="step-9-create-function-app-on-flex-consumption">Step 9 — Create Function App on Flex Consumption<a class="headerlink" href="#step-9-create-function-app-on-flex-consumption" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>az<span class="w"> </span>functionapp<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>--storage-account<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">  </span>--flexconsumption-location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span>--runtime<span class="w"> </span>python<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">  </span>--runtime-version<span class="w"> </span><span class="m">3</span>.11
+</code></pre></div>
+<h3 id="step-10-publish-the-app">Step 10 — Publish the app<a class="headerlink" href="#step-10-publish-the-app" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>func<span class="w"> </span>azure<span class="w"> </span>functionapp<span class="w"> </span>publish<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Expected function names include:</p>
+<ul>
+<li><code>submit_report</code>, <code>get_report_status</code>, <code>download_report</code></li>
+<li><code>openapi_spec</code>, <code>openapi_yaml_spec</code>, <code>swagger_ui</code></li>
+</ul>
+<h3 id="step-11-verify-report-api-endpoints">Step 11 — Verify report API endpoints<a class="headerlink" href="#step-11-verify-report-api-endpoints" title="Permanent link">&para;</a></h3>
+<p>Submit a report job:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/reports&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer test-token-123&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;report_type&quot;:&quot;monthly_sales&quot;,&quot;date_from&quot;:&quot;2026-01-01&quot;,&quot;date_to&quot;:&quot;2026-01-31&quot;}&#39;</span>
+</code></pre></div>
+<p>Check job status (replace <code>&lt;job_id&gt;</code> with the <code>job_id</code> from the response above):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/reports/&lt;job_id&gt;/status&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer test-token-123&quot;</span>
+</code></pre></div>
+<p>Download report (available when status is <code>completed</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/reports/&lt;job_id&gt;/download&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Authorization: Bearer test-token-123&quot;</span>
+</code></pre></div>
+<p>Test unauthorized access (no Bearer token):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/reports&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;report_type&quot;:&quot;monthly_sales&quot;,&quot;date_from&quot;:&quot;2026-01-01&quot;,&quot;date_to&quot;:&quot;2026-01-31&quot;}&#39;</span>
+</code></pre></div>
+<p>Expected: <code>401 Unauthorized</code> with <code>{"error": "Missing or invalid Authorization header"}</code>.</p>
+<h3 id="step-12-verify-openapi-json-yaml-and-swagger-ui">Step 12 — Verify OpenAPI JSON, YAML, and Swagger UI<a class="headerlink" href="#step-12-verify-openapi-json-yaml-and-swagger-ui" title="Permanent link">&para;</a></h3>
+<p>OpenAPI JSON:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/openapi.json&quot;</span>
+</code></pre></div>
+<p>OpenAPI YAML:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/openapi.yaml&quot;</span>
+</code></pre></div>
+<p>Swagger UI HTML:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/docs&quot;</span>
+</code></pre></div>
+<p>For Swagger UI, confirm these headers exist:</p>
+<ul>
+<li><code>Content-Security-Policy</code></li>
+<li><code>X-Content-Type-Options: nosniff</code></li>
+<li><code>X-Frame-Options: DENY</code></li>
+<li><code>Strict-Transport-Security</code></li>
+</ul>
+<p>You can also verify visually by opening these URLs in a browser:</p>
+<p><img alt="Swagger UI showing the Report Jobs API with three endpoints" src="../assets/deployment_report_jobs_swagger_ui.png" /></p>
+<p><em>Swagger UI at <code>/api/docs</code> — lists all decorated endpoints with request/response schemas.</em></p>
+<p><img alt="OpenAPI JSON document served at /api/openapi.json" src="../assets/deployment_report_jobs_openapi_json.png" /></p>
+<p><em>Generated OpenAPI spec at <code>/api/openapi.json</code> — always in sync with your <code>@openapi</code> decorators.</em></p>
+<h3 id="step-13-optional-watch-live-logs">Step 13 — Optional: watch live logs<a class="headerlink" href="#step-13-optional-watch-live-logs" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>func<span class="w"> </span>azure<span class="w"> </span>functionapp<span class="w"> </span>logstream<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Press <code>Ctrl+C</code> to stop log streaming.</p>
+<hr />
+<h2 id="example-2-notification_request">Example 2: notification_request<a class="headerlink" href="#example-2-notification_request" title="Permanent link">&para;</a></h2>
+<p>Try another example with request validation powered by <code>azure-functions-validation</code>.</p>
+<h3 id="step-1-create-a-function-app-project-from-the-example_1">Step 1 — Create a Function App project from the example<a class="headerlink" href="#step-1-create-a-function-app-project-from-the-example_1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>my-notification-app
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>cp<span class="w"> </span>examples/notification_request/function_app.py<span class="w"> </span>my-notification-app/
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>my-notification-app/host.json<span class="w"> </span><span class="s">&lt;&lt; &#39;EOF&#39;</span>
+<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="s">{</span>
+<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a><span class="s">  &quot;version&quot;: &quot;2.0&quot;,</span>
+<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a><span class="s">  &quot;extensionBundle&quot;: {</span>
+<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="s">    &quot;id&quot;: &quot;Microsoft.Azure.Functions.ExtensionBundle&quot;,</span>
+<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="s">    &quot;version&quot;: &quot;[4.*, 5.0.0)&quot;</span>
+<a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a><span class="s">  }</span>
+<a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a><span class="s">}</span>
+<a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a><span class="s">EOF</span>
+<a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>
+<a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a><span class="nb">cd</span><span class="w"> </span>my-notification-app
+</code></pre></div>
+<h3 id="step-2-install-dependencies">Step 2 — Install dependencies<a class="headerlink" href="#step-2-install-dependencies" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>pip<span class="w"> </span>install<span class="w"> </span>azure-functions<span class="w"> </span>azure-functions-openapi<span class="w"> </span>azure-functions-validation<span class="w"> </span>pydantic
+</code></pre></div>
+<h3 id="step-3-set-variables-and-create-resources">Step 3 — Set variables and create resources<a class="headerlink" href="#step-3-set-variables-and-create-resources" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nv">RESOURCE_GROUP</span><span class="o">=</span><span class="s2">&quot;rg-openapi-notifications&quot;</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="nv">LOCATION</span><span class="o">=</span><span class="s2">&quot;koreacentral&quot;</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="nv">STORAGE_ACCOUNT</span><span class="o">=</span><span class="s2">&quot;stopenapintf</span><span class="k">$(</span>date<span class="w"> </span>+%s<span class="w"> </span><span class="p">|</span><span class="w"> </span>tail<span class="w"> </span>-c<span class="w"> </span><span class="m">6</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="nv">FUNCTIONAPP_NAME</span><span class="o">=</span><span class="s2">&quot;func-openapi-notifications&quot;</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nv">BASE_URL</span><span class="o">=</span><span class="s2">&quot;https://</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">.azurewebsites.net&quot;</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>az<span class="w"> </span>login
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="nv">SUBSCRIPTION_ID</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>az<span class="w"> </span>account<span class="w"> </span>show<span class="w"> </span>--query<span class="w"> </span>id<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>az<span class="w"> </span>account<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--subscription<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SUBSCRIPTION_ID</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>az<span class="w"> </span>group<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a>az<span class="w"> </span>storage<span class="w"> </span>account<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-16" name="__codelineno-22-16" href="#__codelineno-22-16"></a><span class="w">  </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-17" name="__codelineno-22-17" href="#__codelineno-22-17"></a><span class="w">  </span>--sku<span class="w"> </span>Standard_LRS
+<a id="__codelineno-22-18" name="__codelineno-22-18" href="#__codelineno-22-18"></a>
+<a id="__codelineno-22-19" name="__codelineno-22-19" href="#__codelineno-22-19"></a>az<span class="w"> </span>functionapp<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-20" name="__codelineno-22-20" href="#__codelineno-22-20"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-21" name="__codelineno-22-21" href="#__codelineno-22-21"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-22" name="__codelineno-22-22" href="#__codelineno-22-22"></a><span class="w">  </span>--storage-account<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-23" name="__codelineno-22-23" href="#__codelineno-22-23"></a><span class="w">  </span>--flexconsumption-location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-24" name="__codelineno-22-24" href="#__codelineno-22-24"></a><span class="w">  </span>--runtime<span class="w"> </span>python<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-22-25" name="__codelineno-22-25" href="#__codelineno-22-25"></a><span class="w">  </span>--runtime-version<span class="w"> </span><span class="m">3</span>.11
+</code></pre></div>
+<h3 id="step-4-publish-and-verify-endpoints">Step 4 — Publish and verify endpoints<a class="headerlink" href="#step-4-publish-and-verify-endpoints" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>func<span class="w"> </span>azure<span class="w"> </span>functionapp<span class="w"> </span>publish<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span>
+</code></pre></div>
+<p>Send email notification:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/notifications/email&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;to&quot;:[&quot;alice@example.com&quot;],&quot;subject&quot;:&quot;Test&quot;,&quot;body_text&quot;:&quot;Hello from Azure&quot;}&#39;</span>
+</code></pre></div>
+<p>Check notification status (replace <code>&lt;notification_id&gt;</code> with the ID from the response above):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/notifications/status?notification_id=&lt;notification_id&gt;&quot;</span>
+</code></pre></div>
+<p>Invalid payload (validation expected):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/notifications/email&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;to&quot;:[],&quot;subject&quot;:&quot;&quot;,&quot;body_text&quot;:&quot;&quot;}&#39;</span>
+</code></pre></div>
+<p>Check docs endpoints:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/openapi.json&quot;</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/openapi.yaml&quot;</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/docs&quot;</span>
+</code></pre></div>
+<hr />
+<h2 id="cli-spec-generation">CLI spec generation<a class="headerlink" href="#cli-spec-generation" title="Permanent link">&para;</a></h2>
+<p>After deployment (or in CI), you can generate a static OpenAPI file directly from <code>function_app.py</code>.</p>
+<p>From either example directory:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>azure-functions-openapi<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">  </span>--app-path<span class="w"> </span>./function_app.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">  </span>--format<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">  </span>--output<span class="w"> </span>./openapi.json
+</code></pre></div>
+<p>Generate YAML instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>azure-functions-openapi<span class="w"> </span>generate<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="w">  </span>--app-path<span class="w"> </span>./function_app.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">  </span>--format<span class="w"> </span>yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a><span class="w">  </span>--output<span class="w"> </span>./openapi.yaml
+</code></pre></div>
+<p>See <a href="../cli/"><code>docs/cli.md</code></a> for full CLI options.</p>
+<h2 id="if-you-need-a-different-plan">If you need a different plan<a class="headerlink" href="#if-you-need-a-different-plan" title="Permanent link">&para;</a></h2>
+<p>This guide uses Flex Consumption. For Premium or Dedicated commands, see <a href="../choose-a-plan/">Choose an Azure Functions Hosting Plan</a>.</p>
+<h3 id="premium-ep1">Premium (EP1)<a class="headerlink" href="#premium-ep1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>az<span class="w"> </span>functionapp<span class="w"> </span>plan<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">FUNCTIONAPP_NAME</span><span class="si">}</span><span class="s2">-plan&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">  </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">  </span>--sku<span class="w"> </span>EP1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="w">  </span>--is-linux
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>az<span class="w"> </span>functionapp<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a><span class="w">  </span>--storage-account<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a><span class="w">  </span>--plan<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">FUNCTIONAPP_NAME</span><span class="si">}</span><span class="s2">-plan&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a><span class="w">  </span>--runtime<span class="w"> </span>python<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a><span class="w">  </span>--runtime-version<span class="w"> </span><span class="m">3</span>.11<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a><span class="w">  </span>--os-type<span class="w"> </span>Linux
+</code></pre></div>
+<h3 id="dedicated-b1">Dedicated (B1)<a class="headerlink" href="#dedicated-b1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>az<span class="w"> </span>appservice<span class="w"> </span>plan<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">FUNCTIONAPP_NAME</span><span class="si">}</span><span class="s2">-plan&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">  </span>--location<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$LOCATION</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">  </span>--sku<span class="w"> </span>B1<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="w">  </span>--is-linux
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>az<span class="w"> </span>functionapp<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a><span class="w">  </span>--storage-account<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$STORAGE_ACCOUNT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a><span class="w">  </span>--plan<span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">FUNCTIONAPP_NAME</span><span class="si">}</span><span class="s2">-plan&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a><span class="w">  </span>--runtime<span class="w"> </span>python<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a><span class="w">  </span>--runtime-version<span class="w"> </span><span class="m">3</span>.11<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a><span class="w">  </span>--os-type<span class="w"> </span>Linux
+</code></pre></div>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="provisioning-failed">Provisioning failed<a class="headerlink" href="#provisioning-failed" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Usually means</th>
+<th>How to fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StorageAccountAlreadyTaken</code></td>
+<td>Storage account name is already used globally</td>
+<td>Change the name suffix and retry</td>
+</tr>
+<tr>
+<td><code>LocationNotAvailableForResourceType</code></td>
+<td>Flex Consumption not available in selected region</td>
+<td>Run <code>az functionapp list-flexconsumption-locations -o table</code> and choose a supported region</td>
+</tr>
+<tr>
+<td><code>SubscriptionNotFound</code></td>
+<td>Wrong subscription selected</td>
+<td>Run <code>az account list -o table</code>, then set <code>SUBSCRIPTION_ID</code> again</td>
+</tr>
+</tbody>
+</table>
+<h3 id="deployment-failed">Deployment failed<a class="headerlink" href="#deployment-failed" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Usually means</th>
+<th>How to fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ModuleNotFoundError</code> during publish</td>
+<td>Missing or incomplete dependencies</td>
+<td>Reinstall with <code>pip install azure-functions-openapi pydantic</code> and republish</td>
+</tr>
+<tr>
+<td><code>Can't find app with name</code></td>
+<td>Function App not ready yet</td>
+<td>Wait 30-60 seconds and rerun publish</td>
+</tr>
+<tr>
+<td>Publish is very slow</td>
+<td>First remote build is still running</td>
+<td>Wait, then rerun once if it times out</td>
+</tr>
+</tbody>
+</table>
+<h3 id="openapi-and-swagger-issues">OpenAPI and Swagger issues<a class="headerlink" href="#openapi-and-swagger-issues" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Usually means</th>
+<th>How to fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>404</code> on <code>/api/docs</code></td>
+<td>Wrong route prefix or docs route changed</td>
+<td>Verify <code>app.route(route="docs")</code> and host route prefix</td>
+</tr>
+<tr>
+<td><code>/api/openapi.json</code> is empty or missing endpoints</td>
+<td>OpenAPI decorators are missing or not imported</td>
+<td>Confirm functions use <code>@openapi</code> and app starts without import errors</td>
+</tr>
+<tr>
+<td><code>/api/openapi.yaml</code> returns <code>401/403</code></td>
+<td>Auth level is not anonymous on docs functions</td>
+<td>Set <code>auth_level=func.AuthLevel.ANONYMOUS</code> for OpenAPI/docs routes and redeploy</td>
+</tr>
+<tr>
+<td>Swagger UI loads but fails to fetch spec</td>
+<td>Spec URL blocked or wrong path</td>
+<td>Confirm <code>/api/openapi.json</code> is reachable directly with <code>curl</code></td>
+</tr>
+<tr>
+<td>Missing hardening headers on <code>/api/docs</code></td>
+<td>Docs response not coming from <code>render_swagger_ui()</code></td>
+<td>Ensure docs function returns <code>render_swagger_ui()</code> and redeploy</td>
+</tr>
+</tbody>
+</table>
+<h3 id="logs-and-monitoring">Logs and monitoring<a class="headerlink" href="#logs-and-monitoring" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>func<span class="w"> </span>azure<span class="w"> </span>functionapp<span class="w"> </span>logstream<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>az<span class="w"> </span>monitor<span class="w"> </span>app-insights<span class="w"> </span>events<span class="w"> </span>show<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="w">  </span>--app<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="w">  </span>--type<span class="w"> </span>requests<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="w">  </span>--offset<span class="w"> </span>1h
+</code></pre></div>
+<h3 id="before-opening-an-issue">Before opening an issue<a class="headerlink" href="#before-opening-an-issue" title="Permanent link">&para;</a></h3>
+<p>Share these outputs so maintainers can reproduce quickly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>az<span class="w"> </span>--version
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>func<span class="w"> </span>--version
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>python3<span class="w"> </span>--version
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>pip<span class="w"> </span>show<span class="w"> </span>azure-functions-openapi
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a>az<span class="w"> </span>functionapp<span class="w"> </span>show<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="w">  </span>--name<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$FUNCTIONAPP_NAME</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="w">  </span>--resource-group<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$RESOURCE_GROUP</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a><span class="w">  </span>--query<span class="w"> </span><span class="s2">&quot;{state:state,runtimeVersion:siteConfig.linuxFxVersion}&quot;</span>
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a>
+<a id="__codelineno-33-11" name="__codelineno-33-11" href="#__codelineno-33-11"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/openapi.json&quot;</span>
+<a id="__codelineno-33-12" name="__codelineno-33-12" href="#__codelineno-33-12"></a>curl<span class="w"> </span>-s<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$BASE_URL</span><span class="s2">/api/docs&quot;</span>
+</code></pre></div>
+<h2 id="clean-up-resources">Clean up resources<a class="headerlink" href="#clean-up-resources" title="Permanent link">&para;</a></h2>
+<p>Azure resources keep billing until deleted.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a>az<span class="w"> </span>group<span class="w"> </span>delete<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;rg-openapi-reports&quot;</span><span class="w"> </span>--yes<span class="w"> </span>--no-wait
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>az<span class="w"> </span>group<span class="w"> </span>delete<span class="w"> </span>--name<span class="w"> </span><span class="s2">&quot;rg-openapi-notifications&quot;</span><span class="w"> </span>--yes<span class="w"> </span>--no-wait
+</code></pre></div>
+<p>Verify cleanup:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a>az<span class="w"> </span>group<span class="w"> </span>list<span class="w"> </span>--query<span class="w"> </span><span class="s2">&quot;[?starts_with(name, &#39;rg-openapi&#39;)]&quot;</span><span class="w"> </span>-o<span class="w"> </span>table
+</code></pre></div>
+<h2 id="sources">Sources<a class="headerlink" href="#sources" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="https://learn.microsoft.com/azure/azure-functions/create-first-function-cli-python">Azure Functions Python quickstart</a></li>
+<li><a href="https://learn.microsoft.com/azure/azure-functions/functions-core-tools-reference">Azure Functions Core Tools reference</a></li>
+<li><a href="https://learn.microsoft.com/azure/azure-functions/functions-scale">Azure Functions hosting options</a></li>
+<li><a href="https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan">Flex Consumption plan</a></li>
+<li><a href="https://learn.microsoft.com/azure/azure-functions/functions-how-to-use-azure-function-app-settings">Azure Functions app settings</a></li>
+</ul>
+<h2 id="see-also">See Also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../choose-a-plan/">Choose an Azure Functions Hosting Plan</a> — Plan selection guide with decision tree</li>
+<li><a href="../cli/">CLI guide</a></li>
+<li><a href="https://github.com/yeongseon/azure-functions-scaffold"><code>azure-functions-scaffold</code></a></li>
+<li><a href="https://github.com/yeongseon/azure-functions-validation"><code>azure-functions-validation</code></a></li>
+<li><a href="https://github.com/yeongseon/azure-functions-doctor"><code>azure-functions-doctor</code></a></li>
+<li><a href="https://github.com/yeongseon/azure-functions-logging"><code>azure-functions-logging</code></a></li>
+<li><a href="https://github.com/yeongseon/azure-functions-langgraph"><code>azure-functions-langgraph</code></a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/yeongseon/azure-functions-openapi-python" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@11.14.0/dist/mermaid.min.js"></script>
+      
+        <script src="../javascripts/mermaid-init.js"></script>
+      
+    
+  </body>
+</html>
