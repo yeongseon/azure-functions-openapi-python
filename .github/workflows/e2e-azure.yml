@@ -22,7 +22,7 @@ jobs:
       resource_group: ${{ steps.names.outputs.rg }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Compute resource names
         id: names
