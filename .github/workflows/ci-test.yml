@@ -13,9 +13,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         # Python 3.14 is stable and required in this matrix (not allow-fail).
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # 'latest' resolves whatever satisfies the pyproject.toml pin at CI time.
+        azure-functions-version: ["latest"]
+        include:
+          # Extra SDK-version coverage on the lowest supported Python.
+          # Keep in sync with the SDK compatibility matrix in README.md and
+          # the version pin in pyproject.toml.
+          - python-version: "3.10"
+            azure-functions-version: "1.19.0"
+          - python-version: "3.10"
+            azure-functions-version: "1.24.0"
 
     steps:
       - name: Checkout code
@@ -31,6 +42,15 @@ jobs:
           pip install hatch
           make install
 
+      - name: Install azure-functions ${{ matrix.azure-functions-version }}
+        run: |
+          if [ "${{ matrix.azure-functions-version }}" = "latest" ]; then
+            .venv/bin/hatch run pip install --upgrade 'azure-functions'
+          else
+            .venv/bin/hatch run pip install --upgrade 'azure-functions==${{ matrix.azure-functions-version }}'
+          fi
+          .venv/bin/hatch run python -c "import azure.functions, importlib.metadata as m; print('azure-functions installed:', m.version('azure-functions'))"
+
       - name: Run full quality checks
         run: make check-all
 
@@ -38,7 +58,7 @@ jobs:
         run: ls -lh coverage.xml
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.10' && github.actor != 'dependabot[bot]'
+        if: matrix.python-version == '3.10' && matrix.azure-functions-version == 'latest' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
