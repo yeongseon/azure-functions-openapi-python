@@ -155,6 +155,18 @@ azure-functions
 azure-functions-openapi
 ```
 
+## SDK Compatibility
+
+This package extracts route and method metadata from `FunctionBuilder` produced by the `azure-functions` SDK. Because that extraction reads private SDK attributes, we validate the package against an explicit matrix in CI. See [issue #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) for background.
+
+| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0` (floor)  | ✅ tested   |             |             |             |             |
+| `1.24.0`          | ✅ tested   |             |             |             |             |
+| `latest` (`<2.0`) | ✅ tested   | ✅ tested   | ✅ tested   | ✅ tested   | ✅ tested   |
+
+The version pin in `pyproject.toml` is `azure-functions>=1.21.0,<2.0.0`. The floor is `1.21.0` because earlier releases return `None` from `FunctionBuilder.__call__` (breaking direct invocation of decorated handlers in tests and CLI extraction). If you need a newer SDK, please open an issue — the ceiling is intentional because `azure-functions` 2.x drops support for Python < 3.13 and has not yet been validated against `@openapi`.
+
 ## Quick Start
 
 ```python
