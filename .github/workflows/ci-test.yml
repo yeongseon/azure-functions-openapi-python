@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -45,7 +45,8 @@ jobs:
       - name: Install azure-functions ${{ matrix.azure-functions-version }}
         run: |
           if [ "${{ matrix.azure-functions-version }}" = "latest" ]; then
-            .venv/bin/hatch run pip install --upgrade 'azure-functions'
+            # Mirror the pyproject.toml constraint so 'latest' cannot install azure-functions 2.x when it releases (see README SDK Compatibility).
+            .venv/bin/hatch run pip install --upgrade 'azure-functions>=1.21.0,<2.0.0'
           else
             .venv/bin/hatch run pip install --upgrade 'azure-functions==${{ matrix.azure-functions-version }}'
           fi
