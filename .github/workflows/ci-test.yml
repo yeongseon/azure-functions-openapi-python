@@ -24,7 +24,7 @@ jobs:
           # Keep in sync with the SDK compatibility matrix in README.md and
           # the version pin in pyproject.toml.
           - python-version: "3.10"
-            azure-functions-version: "1.19.0"
+            azure-functions-version: "1.21.0"
           - python-version: "3.10"
             azure-functions-version: "1.24.0"
 
