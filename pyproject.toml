@@ -45,7 +45,7 @@ dev = [
     "pre-commit",
     "pytest",
     "pytest-cov",
-    "ruff==0.15.20",
+    "ruff==0.15.21",
     "openapi-spec-validator>=0.7.0",
     "types-PyYAML",
     "requests",
