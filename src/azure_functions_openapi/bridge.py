@@ -7,12 +7,9 @@ from typing import Any, get_origin
 
 from pydantic import BaseModel
 
-from azure_functions_openapi.decorator import (
-    _openapi_registry,
-    _registry_lock,
-    register_openapi_metadata,
-)
+from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.registry import registry
 from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route_prefix
 from azure_functions_openapi.utils import type_to_schema
 
@@ -311,9 +308,9 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
             discovered = _discovered_operation(function_name, metadata, path, method)
             endpoint_key = f"{method}::{path}"
 
-            with _registry_lock:
-                explicit_by_name = _openapi_registry.get(function_name)
-                explicit_by_endpoint = _openapi_registry.get(endpoint_key)
+            with registry.lock:
+                explicit_by_name = registry.get(function_name)
+                explicit_by_endpoint = registry.get(endpoint_key)
 
                 if explicit_by_name is not None:
                     _merge_into_existing(explicit_by_name, discovered)
