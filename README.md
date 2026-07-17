@@ -82,6 +82,17 @@ Spec matches code. Always. Swagger UI out of the box.
 - **Swagger UI** — built-in `/docs` endpoint with security defaults
 - **CLI tooling** — generate specs at build time for CI validation
 
+
+### How it fits together
+
+```mermaid
+flowchart LR
+    DEC["@openapi decorator"] --> REG["_openapi_registry"]
+    REG --> GEN["spec.generate_openapi_spec()"]
+    GEN --> EP["GET /api/openapi.json | .yaml"]
+    UI["render_swagger_ui()<br/>GET /api/docs"] -.->|browser fetches spec| EP
+```
+
 ## FastAPI comparison
 
 | Feature | FastAPI | azure-functions-openapi |

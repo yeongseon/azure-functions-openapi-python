@@ -88,13 +88,13 @@ The registry is consumed only when a client explicitly requests the spec (`GET /
 
 ```mermaid
 flowchart TD
-    INIT["__init__.py\nPublic API exports"]
-    DEC["decorator.py\n@openapi + registry"]
-    OAI["openapi.py\nSpec compiler"]
-    UTL["utils.py\nSchema extraction + validation"]
-    SUI["swagger_ui.py\nSwagger UI rendering"]
-    CLI["cli.py\nCLI entrypoint"]
-    EXC["exceptions.py\nOpenAPISpecConfigError"]
+    INIT["__init__.py<br/>Public API exports"]
+    DEC["decorator.py<br/>@openapi + registry"]
+    OAI["spec.py / generate_openapi_spec()<br/>Spec compiler"]
+    UTL["utils.py<br/>Schema extraction + validation"]
+    SUI["swagger_ui.py<br/>Swagger UI rendering"]
+    CLI["cli.py<br/>CLI entrypoint"]
+    EXC["exceptions.py<br/>OpenAPISpecConfigError"]
 
     INIT --> DEC
     INIT --> OAI

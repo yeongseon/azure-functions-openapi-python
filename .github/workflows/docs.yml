@@ -4,13 +4,40 @@ on:
   push:
     branches:
       - main
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  docs-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.10"
+
+      - name: Lint Mermaid diagram labels
+        run: python scripts/lint_mermaid.py
+
+      - name: Install Hatch and docs dependencies
+        run: |
+          pip install hatch
+          make install
+
+      - name: Build docs (strict)
+        run: hatch run mkdocs build --strict
+
   deploy:
+    needs: docs-check
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
