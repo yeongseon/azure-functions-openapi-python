@@ -52,6 +52,14 @@ jobs:
           fi
           .venv/bin/hatch run python -c "import azure.functions, importlib.metadata as m; print('azure-functions installed:', m.version('azure-functions'))"
 
+      - name: Install azure-functions-validation (run bridge/validation example tests on one cell)
+        # These example tests are skipif-guarded on the optional azure-functions-validation
+        # import. Install it on a single matrix cell so they actually execute in CI (see #275).
+        if: matrix.python-version == '3.12' && matrix.azure-functions-version == 'latest'
+        run: |
+          .venv/bin/hatch run pip install --upgrade 'azure-functions-validation>=0.7.0'
+          .venv/bin/hatch run python -c "import azure_functions_validation, importlib.metadata as m; print('azure-functions-validation installed:', m.version('azure-functions-validation'))"
+
       - name: Run full quality checks
         run: make check-all
 
