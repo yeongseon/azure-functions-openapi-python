@@ -1,23 +1,27 @@
 # src/azure_functions_openapi/decorator.py
 from __future__ import annotations
 
-import copy
 import logging
-import threading
 from typing import Any, Callable, TypeVar, cast
 
 from azure.functions.decorators.function_app import FunctionBuilder
 from pydantic import BaseModel
 
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
+from azure_functions_openapi.registry import OpenAPIRegistry, registry
 from azure_functions_openapi.utils import sanitize_operation_id, validate_route_path
 
 # Define a generic type variable for functions
 F = TypeVar("F", bound=Callable[..., Any])
 
-# Global registry to hold OpenAPI metadata for each function
-_openapi_registry: dict[str, dict[str, Any]] = {}
-_registry_lock = threading.RLock()
+# The registry now lives in :mod:`azure_functions_openapi.registry`. These
+# module-level names are retained as backward-compatible aliases: ``_registry``
+# is the owning :class:`OpenAPIRegistry`, while ``_openapi_registry`` and
+# ``_registry_lock`` expose its live entry dict and lock (the same objects the
+# registry uses internally) so existing call-sites keep working unchanged.
+_registry: OpenAPIRegistry = registry
+_openapi_registry: dict[str, dict[str, Any]] = registry.entries
+_registry_lock = registry.lock
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,7 @@ def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
         try:
             return func, func._function._func
         except AttributeError as exc:  # pragma: no cover - depends on SDK internals
-            raise RuntimeError(
+            raise SDKIncompatibleError(
                 "Unable to access FunctionBuilder._function._func; the installed "
                 "azure-functions SDK appears incompatible with @openapi. "
                 "Please report this issue at "
@@ -201,6 +205,17 @@ def openapi(
         (equivalent to `response_model`) or a manual responses dict keyed by
         status code (equivalent to `response`).
 
+    .. note::
+       **Deprecation plan (pre-1.0).** This decorator currently exposes two
+       parallel parameter styles: the discrete pairs
+       (``request_model``/``request_body`` and ``response_model``/``response``)
+       and the unified parameters (``requests`` and ``responses``). Before the
+       1.0 contract freeze, only **one** documented style will ship. The
+       unified ``requests``/``responses`` parameters are the intended survivors;
+       the discrete parameters are planned for deprecation (with a release of
+       overlap and a ``DeprecationWarning``) and eventual removal. New code
+       should prefer ``requests``/``responses``. Tracking: issue #272.
+
     Returns
     -------
     Callable
@@ -288,14 +303,14 @@ def openapi(
 
             with _registry_lock:
                 registry_key = metadata_func.__name__
-                existing = _openapi_registry.get(registry_key)
+                existing = registry.get(registry_key)
                 if existing and existing.get("_function_id") != function_id:
                     existing_id = existing.get("_function_id")
                     if isinstance(existing_id, str):
                         # Preserve displaced entry under its fully-qualified id
-                        _openapi_registry.setdefault(existing_id, existing)
+                        registry.setdefault(existing_id, existing)
 
-                _openapi_registry[registry_key] = {
+                registry.set(registry_key, {
                     # ── basic metadata ────────────────────────────────────────
                     "summary": summary,
                     "description": description,
@@ -315,7 +330,7 @@ def openapi(
                     "response": resolved_response or {},
                     "function_name": metadata_func.__name__,
                     "_function_id": function_id,
-                }
+                })
 
             logger.debug(f"Registered OpenAPI metadata for function '{metadata_func.__name__}'")
             return cast(F, original_func)
@@ -325,9 +340,10 @@ def openapi(
             raise
         except (ValueError, RuntimeError, TypeError) as e:
             # ValueError/TypeError: validation failures (input contract).
-            # RuntimeError: SDK-internal access failures from _resolve_metadata_target;
-            # already carries an actionable message — re-raise unchanged to avoid
-            # double-wrapping.
+            # SDK-internal access failures raise SDKIncompatibleError, which is a
+            # subclass of OpenAPISpecConfigError and is handled by the branch above;
+            # any RuntimeError reaching here is unexpected and re-raised unchanged
+            # to avoid double-wrapping.
             logger.error(f"Failed to register OpenAPI metadata for '{target_name}': {str(e)}")
             raise
         except Exception as e:
@@ -346,8 +362,7 @@ def get_openapi_registry() -> dict[str, dict[str, Any]]:
     Returns:
         A dictionary where each key is a function name and value is its OpenAPI metadata.
     """
-    with _registry_lock:
-        return copy.deepcopy(_openapi_registry)
+    return registry.snapshot()
 
 
 def clear_openapi_registry() -> None:
@@ -355,8 +370,7 @@ def clear_openapi_registry() -> None:
 
     Primarily useful for testing or when rebuilding the registry from scratch.
     """
-    with _registry_lock:
-        _openapi_registry.clear()
+    registry.clear()
 
 
 def register_openapi_metadata(
@@ -459,7 +473,7 @@ def register_openapi_metadata(
         _validate_models(request_model, response_model, registry_key)
 
     with _registry_lock:
-        _openapi_registry[registry_key] = {
+        registry.set(registry_key, {
             "summary": summary,
             "description": description,
             "tags": validated_tags,
@@ -476,7 +490,7 @@ def register_openapi_metadata(
             "response": response or {},
             "function_name": registry_key,
             "_function_id": f"programmatic.{registry_key}",
-        }
+        })
 
     logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
 

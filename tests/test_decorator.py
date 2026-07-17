@@ -391,17 +391,26 @@ def test_openapi_normalizes_method_to_lowercase() -> None:
     assert registry["uppercase_method_func"]["method"] == "post"
 
 
-def test_openapi_raises_runtime_error_when_function_builder_internals_change() -> None:
-    """Regression #212: defensive guard around FunctionBuilder._function._func."""
+def test_openapi_raises_sdk_incompatible_error_when_function_builder_internals_change() -> None:
+    """Regression #212 / design-review #272: defensive guard around
+    FunctionBuilder._function._func now raises the dedicated SDKIncompatibleError."""
     from azure.functions.decorators.function_app import FunctionBuilder
     import pytest
+
+    from azure_functions_openapi.exceptions import (
+        OpenAPISpecConfigError,
+        SDKIncompatibleError,
+    )
 
     # Build a FunctionBuilder-shaped object whose ``_function`` lacks ``_func``,
     # simulating an SDK internal restructure.
     fake_builder = FunctionBuilder.__new__(FunctionBuilder)
     fake_builder._function = object()  # type: ignore[assignment]
 
-    with pytest.raises(RuntimeError, match="azure-functions SDK appears incompatible"):
+    # SDKIncompatibleError subclasses OpenAPISpecConfigError (and ValueError), so
+    # existing broad handlers keep working while the failure stays distinguishable.
+    assert issubclass(SDKIncompatibleError, OpenAPISpecConfigError)
+    with pytest.raises(SDKIncompatibleError, match="azure-functions SDK appears incompatible"):
         openapi(summary="x")(fake_builder)
 
 
