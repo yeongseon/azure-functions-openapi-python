@@ -23,7 +23,7 @@ Azure Functions HTTP API를 문서화하려면 일반적으로 별도의 OpenAPI
 - Azure Functions Python **v2 프로그래밍 모델**
 - decorator 기반 `func.FunctionApp()` 애플리케이션
 - `@openapi`로 문서화된 HTTP 트리거 함수
-- 선택적 Pydantic 스키마 생성(Pydantic v1, v2 모두 지원)
+- Pydantic 스키마 생성(Pydantic v2 필요)
 
 이 패키지는 기존 `function.json` 기반의 v1 프로그래밍 모델은 지원하지 않습니다.
 

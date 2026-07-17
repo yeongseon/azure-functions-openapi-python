@@ -61,6 +61,11 @@ markdown_extensions:
       alternate_style: true
   - pymdownx.details
   - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      # Allow docs pages to embed files from the repo root (e.g. CHANGELOG.md)
+      # so there is a single source of truth for the changelog.
+      base_path: ["."]
+      check_paths: true
 
 plugins:
   - search

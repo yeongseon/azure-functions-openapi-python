@@ -110,6 +110,22 @@ Examples are part of the supported API experience and should stay verified.
 - Add or update smoke tests whenever an example changes.
 - Prefer lightweight smoke coverage over infrastructure-heavy end-to-end tests.
 
+## Documentation Propagation Checklist
+
+Documentation is multi-surfaced (English README, translated READMEs, `docs/`,
+and generated changelog). When you change a user-facing fact, propagate it
+across every surface so the docs do not drift:
+
+- [ ] Update `README.md` and mirror the change in every translation
+      (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`).
+- [ ] Update the matching page under `docs/` (e.g. `docs/cli.md` when CLI
+      defaults or flags change).
+- [ ] Keep changelog single-sourced: edit the root `CHANGELOG.md` only.
+      `docs/changelog.md` includes it via the `--8<-- "CHANGELOG.md"` snippet,
+      so never hand-edit `docs/changelog.md`.
+- [ ] Run `make docs` (mkdocs build) and confirm it completes without warnings.
+
+
 ## Commit Message Guidelines
 
 We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
