@@ -41,7 +41,7 @@ dev = [
     "coverage",
     "git-cliff",
     "hatch",
-    "mypy==2.1.0",
+    "mypy==2.3.0",
     "pre-commit",
     "pytest",
     "pytest-cov",
