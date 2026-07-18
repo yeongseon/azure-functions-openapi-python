@@ -1,6 +1,48 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.19.1] - 2026-07-18
+
+### Bug Fixes
+
+- *(demo)* Harden generate_example_swagger and demo-examples target (#249) 
+- *(docs)* Correct broken Demo image paths in all README variants 
+
+### Documentation
+
+- Fix stale diagram module names and add README flow diagram (#280) 
+- Fix i18n, CLI, and changelog drift (#278) 
+- Add pepy download badge and llms.txt for discoverability (#283) 
+- Add Swagger UI screenshots to getting-started, usage, and examples 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump github/codeql-action/analyze from 4.36.2 to 4.37.0 (#267) 
+- *(deps)* Bump github/codeql-action/init from 4.36.2 to 4.37.0 (#266) 
+- *(deps)* Bump mypy from 2.1.0 to 2.3.0 (#270) 
+- *(deps)* Bump ruff from 0.15.20 to 0.15.21 (#271) 
+- *(deps)* Bump actions/setup-python from 6.2.0 to 6.3.0 (#264) 
+- *(deps)* Bump softprops/action-gh-release from 3.0.1 to 3.0.2 (#268) 
+- *(deps)* Bump actions/stale from 10.3.0 to 10.4.0 (#269) 
+- Run skipif-guarded validation example tests on one matrix cell (#281) 
+- Pin azure-functions latest matrix and correct actions/checkout v7 comments (#263) 
+- *(ci)* Pin external actions to commit SHAs and document policy (#261) 
+- *(deps,ci)* Pin azure-functions and add SDK-version matrix (#259) 
+- *(deps)* Bump softprops/action-gh-release from 3.0.0 to 3.0.1 (#254) 
+- *(deps)* Bump actions/checkout from 6 to 7 (#255) 
+- *(deps)* Bump ruff from 0.15.17 to 0.15.20 (#257) 
+- *(deps)* Bump ruff from 0.15.15 to 0.15.17 (#253) 
+- *(deps)* Bump github/codeql-action from 4.36.1 to 4.36.2 (#252) 
+- *(deps)* Bump codecov/codecov-action from 6.0.1 to 7.0.0 (#250) 
+- *(demo)* Add make demo-examples target for example page screenshots 
+
+### Other
+
+- Bump version to 0.19.1 
+
+### Refactor
+
+- *(core)* Extract registry, fix bridge layering, add SDKIncompatibleError (#277) 
 ## [0.19.0] - 2026-06-06
 
 ### Bug Fixes
@@ -20,6 +62,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - *(agents)* Mandate issue-first workflow before opening PRs 
 - *(deployment)* Add real Azure deployment screenshots (#230) 
 
