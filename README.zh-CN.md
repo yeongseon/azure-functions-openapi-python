@@ -24,7 +24,7 @@
 - Azure Functions Python **v2 编程模型**
 - 基于 decorator 的 `func.FunctionApp()` 应用
 - 使用 `@openapi` 记录文档的 HTTP 触发函数
-- 可选的 Pydantic schema 生成（同时支持 Pydantic v1 和 v2）
+- Pydantic schema 生成（需要 Pydantic v2）
 
 此包**不支持**传统的基于 `function.json` 的 v1 编程模型。
 
