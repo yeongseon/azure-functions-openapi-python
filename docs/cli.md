@@ -32,7 +32,7 @@ By default this prints JSON to stdout using:
 
 - title: `API`
 - version: `1.0.0`
-- OpenAPI version: `3.1`
+- OpenAPI version: `3.1.0`
 
 ### Common examples
 
