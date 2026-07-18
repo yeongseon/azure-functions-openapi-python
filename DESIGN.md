@@ -39,16 +39,16 @@ The architecture separates metadata capture (import-time) from document generati
 ```mermaid
 flowchart TD
     subgraph Registration ["Import-Time Registration"]
-        DEC["@openapi(...) decorator"] --> REG["Thread-safe Registry\n_openapi_registry"]
+        DEC["@openapi(...) decorator"] --> REG["Thread-safe Registry<br/>_openapi_registry"]
     end
 
     subgraph Consumers ["On-Demand Consumers"]
-        REG --> GEN["generate_openapi_spec()"]
-        GEN --> JSON["get_openapi_json()\nget_openapi_yaml()"]
-        GEN --> CLI["azure-functions-openapi generate\n→ File / stdout"]
+        REG --> GEN["spec.generate_openapi_spec()"]
+        GEN --> JSON["get_openapi_json()<br/>get_openapi_yaml()"]
+        GEN --> CLI["azure-functions-openapi generate<br/>→ File / stdout"]
     end
 
-    UI["render_swagger_ui()\n→ HTML + Security Headers"] -.->|Browser fetches spec| JSON
+    UI["render_swagger_ui()<br/>→ HTML + Security Headers"] -.->|Browser fetches spec| JSON
 ```
 
 Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It returns HTML that instructs the browser to fetch the spec from a configured URL.
