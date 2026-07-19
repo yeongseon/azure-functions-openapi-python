@@ -74,3 +74,41 @@ def test_discrete_and_unified_produce_identical_metadata() -> None:
     u = reg["unified"]
     assert d["request_model"] is u["request_model"] is ReqModel
     assert d["response_model"] is u["response_model"] is RespModel
+
+
+def test_no_deprecation_warning_when_mixed_style_raises() -> None:
+    # A caller mixing unified and discrete parameters gets a ValueError; the
+    # deprecation warning must not also fire in that case.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        with pytest.raises(ValueError, match="Cannot provide both"):
+
+            @openapi(
+                route="items",
+                method="post",
+                requests=ReqModel,
+                request_model=ReqModel,
+            )
+            def handler(req: Any) -> Any:
+                return req
+
+
+def test_deprecation_warning_lists_names_comma_separated() -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+
+        @openapi(
+            route="items",
+            method="post",
+            request_model=ReqModel,
+            response_model=RespModel,
+        )
+        def handler(req: Any) -> Any:
+            return req
+
+    messages = [str(w.message) for w in caught if issubclass(w.category, DeprecationWarning)]
+    assert messages, "expected a DeprecationWarning"
+    message = messages[0]
+    assert "request_model, response_model" in message
+    # Must not be rendered as a Python list repr.
+    assert "['" not in message

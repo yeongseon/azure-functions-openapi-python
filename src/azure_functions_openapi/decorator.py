@@ -264,26 +264,6 @@ def openapi(
             resolved_response_model = response_model
             resolved_response = response
 
-            _deprecated_used = [
-                name
-                for name, value in (
-                    ("request_model", request_model),
-                    ("request_body", request_body),
-                    ("response_model", response_model),
-                    ("response", response),
-                )
-                if value is not None
-            ]
-            if _deprecated_used:
-                warnings.warn(
-                    f"The discrete @openapi parameter(s) {_deprecated_used} are "
-                    "deprecated in favor of the unified 'requests='/'responses=' "
-                    "parameters and will be removed in a future release. "
-                    "See https://github.com/yeongseon/azure-functions-openapi-python/issues/285.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-
             if requests is not None:
                 if request_model is not None or request_body is not None:
                     raise ValueError(
@@ -311,6 +291,30 @@ def openapi(
                     raise ValueError(
                         "'responses' must be either a Pydantic BaseModel subclass or a dictionary."
                     )
+
+            # Emit the deprecation warning only after mixed-style validation
+            # has passed, so callers hitting a ValueError above are not also
+            # warned about a config they were told is invalid.
+            _deprecated_used = [
+                name
+                for name, value in (
+                    ("request_model", request_model),
+                    ("request_body", request_body),
+                    ("response_model", response_model),
+                    ("response", response),
+                )
+                if value is not None
+            ]
+            if _deprecated_used:
+                warnings.warn(
+                    "The discrete @openapi parameter(s) "
+                    f"{', '.join(_deprecated_used)} are "
+                    "deprecated in favor of the unified 'requests='/'responses=' "
+                    "parameters and will be removed in a future release. "
+                    "See https://github.com/yeongseon/azure-functions-openapi-python/issues/285.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
 
             # Validate request/response models
             _validate_models(
