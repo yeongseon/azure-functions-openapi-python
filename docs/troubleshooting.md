@@ -57,6 +57,13 @@ from azure_functions_openapi.decorator import get_openapi_registry
 print(get_openapi_registry().keys())
 ```
 
+Registry keys are keyed by the decorated function's short name. When two
+handlers share the same short name, the earlier (displaced) entry is preserved
+under its fully-qualified id (`module.qualname`) in addition to the short-name
+key, so no registration is silently lost. If you rely on these keys for
+debugging, expect both a short-name key and a fully-qualified key when name
+collisions occur.
+
 ### Fixes
 
 - add `@openapi` to every operation you want documented

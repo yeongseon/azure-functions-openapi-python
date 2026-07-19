@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Callable, TypeVar, cast
+import warnings
 
 from azure.functions.decorators.function_app import FunctionBuilder
 from pydantic import BaseModel
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
-from azure_functions_openapi.registry import OpenAPIRegistry, registry
+from azure_functions_openapi.registry import OpenAPIRegistry, canonical_function_id, registry
 from azure_functions_openapi.utils import sanitize_operation_id, validate_route_path
 
 # Define a generic type variable for functions
@@ -205,16 +206,15 @@ def openapi(
         (equivalent to `response_model`) or a manual responses dict keyed by
         status code (equivalent to `response`).
 
-    .. note::
-       **Deprecation plan (pre-1.0).** This decorator currently exposes two
-       parallel parameter styles: the discrete pairs
-       (``request_model``/``request_body`` and ``response_model``/``response``)
-       and the unified parameters (``requests`` and ``responses``). Before the
-       1.0 contract freeze, only **one** documented style will ship. The
-       unified ``requests``/``responses`` parameters are the intended survivors;
-       the discrete parameters are planned for deprecation (with a release of
-       overlap and a ``DeprecationWarning``) and eventual removal. New code
-       should prefer ``requests``/``responses``. Tracking: issue #272.
+    .. deprecated::
+       This decorator currently exposes two parallel parameter styles: the
+       discrete pairs (``request_model``/``request_body`` and
+       ``response_model``/``response``) and the unified parameters
+       (``requests`` and ``responses``). The unified ``requests``/``responses``
+       parameters are the intended survivors; passing any of the discrete
+       parameters now emits a :class:`DeprecationWarning`. They will be removed
+       in a future release after a deprecation window. New code should prefer
+       ``requests``/``responses``. Tracking: issue #285.
 
     Returns
     -------
@@ -292,6 +292,30 @@ def openapi(
                         "'responses' must be either a Pydantic BaseModel subclass or a dictionary."
                     )
 
+            # Emit the deprecation warning only after mixed-style validation
+            # has passed, so callers hitting a ValueError above are not also
+            # warned about a config they were told is invalid.
+            _deprecated_used = [
+                name
+                for name, value in (
+                    ("request_model", request_model),
+                    ("request_body", request_body),
+                    ("response_model", response_model),
+                    ("response", response),
+                )
+                if value is not None
+            ]
+            if _deprecated_used:
+                warnings.warn(
+                    "The discrete @openapi parameter(s) "
+                    f"{', '.join(_deprecated_used)} are "
+                    "deprecated in favor of the unified 'requests='/'responses=' "
+                    "parameters and will be removed in a future release. "
+                    "See https://github.com/yeongseon/azure-functions-openapi-python/issues/285.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+
             # Validate request/response models
             _validate_models(
                 resolved_request_model,
@@ -299,7 +323,7 @@ def openapi(
                 metadata_func.__name__,
             )
 
-            function_id = f"{metadata_func.__module__}.{metadata_func.__qualname__}"
+            function_id = canonical_function_id(metadata_func)
 
             with _registry_lock:
                 registry_key = metadata_func.__name__

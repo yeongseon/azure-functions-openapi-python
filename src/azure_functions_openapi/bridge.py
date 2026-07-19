@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
-from azure_functions_openapi.registry import registry
+from azure_functions_openapi.registry import canonical_function_id, registry
 from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route_prefix
 from azure_functions_openapi.utils import type_to_schema
 
@@ -294,6 +294,8 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
         if metadata is None:
             continue
 
+        canonical_id = canonical_function_id(handler)
+
         binding = _extract_http_binding(function_obj)
         if binding is None:
             logger.debug(
@@ -309,21 +311,38 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
             endpoint_key = f"{method}::{path}"
 
             with registry.lock:
-                explicit_by_name = registry.get(function_name)
-                explicit_by_endpoint = registry.get(endpoint_key)
+                # Resolve the target entry by, in order of trust:
+                #   1. canonical callable identity (collision-free),
+                #   2. the OpenAPI endpoint key (method::path),
+                #   3. the short function name (backward-compatible fallback).
+                target = registry.find_by_function_id(canonical_id)
+                match_kind = "canonical @openapi id"
 
-                if explicit_by_name is not None:
-                    _merge_into_existing(explicit_by_name, discovered)
-                    logger.debug(
-                        "Merged validation metadata into explicit @openapi entry '%s'",
-                        function_name,
-                    )
-                    continue
+                if target is None:
+                    target = registry.get(endpoint_key)
+                    match_kind = "OpenAPI endpoint"
 
-                if explicit_by_endpoint is not None:
-                    _merge_into_existing(explicit_by_endpoint, discovered)
+                if target is None:
+                    # Short-name fallback: refuse to merge when the name is
+                    # ambiguous (shared across modules) to avoid silently
+                    # attaching metadata to the wrong handler.
+                    if registry.count_by_function_name(function_name) > 1:
+                        logger.warning(
+                            "Refusing to merge validation metadata by ambiguous "
+                            "short name '%s': multiple @openapi entries share this "
+                            "name across modules. Registering a standalone endpoint "
+                            "instead.",
+                            function_name,
+                        )
+                    else:
+                        target = registry.get(function_name)
+                        match_kind = "short-name fallback"
+
+                if target is not None:
+                    _merge_into_existing(target, discovered)
                     logger.debug(
-                        "Merged validation metadata into explicit OpenAPI endpoint '%s'",
+                        "Merged validation metadata via %s into endpoint '%s'",
+                        match_kind,
                         endpoint_key,
                     )
                     continue
