@@ -372,14 +372,13 @@ class TestVersionValidation:
         assert result["body"] is CreateBody
 
     def test_version_1_accepted(self) -> None:
-        """Explicit version=1 is accepted."""
+        """Explicit nested version=1 is accepted."""
         handler = lambda req: req  # noqa: E731
         setattr(
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 1,
-                "validation": {"body": CreateBody},
+                "validation": {"version": 1, "body": CreateBody},
             },
         )
 
@@ -394,8 +393,7 @@ class TestVersionValidation:
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 999,
-                "validation": {"body": CreateBody},
+                "validation": {"version": 999, "body": CreateBody},
             },
         )
 
@@ -409,8 +407,7 @@ class TestVersionValidation:
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": "1",
-                "validation": {"body": CreateBody},
+                "validation": {"version": "1", "body": CreateBody},
             },
         )
 
@@ -424,8 +421,7 @@ class TestVersionValidation:
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 1.0,
-                "validation": {"body": CreateBody},
+                "validation": {"version": 1.0, "body": CreateBody},
             },
         )
 
@@ -439,8 +435,7 @@ class TestVersionValidation:
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 42,
-                "validation": {"body": CreateBody},
+                "validation": {"version": 42, "body": CreateBody},
             },
         )
 
@@ -457,8 +452,7 @@ class TestVersionValidation:
             inner,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 1,
-                "validation": {"body": CreateBody},
+                "validation": {"version": 1, "body": CreateBody},
             },
         )
 
@@ -467,8 +461,7 @@ class TestVersionValidation:
             outer,
             _HANDLER_METADATA_ATTR,
             {
-                "version": 999,
-                "validation": {"body": ResponseModel},
+                "validation": {"version": 999, "body": ResponseModel},
             },
         )
         outer.__wrapped__ = inner
@@ -485,8 +478,7 @@ class TestVersionValidation:
             handler,
             _HANDLER_METADATA_ATTR,
             {
-                "version": True,
-                "validation": {"body": CreateBody},
+                "validation": {"version": True, "body": CreateBody},
             },
         )
 
@@ -679,3 +671,38 @@ def test_scan_skips_builders_without_function_or_handler() -> None:
 
     scan_validation_metadata(app)
     assert get_openapi_registry() == {}
+
+
+
+class TestNestedVersionGate:
+    """Regression: the version gate reads the nested namespace payload, not the top level."""
+
+    def test_top_level_version_is_ignored(self) -> None:
+        """A stray top-level 'version' must not gate; the nested v1 payload is accepted."""
+        handler = lambda req: req  # noqa: E731
+        setattr(
+            handler,
+            _HANDLER_METADATA_ATTR,
+            {
+                "version": 999,  # top-level: producers never set this — must be ignored
+                "validation": {"version": 1, "body": CreateBody},
+            },
+        )
+
+        result = _read_validation_hints(handler)
+        assert result is not None
+        assert result["body"] is CreateBody
+
+    def test_nested_unsupported_version_rejected_despite_valid_top_level(self) -> None:
+        """Only the nested version gates; a valid top-level 'version' cannot rescue it."""
+        handler = lambda req: req  # noqa: E731
+        setattr(
+            handler,
+            _HANDLER_METADATA_ATTR,
+            {
+                "version": 1,  # top-level: ignored
+                "validation": {"version": 999, "body": CreateBody},
+            },
+        )
+
+        assert _read_validation_hints(handler) is None
