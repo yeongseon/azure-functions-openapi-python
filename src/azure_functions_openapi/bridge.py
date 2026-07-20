@@ -7,6 +7,11 @@ from typing import Any, get_origin
 
 from pydantic import BaseModel
 
+from azure_functions_openapi._validation_contract import (
+    HANDLER_METADATA_ATTR,
+    SUPPORTED_VALIDATION_VERSIONS,
+    VALIDATION_NAMESPACE,
+)
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import canonical_function_id, registry
@@ -204,17 +209,11 @@ def _discovered_operation(
     }
 
 
-# Convention-based handler metadata attribute name.
-# Packages in the Azure Functions Python DX Toolkit write per-namespace
-# dicts into this attribute so consumers can discover metadata without
-# importing the producing package.
-_HANDLER_METADATA_ATTR = "_azure_functions_metadata"
-
 # Maximum decorator depth to walk when chasing ``__wrapped__``.
 _MAX_WRAPPED_DEPTH = 16
 
-# Supported metadata protocol versions.
-_SUPPORTED_VERSIONS: frozenset[int] = frozenset({1})
+# Backward-compatible alias for the convention attribute name.
+_HANDLER_METADATA_ATTR = HANDLER_METADATA_ATTR
 
 
 def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
@@ -225,8 +224,8 @@ def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
     ensures that metadata set by an inner decorator is still discovered even
     when additional decorators (e.g. ``@functools.wraps``) wrap the handler.
 
-    Version policy:
-    * Missing ``version`` key → accepted as v1 (backward-compatible).
+    Version policy (``version`` is nested inside the ``validation`` payload):
+    * Missing ``version`` key -> accepted as v1 (backward-compatible).
     * Present and supported → accepted.
     * Present but malformed or unsupported → ``logger.warning()`` + continue walking.
 
@@ -235,17 +234,21 @@ def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
     """
     current: Any = handler
     for _ in range(_MAX_WRAPPED_DEPTH):
-        toolkit_meta = getattr(current, _HANDLER_METADATA_ATTR, None)
+        toolkit_meta = getattr(current, HANDLER_METADATA_ATTR, None)
         if isinstance(toolkit_meta, dict):
-            # --- version gate ---
-            raw_version = toolkit_meta.get("version")
-            if raw_version is not None:
-                if type(raw_version) is not int or raw_version not in _SUPPORTED_VERSIONS:
+            hints = toolkit_meta.get(VALIDATION_NAMESPACE)
+            if isinstance(hints, dict):
+                # --- version gate (version is nested in the namespace payload) ---
+                raw_version = hints.get("version")
+                if raw_version is not None and (
+                    type(raw_version) is not int
+                    or raw_version not in SUPPORTED_VALIDATION_VERSIONS
+                ):
                     logger.warning(
                         "Skipping metadata on %r: unsupported version %r (supported: %s)",
                         current,
                         raw_version,
-                        ", ".join(str(v) for v in sorted(_SUPPORTED_VERSIONS)),
+                        ", ".join(str(v) for v in sorted(SUPPORTED_VALIDATION_VERSIONS)),
                     )
                     # Continue walking; an inner handler may have valid metadata.
                     wrapped = getattr(current, "__wrapped__", None)
@@ -253,8 +256,6 @@ def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
                         break
                     current = wrapped
                     continue
-            hints = toolkit_meta.get("validation")
-            if isinstance(hints, dict):
                 return copy.deepcopy(hints)
 
         # Walk the __wrapped__ chain.
