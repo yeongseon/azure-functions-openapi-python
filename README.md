@@ -228,7 +228,9 @@ class GreetResponse(BaseModel):
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    data = req.get_json()
+    # @openapi documents the request/response contract — it does not validate.
+    # For runtime validation, see azure-functions-validation.
+data = req.get_json()
     name = data.get("name", "world")
     return func.HttpResponse(
         json.dumps({"message": f"Hello, {name}!"}),

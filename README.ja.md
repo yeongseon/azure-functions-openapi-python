@@ -13,6 +13,8 @@
 
 他の言語: [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md)
 
+> ⚠️ この翻訳は古い可能性があります。最新の内容は [README.md](README.md) を参照してください。
+
 **Azure Functions Python v2 プログラミング モデル**向けの OpenAPI（Swagger）ドキュメント生成と Swagger UI を提供します。
 
 ## Why Use It
