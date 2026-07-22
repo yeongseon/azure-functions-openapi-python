@@ -230,15 +230,19 @@ class GreetResponse(BaseModel):
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     # @openapi documents the request/response contract — it does not validate.
     # For runtime validation, see azure-functions-validation.
-data = req.get_json()
+    data = req.get_json()
     name = data.get("name", "world")
     return func.HttpResponse(
         json.dumps({"message": f"Hello, {name}!"}),
         mimetype="application/json",
     )
+```
 
+<details>
+<summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
 
-# Wire up the generated spec + Swagger UI as ordinary HTTP routes.
+```python
+# Serve the generated spec and Swagger UI as ordinary HTTP routes.
 @app.route(route="openapi.json", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
 def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(
@@ -265,6 +269,8 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
 def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     return render_swagger_ui()
 ```
+
+</details>
 
 > **Pydantic v2 is optional.** `request_model=` / `response_model=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
 
