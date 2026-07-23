@@ -60,11 +60,23 @@ Spec drifts. Consumers guess. No Swagger UI.
 **✅ With azure-functions-openapi** — spec lives next to the handler
 
 ```python
+from pydantic import BaseModel
+
+
+class CreateUserRequest(BaseModel):
+    name: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+
+
 @openapi(
     summary="Create user",
-    request_body={"type": "object", "properties": {"name": {"type": "string"}}},
-    response={200: {"description": "User created"}},
-    )
+    request_model=CreateUserRequest,
+    response_model=UserResponse,
+)
 @app.route(route="users", methods=["POST"])
 def create_user(req):
     ...
@@ -185,6 +197,7 @@ The version pin in `pyproject.toml` is `azure-functions>=1.21.0,<2.0.0`. The flo
 import json
 
 import azure.functions as func
+from pydantic import BaseModel
 
 from azure_functions_openapi import (
     get_openapi_json,
@@ -193,15 +206,81 @@ from azure_functions_openapi import (
     render_swagger_ui,
 )
 
-
 app = func.FunctionApp()
 
 
-@app.function_name(name="http_trigger")
+# Describe your API with plain Pydantic models.
+class GreetRequest(BaseModel):
+    name: str
+
+
+class GreetResponse(BaseModel):
+    message: str
+
+
+# @openapi infers the route and method from the @app.route below —
+# no need to repeat them here.
 @openapi(
     summary="Greet user",
-    route="/api/http_trigger",
-    method="post",
+    tags=["Example"],
+    request_model=GreetRequest,
+    response_model=GreetResponse,
+)
+@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
+    # @openapi documents the request/response contract — it does not validate.
+    # For runtime validation, see azure-functions-validation.
+    data = req.get_json()
+    name = data.get("name", "world")
+    return func.HttpResponse(
+        json.dumps({"message": f"Hello, {name}!"}),
+        mimetype="application/json",
+    )
+```
+
+> **Pydantic v2 is optional.** `request_model=` / `response_model=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
+
+<details>
+<summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
+
+```python
+# Serve the generated spec and Swagger UI as ordinary HTTP routes.
+@app.route(route="openapi.json", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        get_openapi_json(
+            title="Sample API",
+            description="OpenAPI document for the Sample API.",
+        ),
+        mimetype="application/json",
+    )
+
+
+@app.route(route="openapi.yaml", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        get_openapi_yaml(
+            title="Sample API",
+            description="OpenAPI document for the Sample API.",
+        ),
+        mimetype="application/x-yaml",
+    )
+
+
+@app.route(route="docs", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
+    return render_swagger_ui()
+```
+
+</details>
+
+<details>
+<summary>Advanced: describe the schema with raw JSON Schema instead of Pydantic</summary>
+
+```python
+@openapi(
+    summary="Greet user",
+    tags=["Example"],
     request_body={
         "type": "object",
         "properties": {"name": {"type": "string"}},
@@ -220,47 +299,13 @@ app = func.FunctionApp()
             },
         }
     },
-    tags=["Example"],
-    )
+)
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    data = req.get_json()
-    name = data.get("name", "world")
-    return func.HttpResponse(
-        json.dumps({"message": f"Hello, {name}!"}),
-        mimetype="application/json",
-    )
-
-
-@app.function_name(name="openapi_json")
-@app.route(route="openapi.json", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(
-        get_openapi_json(
-            title="Sample API",
-            description="OpenAPI document for the Sample API.",
-        ),
-        mimetype="application/json",
-    )
-
-
-@app.function_name(name="openapi_yaml")
-@app.route(route="openapi.yaml", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(
-        get_openapi_yaml(
-            title="Sample API",
-            description="OpenAPI document for the Sample API.",
-        ),
-        mimetype="application/x-yaml",
-    )
-
-
-@app.function_name(name="swagger_ui")
-@app.route(route="docs", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
-    return render_swagger_ui()
+    ...
 ```
+
+</details>
 
 Run locally with Azure Functions Core Tools:
 
