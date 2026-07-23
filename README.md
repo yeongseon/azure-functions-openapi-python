@@ -238,6 +238,8 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
+> **Pydantic v2 is optional.** `request_model=` / `response_model=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
+
 <details>
 <summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
 
@@ -271,8 +273,6 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 ```
 
 </details>
-
-> **Pydantic v2 is optional.** `request_model=` / `response_model=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
 
 <details>
 <summary>Advanced: describe the schema with raw JSON Schema instead of Pydantic</summary>
