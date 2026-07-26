@@ -13,13 +13,68 @@
 
 他の言語: [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md)
 
-> ⚠️ この翻訳は古い可能性があります。最新の内容は [README.md](README.md) を参照してください。
-
 **Azure Functions Python v2 プログラミング モデル**向けの OpenAPI（Swagger）ドキュメント生成と Swagger UI を提供します。
 
 ## Why Use It
 
 Azure Functions の HTTP API をドキュメント化するには、通常、別途 OpenAPI スペックを手作業で管理する必要があります。`azure-functions-openapi` はデコレータ付きハンドラーからスペックを自動生成し、ドキュメントとコードの同期を維持します。
+
+## Before / After
+
+**❌ azure-functions-openapi なし** — スペックを手作業で管理
+
+```python
+# openapi_spec.json — 手で書き、手で更新
+{
+    "paths": {
+        "/api/users": {
+            "post": {
+                "summary": "Create user",
+                "requestBody": { "...": "..." },
+                "responses": { "200": { "...": "..." } }
+            }
+        }
+    }
+}
+
+# function_app.py — 上のスペックとは何の連携もない
+@app.route(route="users", methods=["POST"])
+def create_user(req):
+    ...
+```
+
+スペックはずれ、利用者は推測し、Swagger UI もありません。
+
+**✅ azure-functions-openapi あり** — スペックがハンドラの隣に存在
+
+```python
+from pydantic import BaseModel
+
+
+class CreateUserRequest(BaseModel):
+    name: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    name: str
+
+
+@openapi(
+    summary="Create user",
+    request_model=CreateUserRequest,
+    response_model=UserResponse,
+)
+@app.route(route="users", methods=["POST"])
+def create_user(req):
+    ...
+
+# 自動生成されるエンドポイント:
+# GET /api/openapi.json  — 常にコードと同期
+# GET /api/docs          — Swagger UI を含む
+```
+
+スペックは常にコードと一致します。Swagger UI も標準で提供されます。
 
 ## Scope
 
@@ -57,6 +112,7 @@ azure-functions-openapi
 import json
 
 import azure.functions as func
+from pydantic import BaseModel
 
 from azure_functions_openapi import (
     get_openapi_json,
@@ -65,15 +121,81 @@ from azure_functions_openapi import (
     render_swagger_ui,
 )
 
-
 app = func.FunctionApp()
 
 
-@app.function_name(name="http_trigger")
+# 普通の Pydantic モデルで API を記述します。
+class GreetRequest(BaseModel):
+    name: str
+
+
+class GreetResponse(BaseModel):
+    message: str
+
+
+# @openapi は下の @app.route から route と method を推論します —
+# ここで再度指定する必要はありません。
 @openapi(
     summary="Greet user",
-    route="/api/http_trigger",
-    method="post",
+    tags=["Example"],
+    request_model=GreetRequest,
+    response_model=GreetResponse,
+)
+@app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
+    # @openapi はリクエスト/レスポンスの契約を文書化するだけで、検証はしません。
+    # ランタイム検証は azure-functions-validation を参照してください。
+    data = req.get_json()
+    name = data.get("name", "world")
+    return func.HttpResponse(
+        json.dumps({"message": f"Hello, {name}!"}),
+        mimetype="application/json",
+    )
+```
+
+> **Pydantic v2 は任意です。** `request_model=` / `response_model=` を推奨しますが、依存関係を追加したくなければ生の JSON Schema dict を代わりに渡すこともできます（下記参照）。
+
+<details>
+<summary>スペック + Swagger UI エンドポイントの接続 (openapi.json / openapi.yaml / docs)</summary>
+
+```python
+# 生成されたスペックと Swagger UI を通常の HTTP ルートとして提供します。
+@app.route(route="openapi.json", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        get_openapi_json(
+            title="Sample API",
+            description="OpenAPI document for the Sample API.",
+        ),
+        mimetype="application/json",
+    )
+
+
+@app.route(route="openapi.yaml", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        get_openapi_yaml(
+            title="Sample API",
+            description="OpenAPI document for the Sample API.",
+        ),
+        mimetype="application/x-yaml",
+    )
+
+
+@app.route(route="docs", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
+def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
+    return render_swagger_ui()
+```
+
+</details>
+
+<details>
+<summary>上級: Pydantic の代わりに生の JSON Schema でスキーマを記述</summary>
+
+```python
+@openapi(
+    summary="Greet user",
+    tags=["Example"],
     request_body={
         "type": "object",
         "properties": {"name": {"type": "string"}},
@@ -92,46 +214,13 @@ app = func.FunctionApp()
             },
         }
     },
-    tags=["Example"],
-    )
+)
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    data = req.get_json()
-    name = data.get("name", "world")
-    return func.HttpResponse(
-        json.dumps({"message": f"Hello, {name}!"}),
-        mimetype="application/json",
-    )
-
-@app.function_name(name="openapi_json")
-@app.route(route="openapi.json", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(
-        get_openapi_json(
-            title="Sample API",
-            description="OpenAPI document for the Sample API.",
-        ),
-        mimetype="application/json",
-    )
-
-
-@app.function_name(name="openapi_yaml")
-@app.route(route="openapi.yaml", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(
-        get_openapi_yaml(
-            title="Sample API",
-            description="OpenAPI document for the Sample API.",
-        ),
-        mimetype="application/x-yaml",
-    )
-
-
-@app.function_name(name="swagger_ui")
-@app.route(route="docs", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET"])
-def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
-    return render_swagger_ui()
+    ...
 ```
+
+</details>
 
 ローカルでは Azure Functions Core Tools で実行できます。
 
