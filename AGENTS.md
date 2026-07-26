@@ -18,6 +18,11 @@
 - Keep documentation examples, generated schema expectations, and tests synchronized.
 - Prefer focused changes inside the existing extension points.
 
+### Documentation & Translations
+- When a change touches `README.md` or any English documentation, update the translated READMEs (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`) **in the same PR** so translations never drift from the English source.
+- This applies to any code change that alters documented behavior, CLI output, or the ecosystem/package table — not just direct edits to prose.
+- If a full translation cannot land in the same PR, add a short "translation pending" note to the affected translated file and open a tracking issue before merging.
+
 ## PR Workflow
 
 **Always issue-first.** Before opening any PR:
