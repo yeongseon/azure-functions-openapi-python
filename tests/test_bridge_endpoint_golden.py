@@ -181,6 +181,20 @@ class Resp(BaseModel):
     id: int
 
 
+class OptionalResp(BaseModel):
+    """Response model with an ``Optional`` field.
+
+    Exercises the OpenAPI 3.1 conversion (``_convert_schema_to_3_1``) on both
+    paths: the endpoint inline schema goes through
+    ``_convert_operation_schemas_to_3_1`` while the hoisted validation schema
+    goes through ``_convert_schemas_to_3_1``. Semantic equivalence must still
+    hold after conversion.
+    """
+
+    id: int
+    note: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Tier 1 — full byte identity
 # ---------------------------------------------------------------------------
@@ -229,7 +243,10 @@ def _response_schema(spec: dict[str, Any], path: str, method: str) -> dict[str, 
     return schema
 
 
-def test_response_model_diverges_but_is_semantically_equivalent() -> None:
+@pytest.mark.parametrize("response_model", [Resp, OptionalResp])
+def test_response_model_diverges_but_is_semantically_equivalent(
+    response_model: type[BaseModel],
+) -> None:
     """response_model: validation hoists to ``$ref``; endpoint inlines.
 
     Full byte identity is intentionally NOT expected under the Path-A endpoint
@@ -237,7 +254,7 @@ def test_response_model_diverges_but_is_semantically_equivalent() -> None:
     prove semantic equivalence by resolving the validation ``$ref``. Byte
     identity is tracked by the ``$defs`` hoisting follow-up (#315).
     """
-    validation: dict[str, Any] = {"response_model": Resp}
+    validation: dict[str, Any] = {"response_model": response_model}
     route, method = "get_item", "get"
 
     spec_validation = _spec_for({"validation": validation}, route=route, methods=["GET"])
@@ -247,6 +264,10 @@ def test_response_model_diverges_but_is_semantically_equivalent() -> None:
     path = "/api/get_item"
 
     # --- documented structural divergence ---
+    # NOTE: When the $defs-hoisting follow-up (#315) lands, the endpoint path
+    # will also hoist into components.schemas and this `!=` becomes `==`; this
+    # assertion will then fail loudly, signalling the Tier-2 case can be
+    # promoted to Tier-1 full identity.
     assert _canonical(spec_endpoint) != _canonical(spec_validation)
 
     validation_schema = _response_schema(spec_validation, path, method)
