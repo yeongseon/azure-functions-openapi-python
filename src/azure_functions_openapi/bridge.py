@@ -257,6 +257,10 @@ def _discovered_operation_from_endpoint(
             if not isinstance(detail, dict):
                 continue
             try:
+                # Reject booleans explicitly: ``bool`` is a subclass of ``int``,
+                # so ``int(True)``/``int(False)`` would silently become 1/0.
+                if isinstance(status, bool):
+                    raise TypeError
                 status_code = int(status)
             except (TypeError, ValueError):
                 logger.warning(
@@ -276,7 +280,11 @@ def _discovered_operation_from_endpoint(
         "route": path,
         "method": method,
         "request_body": request_body,
-        "request_body_required": bool(endpoint.get("request_body_required", True)),
+        "request_body_required": (
+            endpoint["request_body_required"]
+            if isinstance(endpoint.get("request_body_required"), bool)
+            else True
+        ),
         "parameters": parameters,
         "response": response,
     }

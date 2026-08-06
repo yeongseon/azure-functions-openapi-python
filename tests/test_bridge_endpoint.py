@@ -214,6 +214,28 @@ def test_discovered_operation_from_endpoint_non_dict_responses() -> None:
     assert discovered["response"] == {}
 
 
+def test_discovered_operation_rejects_boolean_status_keys() -> None:
+    # ``bool`` is an ``int`` subclass; ``True``/``False`` must not coerce to 1/0.
+    payload: dict[str, Any] = {
+        "version": 1,
+        "responses": {
+            True: {"schema": {"type": "string"}},
+            False: {"schema": {"type": "null"}},
+            "200": {"schema": {"type": "object"}},
+        },
+    }
+    discovered = _discovered_operation_from_endpoint("fn", payload, "/api/x", "post")
+    assert set(discovered["response"].keys()) == {200}
+
+
+def test_discovered_operation_request_body_required_rejects_non_bool() -> None:
+    # Non-boolean truthy values (e.g. the string "false") must not be honored;
+    # only real booleans are accepted, otherwise default to True.
+    payload: dict[str, Any] = {"version": 1, "request_body_required": "false"}
+    discovered = _discovered_operation_from_endpoint("fn", payload, "/api/x", "post")
+    assert discovered["request_body_required"] is True
+
+
 # ---------------------------------------------------------------------------
 # scan_validation_metadata — endpoint namespace happy path
 # ---------------------------------------------------------------------------
