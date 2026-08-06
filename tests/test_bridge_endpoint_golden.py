@@ -134,6 +134,13 @@ def _spec_for(namespaces: dict[str, Any], *, route: str, methods: list[str]) -> 
 
 
 def _canonical(spec: dict[str, Any]) -> str:
+    """Deterministic, order-insensitive serialization for byte comparison.
+
+    No ``default=`` fallback: the spec must be natively JSON-serializable so a
+    non-serializable value raises instead of being silently stringified, which
+    would weaken the byte-identity guarantee this golden test enforces.
+    """
+    return json.dumps(spec, sort_keys=True)
     """Deterministic, order-insensitive serialization for byte comparison."""
     return json.dumps(spec, sort_keys=True, default=str)
 
