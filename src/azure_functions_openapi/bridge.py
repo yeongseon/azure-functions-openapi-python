@@ -7,6 +7,10 @@ from typing import Any, get_origin
 
 from pydantic import BaseModel
 
+from azure_functions_openapi._endpoint_contract import (
+    ENDPOINT_NAMESPACE,
+    SUPPORTED_ENDPOINT_VERSIONS,
+)
 from azure_functions_openapi._validation_contract import (
     HANDLER_METADATA_ATTR,
     SUPPORTED_VALIDATION_VERSIONS,
@@ -125,6 +129,13 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
     except OpenAPISpecConfigError:
         return True
 
+    existing_response = existing.get("response") or {}
+    discovered_response = discovered.get("response") or {}
+    if isinstance(existing_response, dict) and isinstance(discovered_response, dict):
+        for status, detail in discovered_response.items():
+            if status in existing_response and existing_response[status] != detail:
+                return True
+
     return False
 
 
@@ -134,9 +145,20 @@ def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -
 
     if not existing.get("request_body") and discovered.get("request_body"):
         existing["request_body"] = discovered["request_body"]
+        if "request_body_required" in discovered:
+            existing["request_body_required"] = discovered["request_body_required"]
 
     if not existing.get("response_model") and discovered.get("response_model"):
         existing["response_model"] = discovered["response_model"]
+
+    discovered_response = discovered.get("response")
+    if isinstance(discovered_response, dict) and discovered_response:
+        existing_response = existing.get("response")
+        if not isinstance(existing_response, dict):
+            existing_response = {}
+        for status, detail in discovered_response.items():
+            existing_response.setdefault(status, detail)
+        existing["response"] = existing_response
 
     existing_params = existing.get("parameters", [])
     discovered_params = discovered.get("parameters", [])
@@ -209,6 +231,65 @@ def _discovered_operation(
     }
 
 
+def _discovered_operation_from_endpoint(
+    function_name: str, endpoint: dict[str, Any], path: str, method: str
+) -> dict[str, Any]:
+    """Build a discovered-operation dict from the self-contained ``endpoint`` payload.
+
+    Unlike :func:`_discovered_operation`, every schema field here is already a
+    JSON Schema dict authored by the producer, so no Pydantic model access is
+    needed. The producer's ``responses`` map is ``{"<status>": {"schema": ...}}``;
+    we wrap each entry into a full OpenAPI response object so the spec generator
+    can embed it verbatim.
+    """
+    raw_request_body = endpoint.get("request_body")
+    request_body = raw_request_body if isinstance(raw_request_body, dict) else None
+
+    raw_parameters = endpoint.get("parameters")
+    parameters = [p for p in raw_parameters if isinstance(p, dict)] if isinstance(
+        raw_parameters, list
+    ) else []
+
+    response: dict[int, dict[str, Any]] = {}
+    raw_responses = endpoint.get("responses")
+    if isinstance(raw_responses, dict):
+        for status, detail in raw_responses.items():
+            if not isinstance(detail, dict):
+                continue
+            try:
+                # Reject booleans explicitly: ``bool`` is a subclass of ``int``,
+                # so ``int(True)``/``int(False)`` would silently become 1/0.
+                if isinstance(status, bool):
+                    raise TypeError
+                status_code = int(status)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "Skipping endpoint response with non-integer status %r on %r",
+                    status,
+                    function_name,
+                )
+                continue
+            schema = detail.get("schema")
+            response[status_code] = {
+                "description": detail.get("description", ""),
+                "content": {"application/json": {"schema": schema}},
+            }
+
+    return {
+        "function_name": function_name,
+        "route": path,
+        "method": method,
+        "request_body": request_body,
+        "request_body_required": (
+            endpoint["request_body_required"]
+            if isinstance(endpoint.get("request_body_required"), bool)
+            else True
+        ),
+        "parameters": parameters,
+        "response": response,
+    }
+
+
 # Maximum decorator depth to walk when chasing ``__wrapped__``.
 _MAX_WRAPPED_DEPTH = 16
 
@@ -267,6 +348,53 @@ def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
     return None
 
 
+def _read_endpoint_hints(handler: Any) -> dict[str, Any] | None:
+    """Read shared ``endpoint`` namespace metadata from a handler.
+
+    Mirrors :func:`_read_validation_hints` but targets the self-contained
+    ``endpoint`` namespace (pure JSON Schema, no model classes). Walks the
+    ``__wrapped__`` chain (outer -> inner) for the first handler carrying
+    ``_azure_functions_metadata["endpoint"]``.
+
+    Version policy (``version`` is a required key on the endpoint payload):
+    * Present and supported -> accepted.
+    * Missing, malformed, or unsupported -> ``logger.warning()`` + continue walking.
+
+    Returns a *deep copy* so callers cannot mutate the handler attribute.
+    """
+    current: Any = handler
+    for _ in range(_MAX_WRAPPED_DEPTH):
+        toolkit_meta = getattr(current, HANDLER_METADATA_ATTR, None)
+        if isinstance(toolkit_meta, dict):
+            hints = toolkit_meta.get(ENDPOINT_NAMESPACE)
+            if isinstance(hints, dict):
+                raw_version = hints.get("version")
+                if (
+                    type(raw_version) is not int
+                    or raw_version not in SUPPORTED_ENDPOINT_VERSIONS
+                ):
+                    logger.warning(
+                        "Skipping endpoint metadata on %r: unsupported version %r "
+                        "(supported: %s)",
+                        current,
+                        raw_version,
+                        ", ".join(str(v) for v in sorted(SUPPORTED_ENDPOINT_VERSIONS)),
+                    )
+                    wrapped = getattr(current, "__wrapped__", None)
+                    if wrapped is None or wrapped is current:
+                        break
+                    current = wrapped
+                    continue
+                return copy.deepcopy(hints)
+
+        wrapped = getattr(current, "__wrapped__", None)
+        if wrapped is None or wrapped is current:
+            break
+        current = wrapped
+
+    return None
+
+
 def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
     """Scan function builders for validation metadata and register OpenAPI operations.
 
@@ -291,8 +419,9 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
         handler = getattr(function_obj, "_func", None)
         if handler is None:
             continue
-        metadata = _read_validation_hints(handler)
-        if metadata is None:
+        endpoint_hints = _read_endpoint_hints(handler)
+        metadata = None if endpoint_hints is not None else _read_validation_hints(handler)
+        if endpoint_hints is None and metadata is None:
             continue
 
         canonical_id = canonical_function_id(handler)
@@ -308,7 +437,14 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
         methods = _extract_methods(binding)
 
         for method in methods:
-            discovered = _discovered_operation(function_name, metadata, path, method)
+            if endpoint_hints is not None:
+                discovered = _discovered_operation_from_endpoint(
+                    function_name, endpoint_hints, path, method
+                )
+            elif metadata is not None:
+                discovered = _discovered_operation(function_name, metadata, path, method)
+            else:  # pragma: no cover - guarded above (endpoint or metadata is set)
+                continue
             endpoint_key = f"{method}::{path}"
 
             with registry.lock:
@@ -348,13 +484,23 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
                     )
                     continue
 
-            register_openapi_metadata(
-                path=path,
-                method=method,
-                request_body=discovered.get("request_body"),
-                response_model=discovered.get("response_model")
-                if _is_base_model_type(discovered.get("response_model"))
-                else None,
-                parameters=discovered.get("parameters") or None,
-            )
+            if endpoint_hints is not None:
+                register_openapi_metadata(
+                    path=path,
+                    method=method,
+                    request_body=discovered.get("request_body"),
+                    request_body_required=discovered.get("request_body_required", True),
+                    response=discovered.get("response") or None,
+                    parameters=discovered.get("parameters") or None,
+                )
+            else:
+                register_openapi_metadata(
+                    path=path,
+                    method=method,
+                    request_body=discovered.get("request_body"),
+                    response_model=discovered.get("response_model")
+                    if _is_base_model_type(discovered.get("response_model"))
+                    else None,
+                    parameters=discovered.get("parameters") or None,
+                )
             logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
