@@ -99,6 +99,81 @@ def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
     return obj
 
 
+def _needs_hoisting(obj: Any) -> bool:
+    """Return ``True`` if *obj* contains an inline ``$defs``/``definitions`` block
+    or a local ``#/$defs/`` / ``#/definitions/`` ``$ref`` anywhere in the tree.
+
+    Flat schemas (no nested definitions and no local refs) return ``False`` so
+    callers can short-circuit and embed them verbatim without copying.
+    """
+    if isinstance(obj, dict):
+        if "$defs" in obj or "definitions" in obj:
+            return True
+        for key, value in obj.items():
+            if (
+                key == "$ref"
+                and isinstance(value, str)
+                and (value.startswith("#/$defs/") or value.startswith("#/definitions/"))
+            ):
+                return True
+            if _needs_hoisting(value):
+                return True
+        return False
+    if isinstance(obj, list):
+        return any(_needs_hoisting(item) for item in obj)
+    return False
+
+
+def hoist_inline_defs(schema: Any, components: dict[str, Any]) -> Any:
+    """Hoist inline ``$defs`` from a raw JSON Schema into ``components['schemas']``.
+
+    Producer-authored ``endpoint`` schemas embed nested-model definitions inline
+    as ``$defs`` with local ``#/$defs/{Model}`` refs. This lifts each definition
+    into the shared ``components.schemas`` section (resolving name collisions the
+    same way :func:`model_to_schema` does) and rewrites refs to
+    ``#/components/schemas/{Model}``. The root schema itself stays **inline** (a
+    raw endpoint body has no canonical component name), but any of its refs that
+    point at renamed definitions are rewritten.
+
+    Flat schemas -- those with no ``$defs`` and no local ``#/$defs/`` refs -- are
+    returned unchanged, preserving the verbatim behaviour from #311.
+
+    The input *schema* is never mutated; :func:`_collect_schemas` rebuilds every
+    nested structure via :func:`_rewrite_refs` before any in-place ``pop``.
+    """
+    if not isinstance(schema, dict) or not _needs_hoisting(schema):
+        return schema
+
+    normalized_root, definitions = _collect_schemas(schema)
+    if not definitions:
+        return normalized_root
+
+    schemas = components.setdefault("schemas", {})
+
+    name_map: dict[str, str] = {}
+    for name, definition in definitions.items():
+        resolved_name = _resolve_name_collision(name, definition, schemas)
+        if resolved_name != name:
+            name_map[name] = resolved_name
+
+    if name_map:
+        definitions = {
+            name_map.get(name, name): cast(
+                dict[str, Any], _rewrite_refs_with_map(definition, name_map)
+            )
+            for name, definition in definitions.items()
+        }
+        normalized_root = cast(
+            dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map)
+        )
+
+    for name, definition in definitions.items():
+        if name not in schemas or schemas[name] != definition:
+            schemas[name] = definition
+
+    return normalized_root
+
+
 def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return OpenAPI schema from a Pydantic model class.
     Parameters:

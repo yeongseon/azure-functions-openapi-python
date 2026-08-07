@@ -18,6 +18,7 @@ from azure_functions_openapi.decorator import (
     register_openapi_metadata,
 )
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.spec import generate_openapi_spec
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -347,14 +348,13 @@ def test_models_conflict_response_dict_disjoint_status_ok() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Nested-model known limitation (verbatim embed of $defs refs)
+# Nested-model $defs hoisting into components.schemas (issue #315)
 # ---------------------------------------------------------------------------
 
 
-def test_scan_endpoint_embeds_nested_defs_verbatim() -> None:
-    """Path A (MVP): nested-model ``$defs``/``#/$defs/`` refs are embedded
-    verbatim rather than hoisted into ``components.schemas``. This documents the
-    known limitation tracked by the follow-up hoisting issue.
+def test_scan_endpoint_keeps_nested_defs_verbatim_in_registry() -> None:
+    """The bridge still stores producer schemas verbatim in the registry;
+    hoisting is a spec-generation concern handled by ``generate_openapi_spec``.
     """
     nested_payload: dict[str, Any] = {
         "version": 1,
@@ -369,6 +369,185 @@ def test_scan_endpoint_embeds_nested_defs_verbatim() -> None:
     scan_validation_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
-    # The producer's $defs are preserved inline, unresolved (not hoisted).
+    # Bridge contract: producer $defs are preserved inline in the registry.
     assert entry["request_body"]["$defs"]["Child"]["properties"]["x"]["type"] == "integer"
     assert entry["request_body"]["properties"]["child"]["$ref"] == "#/$defs/Child"
+
+
+def test_generate_spec_hoists_request_body_defs() -> None:
+    """Inline ``$defs`` in an endpoint request body are hoisted into
+    ``components.schemas`` and the ``#/$defs/`` ref is rewritten (issue #315)."""
+    nested_payload: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {"child": {"$ref": "#/$defs/Child"}},
+            "$defs": {"Child": {"type": "object", "properties": {"x": {"type": "integer"}}}},
+        },
+        "request_body_required": True,
+    }
+    app = _make_app({"endpoint": nested_payload})
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    # Root stays inline, but its ref now points at components.schemas.
+    assert schema["properties"]["child"]["$ref"] == "#/components/schemas/Child"
+    assert "$defs" not in schema
+    # Child is hoisted into the shared components.schemas section.
+    assert spec["components"]["schemas"]["Child"]["properties"]["x"]["type"] == "integer"
+
+
+def test_generate_spec_hoists_response_and_parameter_defs() -> None:
+    """``$defs`` in response and parameter schemas are also hoisted (issue #315)."""
+    payload: dict[str, Any] = {
+        "version": 1,
+        "parameters": [
+            {
+                "name": "body",
+                "in": "query",
+                "required": False,
+                "schema": {
+                    "properties": {"p": {"$ref": "#/$defs/ParamModel"}},
+                    "$defs": {"ParamModel": {"type": "object"}},
+                },
+            }
+        ],
+        "responses": {
+            "200": {
+                "schema": {
+                    "properties": {"r": {"$ref": "#/$defs/RespModel"}},
+                    "$defs": {"RespModel": {"type": "object"}},
+                }
+            }
+        },
+    }
+    app = _make_app({"endpoint": payload})
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    op = spec["paths"]["/api/users"]["post"]
+    param_schema = op["parameters"][0]["schema"]
+    resp_schema = op["responses"]["200"]["content"]["application/json"]["schema"]
+    assert param_schema["properties"]["p"]["$ref"] == "#/components/schemas/ParamModel"
+    assert resp_schema["properties"]["r"]["$ref"] == "#/components/schemas/RespModel"
+    assert "ParamModel" in spec["components"]["schemas"]
+    assert "RespModel" in spec["components"]["schemas"]
+
+
+def test_generate_spec_hoists_nested_of_nested_defs() -> None:
+    """Recursively nested ``$defs`` (a def that references another def) are all
+    hoisted flat into ``components.schemas``."""
+    payload: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {"parent": {"$ref": "#/$defs/Parent"}},
+            "$defs": {
+                "Parent": {
+                    "type": "object",
+                    "properties": {"kid": {"$ref": "#/$defs/Kid"}},
+                    "$defs": {"Kid": {"type": "object", "properties": {"y": {"type": "integer"}}}},
+                }
+            },
+        },
+        "request_body_required": True,
+    }
+    app = _make_app({"endpoint": payload})
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    schemas = spec["components"]["schemas"]
+    assert "Parent" in schemas
+    assert "Kid" in schemas
+    assert schemas["Parent"]["properties"]["kid"]["$ref"] == "#/components/schemas/Kid"
+    assert "$defs" not in schemas["Parent"]
+
+
+def test_generate_spec_hoists_defs_referenced_inside_allof_items() -> None:
+    """A local ``#/$defs/`` ref buried inside ``allOf[].items`` is detected by the
+    recursive ``_needs_hoisting`` walk (through nested dict/list levels) and the
+    definition is hoisted rather than embedded verbatim (issue #315)."""
+    payload: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {"allOf": [{"items": {"$ref": "#/$defs/Buried"}}]},
+                }
+            },
+            "$defs": {"Buried": {"type": "object", "properties": {"z": {"type": "string"}}}},
+        },
+        "request_body_required": True,
+    }
+    app = _make_app({"endpoint": payload})
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    buried_ref = schema["properties"]["items"]["items"]["allOf"][0]["items"]["$ref"]
+    assert buried_ref == "#/components/schemas/Buried"
+    assert "$defs" not in schema
+    assert spec["components"]["schemas"]["Buried"]["properties"]["z"]["type"] == "string"
+
+def test_generate_spec_flat_schema_embedded_verbatim() -> None:
+    """Flat schemas (no ``$defs``) are embedded verbatim with no components entry
+    created for them (no regression to #311)."""
+    app = _make_app({"endpoint": FLAT_ENDPOINT})
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    assert schema["properties"]["name"]["type"] == "string"
+    assert "$defs" not in schema
+    assert "components" not in spec or "schemas" not in spec.get("components", {})
+
+
+def test_generate_spec_resolves_conflicting_defs_across_operations() -> None:
+    """Two operations that each define a differently-shaped ``Child`` get a
+    collision-resolved second component name."""
+    payload_a: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {"child": {"$ref": "#/$defs/Child"}},
+            "$defs": {"Child": {"type": "object", "properties": {"x": {"type": "integer"}}}},
+        },
+        "request_body_required": True,
+    }
+    payload_b: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {"child": {"$ref": "#/$defs/Child"}},
+            "$defs": {"Child": {"type": "object", "properties": {"z": {"type": "string"}}}},
+        },
+        "request_body_required": True,
+    }
+    handler_a = _make_handler({"endpoint": payload_a})
+    handler_b = _make_handler({"endpoint": payload_b})
+    app = MockApp(
+        [
+            MockBuilder(MockFunction("create_a", handler_a, [MockBinding("a", ["POST"])])),
+            MockBuilder(MockFunction("create_b", handler_b, [MockBinding("b", ["POST"])])),
+        ]
+    )
+    scan_validation_metadata(app)
+
+    spec = generate_openapi_spec()
+    schemas = spec["components"]["schemas"]
+    # Both distinct shapes are present under collision-resolved names.
+    assert "Child" in schemas
+    assert "Child_2" in schemas
+    shapes = {"Child": schemas["Child"], "Child_2": schemas["Child_2"]}
+    property_keys = {name: set(s["properties"]) for name, s in shapes.items()}
+    assert {"x"} in property_keys.values()
+    assert {"z"} in property_keys.values()

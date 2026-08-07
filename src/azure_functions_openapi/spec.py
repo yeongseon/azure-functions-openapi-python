@@ -15,7 +15,7 @@ from azure_functions_openapi.routes import (
     apply_route_prefix,
     normalize_route_prefix,
 )
-from azure_functions_openapi.utils import model_to_schema
+from azure_functions_openapi.utils import hoist_inline_defs, model_to_schema
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +273,19 @@ def generate_openapi_spec(
                 for status, detail in meta.get("response", {}).items():
                     resp = dict(detail)
                     resp.setdefault("description", "")
+                    resp_content = resp.get("content")
+                    if isinstance(resp_content, dict):
+                        hoisted_content: dict[str, Any] = {}
+                        for media, media_obj in resp_content.items():
+                            if isinstance(media_obj, dict) and "schema" in media_obj:
+                                media_obj = {
+                                    **media_obj,
+                                    "schema": hoist_inline_defs(
+                                        media_obj["schema"], components
+                                    ),
+                                }
+                            hoisted_content[media] = media_obj
+                        resp["content"] = hoisted_content
                     responses[str(status)] = resp
 
                 if meta.get("response_model"):
@@ -321,7 +334,12 @@ def generate_openapi_spec(
                 # parameters ------------------------------------------------------
                 parameters: list[dict[str, Any]] = meta.get("parameters", [])
                 if parameters:
-                    op["parameters"] = parameters
+                    op["parameters"] = [
+                        {**param, "schema": hoist_inline_defs(param["schema"], components)}
+                        if isinstance(param, dict) and "schema" in param
+                        else param
+                        for param in parameters
+                    ]
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
@@ -334,7 +352,13 @@ def generate_openapi_spec(
                     if meta.get("request_body"):
                         op["requestBody"] = {
                             "required": required,
-                            "content": {"application/json": {"schema": meta["request_body"]}},
+                            "content": {
+                                "application/json": {
+                                    "schema": hoist_inline_defs(
+                                        meta["request_body"], components
+                                    )
+                                }
+                            },
                         }
                     elif meta.get("request_model"):
                         try:
