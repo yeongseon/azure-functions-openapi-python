@@ -4,6 +4,7 @@ from collections.abc import Iterable
 import copy
 import logging
 from typing import Any, get_origin
+import warnings
 
 from pydantic import BaseModel
 
@@ -246,9 +247,11 @@ def _discovered_operation_from_endpoint(
     request_body = raw_request_body if isinstance(raw_request_body, dict) else None
 
     raw_parameters = endpoint.get("parameters")
-    parameters = [p for p in raw_parameters if isinstance(p, dict)] if isinstance(
-        raw_parameters, list
-    ) else []
+    parameters = (
+        [p for p in raw_parameters if isinstance(p, dict)]
+        if isinstance(raw_parameters, list)
+        else []
+    )
 
     response: dict[int, dict[str, Any]] = {}
     raw_responses = endpoint.get("responses")
@@ -314,8 +317,7 @@ def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
                 # --- version gate (version is nested in the namespace payload) ---
                 raw_version = hints.get("version")
                 if raw_version is not None and (
-                    type(raw_version) is not int
-                    or raw_version not in SUPPORTED_VALIDATION_VERSIONS
+                    type(raw_version) is not int or raw_version not in SUPPORTED_VALIDATION_VERSIONS
                 ):
                     logger.warning(
                         "Skipping metadata on %r: unsupported version %r (supported: %s)",
@@ -361,13 +363,9 @@ def _read_endpoint_hints(handler: Any) -> dict[str, Any] | None:
             hints = toolkit_meta.get(ENDPOINT_NAMESPACE)
             if isinstance(hints, dict):
                 raw_version = hints.get("version")
-                if (
-                    type(raw_version) is not int
-                    or raw_version not in SUPPORTED_ENDPOINT_VERSIONS
-                ):
+                if type(raw_version) is not int or raw_version not in SUPPORTED_ENDPOINT_VERSIONS:
                     logger.warning(
-                        "Skipping endpoint metadata on %r: unsupported version %r "
-                        "(supported: %s)",
+                        "Skipping endpoint metadata on %r: unsupported version %r (supported: %s)",
                         current,
                         raw_version,
                         ", ".join(str(v) for v in sorted(SUPPORTED_ENDPOINT_VERSIONS)),
@@ -387,11 +385,35 @@ def _read_endpoint_hints(handler: Any) -> dict[str, Any] | None:
     return None
 
 
-def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
-    """Scan function builders for validation metadata and register OpenAPI operations.
+def _has_endpoint_namespace(handler: Any) -> bool:
+    """Return whether *any* handler in the wrapped chain carries an ``endpoint`` namespace.
 
-    This function reads the convention-based ``_azure_functions_metadata``
-    attribute (namespace ``"validation"``) from each handler.  No import from
+    Unlike :func:`_read_endpoint_hints`, this ignores version validity: it reports
+    mere *presence* of ``_azure_functions_metadata["endpoint"]`` as a dict. It lets
+    the scan loop distinguish "no endpoint contract at all" from "endpoint contract
+    present but rejected (e.g. unsupported version)", so a silent downgrade to the
+    ``validation`` namespace can be surfaced to the user.
+    """
+    current: Any = handler
+    for _ in range(_MAX_WRAPPED_DEPTH):
+        toolkit_meta = getattr(current, HANDLER_METADATA_ATTR, None)
+        if isinstance(toolkit_meta, dict) and isinstance(
+            toolkit_meta.get(ENDPOINT_NAMESPACE), dict
+        ):
+            return True
+        wrapped = getattr(current, "__wrapped__", None)
+        if wrapped is None or wrapped is current:
+            break
+        current = wrapped
+    return False
+
+
+def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
+    """Scan function builders for toolkit metadata and register OpenAPI operations.
+
+    Reads the convention-based ``_azure_functions_metadata`` attribute from each
+    handler, preferring the self-contained ``"endpoint"`` namespace and falling
+    back to the ``"validation"`` namespace. No import from
     ``azure-functions-validation`` is required.
 
     ``route_prefix`` mirrors ``host.json`` ``extensions.http.routePrefix``
@@ -415,6 +437,15 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
         metadata = None if endpoint_hints is not None else _read_validation_hints(handler)
         if endpoint_hints is None and metadata is None:
             continue
+
+        if endpoint_hints is None and metadata is not None and _has_endpoint_namespace(handler):
+            logger.warning(
+                "Function '%s' carries an unsupported or malformed endpoint "
+                "namespace; falling back to the validation namespace for OpenAPI "
+                "generation. The generated spec may differ from the intended "
+                "endpoint contract.",
+                function_name,
+            )
 
         canonical_id = canonical_function_id(handler)
 
@@ -496,3 +527,21 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
                     parameters=discovered.get("parameters") or None,
                 )
             logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
+
+
+def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
+    """Deprecated alias for :func:`scan_endpoint_metadata`.
+
+    The scanner now primarily consumes the namespace-neutral ``"endpoint"``
+    contract (the ``"validation"`` namespace is only a fallback), so the
+    ``scan_validation_metadata`` name is a misnomer. Use
+    :func:`scan_endpoint_metadata` instead. This alias forwards unchanged and
+    will be removed in a future minor release.
+    """
+    warnings.warn(
+        "scan_validation_metadata() is deprecated; use scan_endpoint_metadata() "
+        "instead. It will be removed in a future minor release.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    scan_endpoint_metadata(app, route_prefix)

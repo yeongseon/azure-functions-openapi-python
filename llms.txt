@@ -29,7 +29,7 @@ Renders Swagger UI with enterprise security headers (CSP, HSTS).
 - `OpenAPIOperationMetadata` — Type for operation metadata
 - `OpenAPISpecConfigError` — Exception for configuration errors
 - `OPENAPI_VERSION_3_0`, `OPENAPI_VERSION_3_1` — Version constants
-- `scan_validation_metadata(app)` — Auto-discover @validate_http metadata and register in OpenAPI registry
+- `scan_endpoint_metadata(app)` — Auto-discover @validate_http metadata and register in OpenAPI registry
 
 ## Quick Start
 

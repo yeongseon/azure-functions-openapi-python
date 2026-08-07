@@ -17,7 +17,7 @@ from azure_functions_openapi.bridge import (
     _normalize_method,
     _normalize_path,
     _read_validation_hints,
-    scan_validation_metadata,
+    scan_endpoint_metadata,
 )
 from azure_functions_openapi.decorator import (
     _openapi_registry,
@@ -105,7 +105,7 @@ def _make_app(
 def test_scan_discovers_validation_metadata() -> None:
     app = _make_app(metadata={"body": CreateBody, "response_model": ResponseModel})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     registry = get_openapi_registry()
     entry = registry["post::/api/users"]
@@ -116,7 +116,7 @@ def test_scan_discovers_validation_metadata() -> None:
 def test_scan_skips_non_validated_functions() -> None:
     app = _make_app(metadata=None)
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert get_openapi_registry() == {}
 
@@ -125,7 +125,7 @@ def test_explicit_openapi_wins() -> None:
     register_openapi_metadata(path="/api/users", method="post", summary="explicit")
     app = _make_app(metadata={"body": CreateBody, "response_model": ResponseModel})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["summary"] == "explicit"
@@ -134,7 +134,7 @@ def test_explicit_openapi_wins() -> None:
 def test_body_model_registered_as_request_body() -> None:
     app = _make_app(metadata={"body": CreateBody})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     schema = get_openapi_registry()["post::/api/users"]["request_body"]
     assert schema["type"] == "object"
@@ -144,7 +144,7 @@ def test_body_model_registered_as_request_body() -> None:
 def test_query_model_registered_as_parameters() -> None:
     app = _make_app(metadata={"query": QueryModel})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     params = get_openapi_registry()["post::/api/users"]["parameters"]
     assert any(p["in"] == "query" and p["name"] == "limit" for p in params)
@@ -153,7 +153,7 @@ def test_query_model_registered_as_parameters() -> None:
 def test_path_model_registered_as_parameters() -> None:
     app = _make_app(route="users/{user_id}", metadata={"path": PathModel})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     params = get_openapi_registry()["post::/api/users/{user_id}"]["parameters"]
     path_param = next(p for p in params if p["name"] == "user_id")
@@ -164,7 +164,7 @@ def test_path_model_registered_as_parameters() -> None:
 def test_response_model_registered() -> None:
     app = _make_app(metadata={"response_model": ResponseModel})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert get_openapi_registry()["post::/api/users"]["response_model"] is ResponseModel
 
@@ -176,13 +176,13 @@ def test_scan_without_validation_metadata() -> None:
     fn = MockFunction(_name="create_user", _func=handler_fn, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert get_openapi_registry() == {}
 
 
 def test_scan_empty_app() -> None:
-    scan_validation_metadata(MockApp(_function_builders=[]))
+    scan_endpoint_metadata(MockApp(_function_builders=[]))
     assert get_openapi_registry() == {}
 
 
@@ -198,7 +198,7 @@ def test_conflict_detection() -> None:
     app = _make_app(metadata={"response_model": ResponseModel})
 
     with pytest.raises(OpenAPISpecConfigError):
-        scan_validation_metadata(app)
+        scan_endpoint_metadata(app)
 
 
 def test_scan_skips_non_http_bindings() -> None:
@@ -210,7 +210,7 @@ def test_scan_skips_non_http_bindings() -> None:
     )
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert get_openapi_registry() == {}
 
@@ -221,7 +221,7 @@ def test_scan_defaults_method_to_get_when_unspecified() -> None:
     fn = MockFunction(_name="get_users", _func=handler, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert "get::/api/users" in get_openapi_registry()
 
@@ -248,7 +248,7 @@ def test_scan_merges_explicit_function_name_entry() -> None:
         }
 
     app = _make_app(name="create_user", metadata={"body": CreateBody})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["create_user"]
     assert entry["summary"] == "explicit"
@@ -266,7 +266,7 @@ def test_parameter_conflict_detection() -> None:
     app = _make_app(metadata={"query": QueryModel})
 
     with pytest.raises(OpenAPISpecConfigError, match="Conflicting validation"):
-        scan_validation_metadata(app)
+        scan_endpoint_metadata(app)
 
 
 def test_type_to_schema_registers_defs_for_generic_types() -> None:
@@ -528,7 +528,7 @@ class TestDeepCopyMutationSafety:
 def test_scan_uses_default_api_prefix() -> None:
     app = _make_app(metadata={"body": CreateBody})
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     assert "post::/api/users" in get_openapi_registry()
 
@@ -536,7 +536,7 @@ def test_scan_uses_default_api_prefix() -> None:
 def test_scan_supports_empty_prefix_for_disabled_host_prefix() -> None:
     app = _make_app(metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="")
+    scan_endpoint_metadata(app, route_prefix="")
 
     assert "post::/users" in get_openapi_registry()
 
@@ -544,7 +544,7 @@ def test_scan_supports_empty_prefix_for_disabled_host_prefix() -> None:
 def test_scan_supports_custom_prefix() -> None:
     app = _make_app(metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="/v1")
+    scan_endpoint_metadata(app, route_prefix="/v1")
 
     assert "post::/v1/users" in get_openapi_registry()
 
@@ -552,7 +552,7 @@ def test_scan_supports_custom_prefix() -> None:
 def test_scan_does_not_double_apply_prefix() -> None:
     app = _make_app(route="/api/users", metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="/api")
+    scan_endpoint_metadata(app, route_prefix="/api")
 
     assert "post::/api/users" in get_openapi_registry()
     assert "post::/api/api/users" not in get_openapi_registry()
@@ -561,7 +561,7 @@ def test_scan_does_not_double_apply_prefix() -> None:
 def test_scan_normalizes_prefix_with_trailing_slash() -> None:
     app = _make_app(metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="v1/")
+    scan_endpoint_metadata(app, route_prefix="v1/")
 
     assert "post::/v1/users" in get_openapi_registry()
 
@@ -575,7 +575,7 @@ def test_scan_does_not_treat_substring_match_as_already_prefixed() -> None:
     """
     app = _make_app(route="/apiary", metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="/api")
+    scan_endpoint_metadata(app, route_prefix="/api")
 
     assert "post::/api/apiary" in get_openapi_registry()
     assert "post::/apiary" not in get_openapi_registry()
@@ -584,7 +584,7 @@ def test_scan_does_not_treat_substring_match_as_already_prefixed() -> None:
 def test_scan_does_not_treat_apidocs_as_already_prefixed() -> None:
     app = _make_app(route="/apidocs", metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="/api")
+    scan_endpoint_metadata(app, route_prefix="/api")
 
     assert "post::/api/apidocs" in get_openapi_registry()
     assert "post::/apidocs" not in get_openapi_registry()
@@ -593,7 +593,7 @@ def test_scan_does_not_treat_apidocs_as_already_prefixed() -> None:
 def test_scan_treats_exact_prefix_match_as_already_prefixed() -> None:
     app = _make_app(route="/api", metadata={"body": CreateBody})
 
-    scan_validation_metadata(app, route_prefix="/api")
+    scan_endpoint_metadata(app, route_prefix="/api")
 
     assert "post::/api" in get_openapi_registry()
     assert "post::/api/api" not in get_openapi_registry()
@@ -656,7 +656,7 @@ def test_scan_includes_headers_model_as_header_parameters() -> None:
         x_request_id: str
 
     app = _make_app(metadata={"headers": HeaderModel})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     params = get_openapi_registry()["post::/api/users"]["parameters"]
     header_param = next(p for p in params if p["name"] == "x_request_id")
@@ -669,9 +669,8 @@ def test_scan_skips_builders_without_function_or_handler() -> None:
     builder_without_handler = MockBuilder(_function=function_without_handler)
     app = MockApp(_function_builders=cast(Any, [builder_without_function, builder_without_handler]))
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
     assert get_openapi_registry() == {}
-
 
 
 class TestNestedVersionGate:

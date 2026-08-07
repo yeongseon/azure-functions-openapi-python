@@ -335,13 +335,13 @@ See [Notification Request Example](examples/notification_request.md) for a compl
 ### Automatic bridge (zero-duplication)
 
 If you want OpenAPI specs generated automatically from `@validate_http` decorators
-without repeating models in `@openapi`, use `scan_validation_metadata()`:
+without repeating models in `@openapi`, use `scan_endpoint_metadata()`:
 
 ```python
-from azure_functions_openapi import scan_validation_metadata
+from azure_functions_openapi import scan_endpoint_metadata
 
 # After all routes are registered:
-scan_validation_metadata(app)
+scan_endpoint_metadata(app)
 ```
 
 This scans the app's registered HTTP functions for `@validate_http` metadata
@@ -349,7 +349,7 @@ and auto-registers them in the OpenAPI registry. Explicit `@openapi` decorators
 always take precedence.
 
 !!! info "No extra dependencies required"
-    `scan_validation_metadata()` reads the convention-based metadata attribute
+    `scan_endpoint_metadata()` reads the convention-based metadata attribute
     written by `@validate_http` — no extra install step needed beyond having both
     packages in your project.
 

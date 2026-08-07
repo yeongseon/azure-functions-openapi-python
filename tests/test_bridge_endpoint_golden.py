@@ -37,7 +37,7 @@ from typing import Any
 from pydantic import BaseModel
 import pytest
 
-from azure_functions_openapi.bridge import _model_to_parameters, scan_validation_metadata
+from azure_functions_openapi.bridge import _model_to_parameters, scan_endpoint_metadata
 from azure_functions_openapi.decorator import clear_openapi_registry
 from azure_functions_openapi.spec import generate_openapi_spec
 from azure_functions_openapi.utils import type_to_schema
@@ -127,7 +127,7 @@ def _spec_for(namespaces: dict[str, Any], *, route: str, methods: list[str]) -> 
     clear_openapi_registry()
     try:
         app = _make_app(namespaces, route=route, methods=methods)
-        scan_validation_metadata(app)
+        scan_endpoint_metadata(app)
         return generate_openapi_spec()
     finally:
         clear_openapi_registry()

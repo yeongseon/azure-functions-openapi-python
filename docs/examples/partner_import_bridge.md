@@ -2,7 +2,7 @@
 
 This is the bridge example showing how to generate OpenAPI docs from
 `@validate_http` decorators without using `@openapi` on every handler.
-It uses `scan_validation_metadata(app)`, `register_openapi_metadata()`,
+It uses `scan_endpoint_metadata(app)`, `register_openapi_metadata()`,
 and the `OpenAPIOperationMetadata` dataclass.
 
 Source: `examples/partner_import_bridge/function_app.py`
@@ -19,7 +19,7 @@ Source: `examples/partner_import_bridge/function_app.py`
 
 ## Features demonstrated
 
-- `scan_validation_metadata(app)` — auto-register OpenAPI metadata from `@validate_http`
+- `scan_endpoint_metadata(app)` — auto-register OpenAPI metadata from `@validate_http`
 - `register_openapi_metadata()` — programmatic registration for endpoints
 - `request_model` parameter on `register_openapi_metadata()` — proper Pydantic schema conversion
 - `OpenAPIOperationMetadata` dataclass — structured alternative to keyword arguments
@@ -68,9 +68,9 @@ class ImportBatchResponse(BaseModel):
 ### Step 1: Scan for validation metadata
 
 ```python
-from azure_functions_openapi import scan_validation_metadata
+from azure_functions_openapi import scan_endpoint_metadata
 
-scan_validation_metadata(app)
+scan_endpoint_metadata(app)
 ```
 
 ### Step 2: Register metadata programmatically
@@ -240,7 +240,7 @@ Expected behavior:
 ## Production takeaways
 
 - Use `request_model` instead of raw `model_json_schema()` for proper schema references
-- `scan_validation_metadata(app)` picks up `@validate_http` metadata automatically when available
+- `scan_endpoint_metadata(app)` picks up `@validate_http` metadata automatically when available
 - Use `OpenAPIOperationMetadata` for centralized, structured metadata management
 - `request_body_required=False` is useful for endpoints that accept optional request bodies
 

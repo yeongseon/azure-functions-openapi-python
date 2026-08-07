@@ -10,7 +10,7 @@ from azure_functions_openapi.bridge import (
     _discovered_operation_from_endpoint,
     _models_conflict,
     _read_endpoint_hints,
-    scan_validation_metadata,
+    scan_endpoint_metadata,
 )
 from azure_functions_openapi.decorator import (
     clear_openapi_registry,
@@ -216,13 +216,13 @@ def test_discovered_operation_from_endpoint_non_dict_responses() -> None:
 
 
 # ---------------------------------------------------------------------------
-# scan_validation_metadata — endpoint namespace happy path
+# scan_endpoint_metadata — endpoint namespace happy path
 # ---------------------------------------------------------------------------
 
 
 def test_scan_registers_from_endpoint_namespace() -> None:
     app = _make_app({"endpoint": FLAT_ENDPOINT})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["request_body"]["properties"]["name"]["type"] == "string"
@@ -237,7 +237,7 @@ def test_scan_endpoint_request_body_not_required() -> None:
     payload = dict(FLAT_ENDPOINT)
     payload["request_body_required"] = False
     app = _make_app({"endpoint": payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["request_body_required"] is False
@@ -263,7 +263,7 @@ def test_scan_prefers_endpoint_over_validation_when_both_present() -> None:
             "validation": {"body": _Body, "response_model": _Resp},
         }
     )
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     # Endpoint path does NOT set response_model (it uses the raw ``response`` slot).
@@ -273,25 +273,42 @@ def test_scan_prefers_endpoint_over_validation_when_both_present() -> None:
     }
 
 
-def test_scan_falls_back_to_validation_when_only_validation_present() -> None:
+def test_scan_falls_back_to_validation_when_only_validation_present(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     app = _make_app({"validation": {"body": _Body, "response_model": _Resp}})
-    scan_validation_metadata(app)
+    with caplog.at_level("WARNING", logger="azure_functions_openapi.bridge"):
+        scan_endpoint_metadata(app)
+
+    entry = get_openapi_registry()["post::/api/users"]
+    assert entry["response_model"] is _Resp
+    # No endpoint namespace at all -> plain validation path, no fallback warning.
+    assert not any("falling back to the validation namespace" in m for m in caplog.messages)
+    app = _make_app({"validation": {"body": _Body, "response_model": _Resp}})
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["response_model"] is _Resp
 
 
-def test_scan_falls_back_to_validation_when_endpoint_version_unsupported() -> None:
+def test_scan_falls_back_to_validation_when_endpoint_version_unsupported(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     app = _make_app(
         {
             "endpoint": {"version": 999, "request_body": {"type": "object"}},
             "validation": {"body": _Body, "response_model": _Resp},
         }
     )
-    scan_validation_metadata(app)
+    with caplog.at_level("WARNING", logger="azure_functions_openapi.bridge"):
+        scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["response_model"] is _Resp
+    # A present-but-rejected endpoint namespace that silently downgrades to the
+    # validation namespace must surface an explicit, actionable warning (#318).
+    assert any("falling back to the validation namespace" in m for m in caplog.messages)
+    assert any("create_user" in m for m in caplog.messages)
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +319,7 @@ def test_scan_falls_back_to_validation_when_endpoint_version_unsupported() -> No
 def test_scan_endpoint_merges_into_existing_openapi_entry() -> None:
     register_openapi_metadata(path="/api/users", method="post", summary="explicit")
     app = _make_app({"endpoint": FLAT_ENDPOINT})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["summary"] == "explicit"  # explicit metadata preserved
@@ -319,7 +336,7 @@ def test_scan_endpoint_conflicting_response_raises() -> None:
     )
     app = _make_app({"endpoint": FLAT_ENDPOINT})
     with pytest.raises(OpenAPISpecConfigError):
-        scan_validation_metadata(app)
+        scan_endpoint_metadata(app)
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +383,7 @@ def test_scan_endpoint_keeps_nested_defs_verbatim_in_registry() -> None:
         "request_body_required": True,
     }
     app = _make_app({"endpoint": nested_payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
     # Bridge contract: producer $defs are preserved inline in the registry.
@@ -387,12 +404,12 @@ def test_generate_spec_hoists_request_body_defs() -> None:
         "request_body_required": True,
     }
     app = _make_app({"endpoint": nested_payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
-    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
-        "application/json"
-    ]["schema"]
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
     # Root stays inline, but its ref now points at components.schemas.
     assert schema["properties"]["child"]["$ref"] == "#/components/schemas/Child"
     assert "$defs" not in schema
@@ -425,7 +442,7 @@ def test_generate_spec_hoists_response_and_parameter_defs() -> None:
         },
     }
     app = _make_app({"endpoint": payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
     op = spec["paths"]["/api/users"]["post"]
@@ -456,7 +473,7 @@ def test_generate_spec_hoists_nested_of_nested_defs() -> None:
         "request_body_required": True,
     }
     app = _make_app({"endpoint": payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
     schemas = spec["components"]["schemas"]
@@ -485,27 +502,28 @@ def test_generate_spec_hoists_defs_referenced_inside_allof_items() -> None:
         "request_body_required": True,
     }
     app = _make_app({"endpoint": payload})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
-    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
-        "application/json"
-    ]["schema"]
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
     buried_ref = schema["properties"]["items"]["items"]["allOf"][0]["items"]["$ref"]
     assert buried_ref == "#/components/schemas/Buried"
     assert "$defs" not in schema
     assert spec["components"]["schemas"]["Buried"]["properties"]["z"]["type"] == "string"
 
+
 def test_generate_spec_flat_schema_embedded_verbatim() -> None:
     """Flat schemas (no ``$defs``) are embedded verbatim with no components entry
     created for them (no regression to #311)."""
     app = _make_app({"endpoint": FLAT_ENDPOINT})
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
-    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"][
-        "application/json"
-    ]["schema"]
+    schema = spec["paths"]["/api/users"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
     assert schema["properties"]["name"]["type"] == "string"
     assert "$defs" not in schema
     assert "components" not in spec or "schemas" not in spec.get("components", {})
@@ -540,7 +558,7 @@ def test_generate_spec_resolves_conflicting_defs_across_operations() -> None:
             MockBuilder(MockFunction("create_b", handler_b, [MockBinding("b", ["POST"])])),
         ]
     )
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     spec = generate_openapi_spec()
     schemas = spec["components"]["schemas"]
@@ -551,3 +569,36 @@ def test_generate_spec_resolves_conflicting_defs_across_operations() -> None:
     property_keys = {name: set(s["properties"]) for name, s in shapes.items()}
     assert {"x"} in property_keys.values()
     assert {"z"} in property_keys.values()
+
+
+# ---------------------------------------------------------------------------
+# Deprecated alias: scan_validation_metadata (#319)
+# ---------------------------------------------------------------------------
+
+
+def test_scan_validation_metadata_alias_emits_deprecation_warning() -> None:
+    from azure_functions_openapi.bridge import scan_validation_metadata
+
+    app = _make_app({"endpoint": FLAT_ENDPOINT})
+    with pytest.warns(DeprecationWarning, match="scan_endpoint_metadata"):
+        scan_validation_metadata(app)
+
+    # Behavior is identical to the canonical function.
+    assert "post::/api/users" in get_openapi_registry()
+
+
+def test_scan_validation_metadata_alias_matches_canonical_output() -> None:
+    from azure_functions_openapi.bridge import scan_validation_metadata
+
+    app_alias = _make_app({"endpoint": FLAT_ENDPOINT})
+    with pytest.warns(DeprecationWarning):
+        scan_validation_metadata(app_alias)
+    via_alias = generate_openapi_spec()
+
+    clear_openapi_registry()
+
+    app_canonical = _make_app({"endpoint": FLAT_ENDPOINT})
+    scan_endpoint_metadata(app_canonical)
+    via_canonical = generate_openapi_spec()
+
+    assert via_alias == via_canonical

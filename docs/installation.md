@@ -37,7 +37,7 @@ pip install azure-functions-openapi[docs]
 ```
 
 If you also use `azure-functions-validation` for request/response validation,
-install it alongside — `scan_validation_metadata()` will auto-discover
+install it alongside — `scan_endpoint_metadata()` will auto-discover
 validation metadata without any extra configuration:
 
 ```bash
