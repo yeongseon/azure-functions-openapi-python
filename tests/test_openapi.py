@@ -353,7 +353,9 @@ def test_openapi_spec_contains_operation_id_and_tags() -> None:
     spec = json.loads(get_openapi_json())
     item = spec["paths"]["/api/http_trigger"]["get"]
 
-    assert item["operationId"] == "greetUser"
+    # method= is unspecified, so #335 expands to all HTTP methods and suffixes
+    # the explicit operation_id per method to keep operationIds unique.
+    assert item["operationId"] == "greetUser_get"
     assert item["tags"] == ["Example"]
     assert "HTTP Trigger with name parameter" in item["summary"]
     assert "### Usage" in item["description"]

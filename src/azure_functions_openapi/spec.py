@@ -1,6 +1,7 @@
 # src/azure_functions_openapi/spec.py
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
@@ -12,6 +13,8 @@ from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.registry import registry as _default_registry
 from azure_functions_openapi.routes import (
+    ALL_HTTP_METHODS,
+    BODYLESS_HTTP_METHODS,
     DEFAULT_ROUTE_PREFIX,
     apply_route_prefix,
     normalize_route_prefix,
@@ -64,6 +67,25 @@ def _ensure_default_response(
         "description": "Successful Response",
         "content": {"application/json": {"schema": resolved_schema}},
     }
+
+def _operation_id_for(
+    provided_id: str | None,
+    method: str,
+    logical_name: str,
+    methods_expanded: bool,
+) -> str:
+    """Return a unique ``operationId`` for one emitted method operation.
+
+    When an explicit ``operation_id`` is provided but the (unspecified) method
+    was auto-expanded to the full HTTP set, the same id would otherwise be
+    reused across every emitted operation, producing duplicate ``operationId``
+    values that violate the OpenAPI spec (an error under ``strict=True`` and
+    rejected by many tools). Suffix the provided id with the method in that
+    case; the auto-generated fallback is already per-method unique.
+    """
+    if provided_id:
+        return f"{provided_id}_{method}" if methods_expanded else provided_id
+    return f"{method}_{logical_name}"
 
 
 def _convert_nullable_to_type_array(schema: dict[str, Any]) -> dict[str, Any]:
@@ -283,7 +305,17 @@ def generate_openapi_spec(
                 # route & method --------------------------------------------------
                 raw_path = f"/{(meta.get('route') or logical_name).lstrip('/')}"
                 path = apply_route_prefix(raw_path, normalized_prefix)
-                method = (meta.get("method") or "get").lower()
+                # An unspecified method (``None``) means the Azure runtime
+                # responds to every HTTP method, so expand to the full set to
+                # match the endpoint-metadata scan path. An explicit method is
+                # emitted as a single operation, unchanged.
+                raw_method = meta.get("method")
+                if raw_method is None:
+                    methods_to_emit = list(ALL_HTTP_METHODS)
+                    methods_expanded = True
+                else:
+                    methods_to_emit = [str(raw_method).lower()]
+                    methods_expanded = False
 
                 # responses -------------------------------------------------------
                 responses: dict[str, Any] = {}
@@ -339,19 +371,15 @@ def generate_openapi_spec(
 
                 _ensure_default_response(responses)
 
-                # operation object ------------------------------------------------
-                op: dict[str, Any] = {
-                    "summary": meta.get("summary", ""),
-                    "description": meta.get("description", ""),
-                    "operationId": meta.get("operation_id") or f"{method}_{logical_name}",
-                    "tags": meta.get("tags") or ["default"],
-                    "responses": responses,
-                }
-
+                # Method-independent operation pieces, computed once and then
+                # deep-copied per emitted method so the OpenAPI 3.1 conversion
+                # (which mutates operation schemas in place) never aliases across
+                # path-item entries.
                 # parameters ------------------------------------------------------
                 parameters: list[dict[str, Any]] = meta.get("parameters", [])
+                op_parameters: list[dict[str, Any]] | None = None
                 if parameters:
-                    op["parameters"] = [
+                    op_parameters = [
                         {**param, "schema": hoist_inline_defs(param["schema"], components)}
                         if isinstance(param, dict) and "schema" in param
                         else param
@@ -360,53 +388,76 @@ def generate_openapi_spec(
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
-                if security:
-                    op["security"] = security
 
-                # requestBody (POST/PUT/PATCH/DELETE) --------------------------
-                if method in {"post", "put", "patch", "delete"}:
-                    required = meta.get("request_body_required", True)
-                    if meta.get("request_body"):
-                        op["requestBody"] = {
+                # requestBody schema (POST/PUT/PATCH/DELETE) ----------------------
+                request_body_obj: dict[str, Any] | None = None
+                required = meta.get("request_body_required", True)
+                if meta.get("request_body"):
+                    request_body_obj = {
+                        "required": required,
+                        "content": {
+                            "application/json": {
+                                "schema": hoist_inline_defs(
+                                    meta["request_body"], components
+                                )
+                            }
+                        },
+                    }
+                elif meta.get("request_model"):
+                    try:
+                        request_body_obj = {
                             "required": required,
                             "content": {
                                 "application/json": {
-                                    "schema": hoist_inline_defs(
-                                        meta["request_body"], components
-                                    )
+                                    "schema": model_to_schema(meta["request_model"], components)
                                 }
                             },
                         }
-                    elif meta.get("request_model"):
-                        try:
-                            op["requestBody"] = {
-                                "required": required,
-                                "content": {
-                                    "application/json": {
-                                        "schema": model_to_schema(meta["request_model"], components)
-                                    }
-                                },
-                            }
-                        except Exception as e:
-                            logger.warning(
-                                f"Failed to generate request schema for {func_name}: {str(e)}"
-                            )
-                            op["requestBody"] = {
-                                "required": required,
-                                "content": {"application/json": {"schema": {"type": "object"}}},
-                            }
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to generate request schema for {func_name}: {str(e)}"
+                        )
+                        request_body_obj = {
+                            "required": required,
+                            "content": {"application/json": {"schema": {"type": "object"}}},
+                        }
 
-                # merge into paths — detect duplicate path+method registrations
-                path_item = paths.setdefault(path, {})
-                if method in path_item:
-                    _dup_msg = (
-                        f"Duplicate operation: {method.upper()} {path} — "
-                        "only the last @openapi registration will appear in the spec"
-                    )
-                    if strict:
-                        raise OpenAPISpecConfigError(_dup_msg)
-                    logger.warning("OpenAPI spec: %s", _dup_msg)
-                path_item[method] = op
+                for method in methods_to_emit:
+                    # operation object --------------------------------------------
+                    op: dict[str, Any] = {
+                        "summary": meta.get("summary", ""),
+                        "description": meta.get("description", ""),
+                        "operationId": _operation_id_for(
+                            meta.get("operation_id"), method, logical_name, methods_expanded
+                        ),
+                        "tags": meta.get("tags") or ["default"],
+                        "responses": copy.deepcopy(responses),
+                    }
+                    if op_parameters is not None:
+                        op["parameters"] = copy.deepcopy(op_parameters)
+                    if security:
+                        op["security"] = security
+
+                    # requestBody: only body-bearing methods, and never on an
+                    # auto-expanded GET/HEAD/DELETE (OpenAPI leaves the body
+                    # undefined there and many tools reject it).
+                    body_methods = {"post", "put", "patch", "delete"}
+                    if methods_expanded:
+                        body_methods -= BODYLESS_HTTP_METHODS
+                    if request_body_obj is not None and method in body_methods:
+                        op["requestBody"] = copy.deepcopy(request_body_obj)
+
+                    # merge into paths — detect duplicate path+method registrations
+                    path_item = paths.setdefault(path, {})
+                    if method in path_item:
+                        _dup_msg = (
+                            f"Duplicate operation: {method.upper()} {path} — "
+                            "only the last @openapi registration will appear in the spec"
+                        )
+                        if strict:
+                            raise OpenAPISpecConfigError(_dup_msg)
+                        logger.warning("OpenAPI spec: %s", _dup_msg)
+                    path_item[method] = op
 
             except (KeyError, TypeError, ValueError):
                 if strict:

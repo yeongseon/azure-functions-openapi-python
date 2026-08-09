@@ -236,7 +236,9 @@ def test_scan_skips_non_http_bindings() -> None:
     assert get_openapi_registry() == {}
 
 
-def test_scan_defaults_method_to_get_when_unspecified() -> None:
+def test_scan_expands_unspecified_methods_to_all_http_methods() -> None:
+    # Azure runtime responds to *all* HTTP methods when methods= is omitted, so
+    # the scan must register every HttpMethod rather than defaulting to GET.
     handler = _make_validated_handler({"response_model": ResponseModel})
     binding = MockBinding(route="users", methods=None, type="httpTrigger")
     fn = MockFunction(_name="get_users", _func=handler, _bindings=[binding])
@@ -244,7 +246,31 @@ def test_scan_defaults_method_to_get_when_unspecified() -> None:
 
     scan_endpoint_metadata(app)
 
-    assert "get::/api/users" in get_openapi_registry()
+    registry_keys = set(get_openapi_registry())
+    for method in ("get", "post", "put", "delete", "patch", "head", "options"):
+        assert f"{method}::/api/users" in registry_keys
+
+
+def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
+    # Policy (#335): when methods= is unspecified we expand to all HTTP methods,
+    # but GET/HEAD/DELETE must not carry a requestBody (OpenAPI leaves it
+    # undefined there). Body-bearing methods keep it.
+    handler = _make_validated_handler({"body": CreateBody})
+    binding = MockBinding(route="users", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="users", _func=handler, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    for method in ("get", "head", "delete"):
+        assert registry[f"{method}::/api/users"]["request_body"] is None
+    for method in ("post", "put", "patch"):
+        assert registry[f"{method}::/api/users"]["request_body"] is not None
+
+    registry_keys = set(get_openapi_registry())
+    for method in ("get", "post", "put", "delete", "patch", "head", "options"):
+        assert f"{method}::/api/users" in registry_keys
 
 
 def test_scan_merges_explicit_function_name_entry() -> None:
@@ -630,8 +656,15 @@ def test_extract_methods_handles_string_and_invalid_type() -> None:
         def __init__(self, methods: Any) -> None:
             self.methods = methods
 
-    assert _extract_methods(_Binding("POST")) == ["post"]
-    assert _extract_methods(_Binding(123)) == ["get"]
+    assert _extract_methods(_Binding("POST")) == (["post"], False)
+    assert _extract_methods(_Binding(123)) == (["get"], False)
+    # Unspecified methods= expands to every HTTP method (expanded=True).
+    assert _extract_methods(_Binding(None)) == (
+        ["get", "post", "put", "delete", "patch", "head", "options"],
+        True,
+    )
+    # An explicit empty list is a different signal: not expanded.
+    assert _extract_methods(_Binding([])) == (["get"], False)
 
 
 def test_merge_parameters_appends_non_conflicting_items() -> None:
