@@ -329,3 +329,47 @@ def test_register_request_model_and_request_body_raises() -> None:
             request_model=DemoRequestModel,
             request_body={"type": "object"},
         )
+
+
+def test_spec_expands_unspecified_method_to_all_http_methods() -> None:
+    # #335: @openapi without method= must produce one operation per HTTP method
+    # (the Azure runtime responds to all methods when methods= is omitted),
+    # not a single GET operation.
+    @openapi(route="/api/hello", summary="Hello")
+    def hello() -> None:  # pragma: no cover - registration only
+        ...
+
+    spec = generate_openapi_spec()
+    path_item = spec["paths"]["/api/hello"]
+    assert set(path_item) == {
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+    }
+
+
+def test_spec_expanded_methods_omit_body_on_get_head_delete() -> None:
+    # #335 policy 1: a body-carrying @openapi with unspecified method expands to
+    # all methods but must not attach requestBody to GET/HEAD/DELETE.
+    @openapi(route="/api/thing", request_model=DemoRequestModel)
+    def thing() -> None:  # pragma: no cover - registration only
+        ...
+
+    spec = generate_openapi_spec()
+    path_item = spec["paths"]["/api/thing"]
+    for method in ("get", "head", "delete"):
+        assert "requestBody" not in path_item[method]
+    for method in ("post", "put", "patch"):
+        assert "requestBody" in path_item[method]
+
+
+def test_spec_explicit_method_stays_single_operation() -> None:
+    # An explicit method= is unaffected by the expansion policy.
+    register_openapi_metadata(path="/api/explicit", method="POST")
+
+    spec = generate_openapi_spec()
+    assert set(spec["paths"]["/api/explicit"]) == {"post"}

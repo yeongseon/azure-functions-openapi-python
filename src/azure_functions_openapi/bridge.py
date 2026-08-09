@@ -21,7 +21,12 @@ from azure_functions_openapi._validation_contract import (
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import canonical_function_id, registry
-from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route_prefix
+from azure_functions_openapi.routes import (
+    ALL_HTTP_METHODS,
+    BODYLESS_HTTP_METHODS,
+    DEFAULT_ROUTE_PREFIX,
+    normalize_route_prefix,
+)
 from azure_functions_openapi.utils import type_to_schema
 
 logger = logging.getLogger(__name__)
@@ -67,16 +72,25 @@ def _extract_http_binding(function: Any) -> Any | None:
     return adapters.extract_http_binding(function)
 
 
-def _extract_methods(binding: Any) -> list[str]:
+def _extract_methods(binding: Any) -> tuple[list[str], bool]:
+    """Return ``(methods, expanded)`` for an HTTP binding.
+
+    ``expanded`` is ``True`` only when ``methods=`` was *unspecified* (``None``)
+    and we therefore expanded to the full :data:`ALL_HTTP_METHODS` set to match
+    Azure runtime semantics (unspecified methods respond to every HTTP method).
+    An explicit ``methods=[]`` is a *different* signal from omitting ``methods=``
+    entirely: it is an explicit (non-expanded) choice, so it is not expanded and
+    falls back to a single ``get`` operation for a usable spec.
+    """
     methods = getattr(binding, "methods", None)
     if methods is None:
-        return ["get"]
+        return list(ALL_HTTP_METHODS), True
     if isinstance(methods, str):
-        return [_normalize_method(methods)]
+        return [_normalize_method(methods)], False
     if isinstance(methods, Iterable):
         normalized = [_normalize_method(item) for item in methods]
-        return normalized or ["get"]
-    return ["get"]
+        return (normalized or ["get"]), False
+    return ["get"], False
 
 
 def _merge_parameters(
@@ -460,7 +474,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
             continue
 
         path = _normalize_path(getattr(binding, "route", None), function_name, route_prefix)
-        methods = _extract_methods(binding)
+        methods, methods_expanded = _extract_methods(binding)
 
         for method in methods:
             if endpoint_hints is not None:
@@ -471,6 +485,13 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                 discovered = _discovered_operation(function_name, metadata, path, method)
             else:  # pragma: no cover - guarded above (endpoint or metadata is set)
                 continue
+
+            # When methods= was unspecified and we auto-expanded to every HTTP
+            # method, drop the request body from GET/HEAD/DELETE operations:
+            # OpenAPI leaves a body there semantically undefined and many tools
+            # reject it. Explicitly requested methods are left untouched.
+            if methods_expanded and method in BODYLESS_HTTP_METHODS:
+                discovered["request_body"] = None
             endpoint_key = f"{method}::{path}"
 
             with registry.lock:

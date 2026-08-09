@@ -516,7 +516,9 @@ def _validate_method(method: str | None, func_name: str) -> str | None:
     """Validate and normalize HTTP method.
 
     Returns the lowercased method string, or ``None`` when *method* is not
-    provided (the spec generator will default to ``"get"``).
+    provided. An unspecified method is later expanded by the spec generator to
+    every HTTP method (matching the Azure runtime, which responds to all methods
+    when ``methods=`` is omitted), rather than defaulting to ``"get"``.
     """
     if method is None:
         return None
