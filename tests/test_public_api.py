@@ -23,7 +23,6 @@ class TestAPISurface:
             "render_swagger_ui",
             "scan_endpoint_metadata",
             "scan_validation_metadata",
-            "scan_validation_metadata",
         }
 
     def test_version_matches_distribution_metadata(self) -> None:

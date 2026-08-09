@@ -269,6 +269,13 @@ def _discovered_operation_from_endpoint(
                 )
                 continue
             schema = detail.get("schema")
+            if not isinstance(schema, dict):
+                logger.warning(
+                    "Skipping endpoint response with non-dict schema for status %r on %r",
+                    status,
+                    function_name,
+                )
+                continue
             response[status_code] = {
                 "description": detail.get("description", ""),
                 "content": {"application/json": {"schema": schema}},
@@ -501,7 +508,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                 if target is not None:
                     _merge_into_existing(target, discovered)
                     logger.debug(
-                        "Merged validation metadata via %s into endpoint '%s'",
+                        "Merged endpoint metadata via %s into endpoint '%s'",
                         match_kind,
                         endpoint_key,
                     )
@@ -526,7 +533,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     else None,
                     parameters=discovered.get("parameters") or None,
                 )
-            logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
+            logger.debug("Registered endpoint metadata for endpoint '%s'", endpoint_key)
 
 
 def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:

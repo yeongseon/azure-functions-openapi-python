@@ -141,8 +141,6 @@ def _canonical(spec: dict[str, Any]) -> str:
     would weaken the byte-identity guarantee this golden test enforces.
     """
     return json.dumps(spec, sort_keys=True)
-    """Deterministic, order-insensitive serialization for byte comparison."""
-    return json.dumps(spec, sort_keys=True, default=str)
 
 
 # ---------------------------------------------------------------------------
