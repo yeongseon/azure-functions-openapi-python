@@ -573,9 +573,13 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     parameters=discovered.get("parameters") or None,
                 )
             logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
-            registered = registry.get(endpoint_key)
-            if registered is not None:
-                _tag_skew(registered, entry_skew)
+            # Hold the registry lock across the get+mutate so tagging honours the
+            # registry's documented thread-safety contract (the entry must not be
+            # mutated after the lock protecting it has been released).
+            with registry.lock:
+                registered = registry.get(endpoint_key)
+                if registered is not None:
+                    _tag_skew(registered, entry_skew)
 
 
 def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:

@@ -8,6 +8,7 @@ wrong-but-plausible spec is never promoted to an artifact.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 from typing import Any
 
@@ -140,7 +141,9 @@ class TestSpecWarning:
 
     def test_warning_is_frozen(self) -> None:
         warning = SpecWarning(code=WarningCode.SPEC_VALIDATION, message="x")
-        with pytest.raises(Exception):
+        # Frozen dataclasses raise FrozenInstanceError (an AttributeError
+        # subclass); assert the narrow type so unrelated failures don't pass.
+        with pytest.raises(dataclasses.FrozenInstanceError):
             warning.message = "y"  # type: ignore[misc]
 
 
@@ -207,8 +210,12 @@ class TestCliFailOnWarnings:
     ) -> None:
         scan_endpoint_metadata(_make_app(_skewed_namespaces()))
         assert handle_generate(_args(fail_on_warnings=False)) == 0
-        # Warnings are still surfaced on stderr as JSON lines.
-        assert "version-skew" in capsys.readouterr().err
+        # Warnings are surfaced on stderr as pure JSON lines (no human-readable
+        # prefix) so CI can parse them with jsonlines/jq.
+        err_lines = [ln for ln in capsys.readouterr().err.splitlines() if ln.strip()]
+        assert err_lines
+        payloads = [json.loads(ln) for ln in err_lines]
+        assert any(p.get("code") == "version-skew" for p in payloads)
 
     def test_returns_two_with_warnings_when_flag_set(
         self, capsys: pytest.CaptureFixture[str]

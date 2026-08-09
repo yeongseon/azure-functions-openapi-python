@@ -240,7 +240,7 @@ def handle_generate(args: argparse.Namespace) -> int:
 
             for warning in warnings:
                 print(
-                    "Warning: " + _json.dumps(warning.to_dict(), ensure_ascii=False),
+                    _json.dumps(warning.to_dict(), ensure_ascii=False),
                     file=sys.stderr,
                 )
         # Check for empty paths before serialising — gives a clear signal
