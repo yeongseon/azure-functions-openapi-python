@@ -8,8 +8,9 @@ from typing import Any
 
 import yaml
 
-from azure_functions_openapi.decorator import get_openapi_registry
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.registry import registry as _default_registry
 from azure_functions_openapi.routes import (
     DEFAULT_ROUTE_PREFIX,
     apply_route_prefix,
@@ -25,6 +26,18 @@ OPENAPI_VERSION_3_1 = "3.1.0"
 DEFAULT_OPENAPI_INFO_DESCRIPTION = (
     "Auto-generated OpenAPI documentation. Markdown supported in descriptions (CommonMark)."
 )
+
+
+def get_openapi_registry() -> dict[str, dict[str, Any]]:
+    """Return a snapshot of the process-wide OpenAPI metadata registry.
+
+    This is the default source consulted by :func:`generate_openapi_spec` when no
+    explicit ``registry`` is injected. It delegates to the registry module's
+    singleton so that the spec generator never has to import the decorator (and,
+    transitively, the Azure Functions SDK); callers wanting isolation should pass
+    an explicit :class:`~azure_functions_openapi.registry.OpenAPIRegistry` instead.
+    """
+    return _default_registry.snapshot()
 
 
 def _ensure_default_response(
@@ -224,6 +237,7 @@ def generate_openapi_spec(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
 ) -> dict[str, Any]:
     """
     Compile an OpenAPI specification from the registry.
@@ -256,11 +270,14 @@ def generate_openapi_spec(
     normalized_prefix = normalize_route_prefix(route_prefix)
 
     try:
-        registry = get_openapi_registry()
+        if registry is not None:
+            registry_entries = registry.snapshot()
+        else:
+            registry_entries = get_openapi_registry()
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
-        for func_name, meta in registry.items():
+        for func_name, meta in registry_entries.items():
             try:
                 logical_name = meta.get("function_name") or func_name
                 # route & method --------------------------------------------------
@@ -417,7 +434,7 @@ def generate_openapi_spec(
         all_security_schemes: dict[str, dict[str, Any]] = {}
         if security_schemes:
             all_security_schemes.update(security_schemes)
-        for _fn, meta in registry.items():
+        for _fn, meta in registry_entries.items():
             scheme = meta.get("security_scheme")
             if isinstance(scheme, dict):
                 for name, definition in scheme.items():
@@ -458,7 +475,7 @@ def generate_openapi_spec(
 
         logger.info(
             f"Generated OpenAPI {openapi_version} spec with {len(paths)} paths "
-            f"for {len(registry)} functions"
+            f"for {len(registry_entries)} functions"
         )
         return spec
 
@@ -599,6 +616,7 @@ def get_openapi_json(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
 ) -> str:
     """Return the spec as pretty-printed JSON (UTF-8).
 
@@ -626,6 +644,7 @@ def get_openapi_json(
             security_schemes=security_schemes,
             route_prefix=route_prefix,
             strict=strict,
+            registry=registry,
         )
         return json.dumps(spec, indent=2, ensure_ascii=False)
     except OpenAPISpecConfigError:
@@ -643,6 +662,7 @@ def get_openapi_yaml(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
 ) -> str:
     """Return the spec as YAML.
 
@@ -670,6 +690,7 @@ def get_openapi_yaml(
             security_schemes=security_schemes,
             route_prefix=route_prefix,
             strict=strict,
+            registry=registry,
         )
         return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
     except OpenAPISpecConfigError:
