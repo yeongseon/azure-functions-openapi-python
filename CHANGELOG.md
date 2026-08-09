@@ -1,6 +1,49 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.20.0] - 2026-08-09
+
+### Bug Fixes
+
+- *(registry)* Unify callable identity, self-locking mutators, deprecate discrete params (#286) 
+
+### Documentation
+
+- Sync translated READMEs with Pydantic-first Quick Start (#303) 
+- Require translation sync in the same PR as English changes (Closes #301) (#302) 
+- Merge redundant Features list into What it does (#295) 
+- Correct azure-functions-db description in ecosystem table (#293) 
+- Lead README Quick Start with Pydantic models and drop redundant route/method (#290) 
+
+### Features
+
+- *(spec)* Hoist inline $defs from endpoint schemas into components.schemas (#317) 
+- *(bridge)* Read the shared endpoint namespace for OpenAPI generation (#314) 
+
+### Miscellaneous Tasks
+
+- *(deps)* Bump github/codeql-action/analyze from 4.37.3 to 4.37.5 (#310) 
+- *(deps)* Bump github/codeql-action/init from 4.37.3 to 4.37.5 (#309) 
+- *(deps)* Bump ruff from 0.16.0 to 0.16.1 (#308) 
+- *(deps)* Bump actions/stale from 10.4.0 to 11.0.0 (#305) 
+- *(deps)* Bump ruff from 0.15.22 to 0.16.0 (#306) 
+- Track issue priority via priority:* labels instead of body line (#307) 
+- *(deps)* Bump github/codeql-action/init from 4.37.0 to 4.37.3 (#300) 
+- *(deps)* Bump actions/setup-python from 6.3.0 to 7.0.0 (#299) 
+- *(deps)* Bump ruff from 0.15.21 to 0.15.22 (#298) 
+- *(deps)* Bump actions/checkout from 7.0.0 to 7.0.1 (#297) 
+
+### Other
+
+- Bump version to 0.20.0 
+
+### Refactor
+
+- *(bridge)* Type validation read-side contract and fix nested version gate (#288) 
+
+### Testing
+
+- *(bridge)* Golden test confirms endpoint-driven spec identical to validation-driven (#316) 
 ## [0.19.1] - 2026-07-18
 
 ### Bug Fixes
@@ -10,6 +53,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Fix stale diagram module names and add README flow diagram (#280) 
 - Fix i18n, CLI, and changelog drift (#278) 
 - Add pepy download badge and llms.txt for discoverability (#283) 
