@@ -11,6 +11,8 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+> **翻译待处理：** CLI 的 `--app module:variable` 端点元数据发现部分（已在 #331 中添加到英文 [README.md](README.md)）尚未翻译。跟踪：[#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334)。
+
 其他语言: [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 为 **Azure Functions Python v2 编程模型**提供 OpenAPI（Swagger）文档生成和 Swagger UI。

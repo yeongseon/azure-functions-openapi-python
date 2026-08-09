@@ -446,6 +446,33 @@ class TestImportAppModule:
             with pytest.raises(AttributeError, match="no attribute 'nonexistent'"):
                 _import_app_module("fake_mod:nonexistent")
 
+    def test_trailing_colon_raises_value_error(self) -> None:
+        """'module:' (trailing colon, no variable) raises ValueError."""
+        import types
+
+        fake_mod = types.ModuleType("fake_mod")
+        with mock.patch("importlib.import_module", return_value=fake_mod):
+            with pytest.raises(ValueError, match="non-empty variable name"):
+                _import_app_module("fake_mod:")
+
+    def test_trailing_colon_whitespace_raises_value_error(self) -> None:
+        """'module:   ' (whitespace-only variable) raises ValueError."""
+        import types
+
+        fake_mod = types.ModuleType("fake_mod")
+        with mock.patch("importlib.import_module", return_value=fake_mod):
+            with pytest.raises(ValueError, match="non-empty variable name"):
+                _import_app_module("fake_mod:   ")
+
+    def test_variable_resolving_to_none_raises_value_error(self) -> None:
+        """'module:variable' where the attribute is None raises ValueError."""
+        import types
+
+        fake_mod = types.ModuleType("fake_mod")
+        fake_mod.app = None  # type: ignore[attr-defined]
+        with mock.patch("importlib.import_module", return_value=fake_mod):
+            with pytest.raises(ValueError, match="resolved to None"):
+                _import_app_module("fake_mod:app")
 
 class TestHandleGenerateWithApp:
     """Tests for --app option in handle_generate."""
@@ -462,6 +489,7 @@ class TestHandleGenerateWithApp:
         args.app = "my_function_app"
 
         with mock.patch("azure_functions_openapi.cli._import_app_module") as mock_import:
+            mock_import.return_value = (None, False)
             with mock.patch("builtins.print"):
                 result = handle_generate(args)
 
@@ -518,6 +546,7 @@ class TestHandleGenerateWithApp:
         args.app = None
 
         with mock.patch("azure_functions_openapi.cli._import_app_module") as mock_import:
+            mock_import.return_value = (None, False)
             with mock.patch("builtins.print"):
                 result = handle_generate(args)
 
@@ -602,6 +631,7 @@ class TestCLIAppFlag:
             ["azure-functions-openapi", "generate", "--app", "function_app"],
         ):
             with mock.patch("azure_functions_openapi.cli._import_app_module") as mock_import:
+                mock_import.return_value = (None, False)
                 with mock.patch("builtins.print"):
                     result = main()
 
@@ -616,6 +646,7 @@ class TestCLIAppFlag:
             ["azure-functions-openapi", "generate", "--app", "function_app:app"],
         ):
             with mock.patch("azure_functions_openapi.cli._import_app_module") as mock_import:
+                mock_import.return_value = (None, False)
                 with mock.patch("builtins.print"):
                     result = main()
 
