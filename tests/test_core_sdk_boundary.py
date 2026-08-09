@@ -215,7 +215,7 @@ def test_adapters_package_is_the_only_function_builders_seam() -> None:
     """Only the adapters package may touch the SDK-private discovery token."""
     offenders: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
-        if path.parent.name == "adapters":
+        if "adapters" in path.relative_to(SRC_ROOT).parts:
             continue
         source = path.read_text(encoding="utf-8")
         if "_function_builders" in source:
@@ -232,4 +232,56 @@ def test_adapters_package_actually_encapsulates_the_sdk() -> None:
     assert "_function_builders" in adapter_src, (
         "Expected the discovery adapter to encapsulate '_function_builders'; "
         "if this fails the #325 adapter guard is vacuous."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #327: finer-grained SDK-private tokens live NOWHERE outside adapters.
+# ---------------------------------------------------------------------------
+
+# The per-function private attributes the package historically reached into
+# before the adapter isolation. Post-#325 discovery reads these exclusively
+# through public `Function` accessors, so they must not appear as attribute or
+# name references anywhere in the package outside the adapters package.
+FINE_GRAINED_SDK_TOKENS = ("_function", "_func", "_bindings")
+
+
+def test_no_fine_grained_sdk_tokens_outside_adapter_package() -> None:
+    """Only `_function_builders` (in adapters) is an allowed private token (#327).
+
+    Every other SDK-private discovery token must be gone from the whole package
+    source outside the adapters package — discovery goes through public
+    `Function` accessors instead. This is the package-wide public-API-only
+    guarantee that complements the per-module #325 consumer guard.
+    """
+    offenders: list[str] = []
+    for path in sorted(SRC_ROOT.rglob("*.py")):
+        if "adapters" in path.relative_to(SRC_ROOT).parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in FINE_GRAINED_SDK_TOKENS:
+                offenders.append(f"{path.relative_to(SRC_ROOT)}: accesses '.{node.attr}'")
+            elif isinstance(node, ast.Name) and node.id in FINE_GRAINED_SDK_TOKENS:
+                offenders.append(f"{path.relative_to(SRC_ROOT)}: references '{node.id}'")
+    assert not offenders, (
+        "SDK-private per-function tokens must not appear outside the adapters "
+        "package; discovery must use public Function accessors instead:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_adapter_itself_avoids_fine_grained_private_tokens() -> None:
+    """The adapter encapsulates enumeration but still reads per-function data
+    through public accessors — it must not fall back to `_function`/`_func`/
+    `_bindings` either (proving the public surface is sufficient)."""
+    tree = ast.parse((SRC_ROOT / "adapters" / "azure_functions.py").read_text(encoding="utf-8"))
+    offenders = [
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr in FINE_GRAINED_SDK_TOKENS
+    ]
+    assert not offenders, (
+        "The adapter reached into per-function SDK internals "
+        f"{sorted(set(offenders))}; use public Function accessors instead."
     )
