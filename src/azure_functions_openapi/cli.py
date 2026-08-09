@@ -243,11 +243,6 @@ def handle_generate(args: argparse.Namespace) -> int:
                     _json.dumps(warning.to_dict(), ensure_ascii=False),
                     file=sys.stderr,
                 )
-        # --fail-on-warnings gate: short-circuit BEFORE writing any artifact,
-        # so a wrong-but-plausible spec is never emitted (warnings were already
-        # surfaced to stderr above for CI to parse).
-        if getattr(args, "fail_on_warnings", False) is True and warnings:
-            return 2
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):
@@ -260,6 +255,14 @@ def handle_generate(args: argparse.Namespace) -> int:
             )
             if getattr(args, "fail_on_empty_paths", False) is True:
                 return 1
+
+        # --fail-on-warnings gate: short-circuit BEFORE writing any artifact,
+        # so a wrong-but-plausible spec is never emitted (warnings were already
+        # surfaced to stderr above for CI to parse). Placed AFTER the empty-paths
+        # block so its diagnostic hint still prints and --fail-on-empty-paths
+        # (exit 1) stays reachable when warnings and empty paths coincide.
+        if getattr(args, "fail_on_warnings", False) is True and warnings:
+            return 2
 
         if args.format == "json":
             import json
