@@ -768,8 +768,16 @@ _SKEW_MESSAGES: dict[WarningCode, str] = {
 # ``_SKEW_MESSAGES``. The recorded SDK ``reason`` (which itself names the
 # function) is appended by :func:`_collect_discovery_warnings` for attribution.
 _DISCOVERY_SKIPPED_MESSAGE = (
-    "A function builder could not be built during discovery and was omitted "
-    "from the spec"
+"A function builder could not be built during discovery and was omitted "
+"from the spec"
+)
+
+# Method/binding mismatch is authored disagreement, not a skew signal: an
+# explicit ``@openapi(method=...)`` names a verb the HTTP binding does not serve,
+# so the generated operation cannot be reached at runtime.
+_METHOD_BINDING_MISMATCH_MESSAGE = (
+    "The explicit @openapi(method=...) is not served by the function's HTTP "
+    "binding; the generated operation cannot be reached at runtime"
 )
 
 
@@ -837,6 +845,40 @@ def _collect_discovery_warnings(
     ]
 
 
+def _collect_binding_mismatch_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive method/binding mismatch warnings from stamped registry entries.
+
+    The bridge scanner stamps ``_binding_methods`` (the binding's method set) on
+    entries whose method was set by an explicit ``@openapi(method=...)`` rather
+    than inferred from the binding. When that explicit method is absent from the
+    binding's served verbs the generated operation is unreachable at runtime, so
+    a :class:`WarningCode.METHOD_BINDING_MISMATCH` is surfaced. Entries with an
+    unspecified binding (no ``_binding_methods`` stamp) are never flagged: the
+    runtime answers every verb, so nothing can contradict the authored method.
+    Ordering is deterministic (entries sorted by registry key).
+    """
+    collected: list[SpecWarning] = []
+    snapshot = registry.snapshot() if registry is not None else get_openapi_registry()
+    for key, entry in sorted(snapshot.items()):
+        binding_methods = entry.get("_binding_methods")
+        if not binding_methods:
+            continue
+        method = entry.get("method")
+        if method is None:
+            continue
+        if str(method).lower() in {str(m).lower() for m in binding_methods}:
+            continue
+        collected.append(
+            SpecWarning(
+                code=WarningCode.METHOD_BINDING_MISMATCH,
+                message=_METHOD_BINDING_MISMATCH_MESSAGE,
+                function_name=entry.get("function_name") or key,
+            )
+        )
+    return collected
+
 def generate_openapi_report(
     title: str = "API",
     version: str = "1.0.0",
@@ -895,6 +937,7 @@ def collect_spec_warnings(
     """
     warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
     warnings_list.extend(_collect_discovery_warnings(registry))
+    warnings_list.extend(_collect_binding_mismatch_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
     return tuple(warnings_list)
