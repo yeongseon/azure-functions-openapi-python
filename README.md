@@ -378,6 +378,7 @@ The web preview below is generated from the same representative example and capt
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **Extend this:** [Producer Guide — write your own endpoint metadata](docs/extending/producer-guide.md)
 
 ## Ecosystem
 

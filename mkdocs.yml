@@ -34,6 +34,8 @@ nav:
       - Notification Request: examples/notification_request.md
       - Partner Import Bridge: examples/partner_import_bridge.md
   - API Reference: api.md
+  - Extending:
+      - Producer Guide: extending/producer-guide.md
   - Contributing:
       - Development: development.md
       - Testing: testing.md

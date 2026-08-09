@@ -294,6 +294,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **扩展它：** [生产者指南 — 编写你自己的端点元数据](docs/extending/producer-guide.md)
 
 ## Ecosystem
 

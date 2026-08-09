@@ -294,6 +294,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **확장하기:** [프로듀서 가이드 — 자신만의 엔드포인트 메타데이터 작성](docs/extending/producer-guide.md)
 
 ## Ecosystem
 

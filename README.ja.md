@@ -294,6 +294,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **拡張する:** [プロデューサーガイド — 独自のエンドポイントメタデータを作成](docs/extending/producer-guide.md)
 
 ## Ecosystem
 
