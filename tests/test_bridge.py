@@ -273,6 +273,59 @@ def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
         assert f"{method}::/api/users" in registry_keys
 
 
+def test_scan_reconciles_plain_openapi_recommended_order_expansion() -> None:
+    # #354: in the README-recommended order (@app.route above @openapi), @openapi
+    # decorates the raw function before @app.route wraps it, so no binding is
+    # visible at decoration time and the entry emits GET only. The scan sees the
+    # wrapped builder with an httptrigger binding that omits methods=, and must
+    # reconcile the entry to expand to every HTTP method — matching the reverse
+    # order — even though the handler carries no endpoint/validation metadata.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="list things", route="things")
+    def things(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="things", _func=things, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+
+    assert set(spec["paths"]["/api/things"].keys()) == {
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+    }
+
+
+def test_scan_does_not_expand_plain_openapi_with_explicit_method() -> None:
+    # #354 guard: reconciliation must never override an explicit method. When the
+    # @openapi entry declares a method, an unspecified-methods binding does not
+    # trigger all-method expansion.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="make thing", route="things", method="post")
+    def make_thing(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="make_thing", _func=make_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+
+    assert set(spec["paths"]["/api/things"].keys()) == {"post"}
+
+
 def test_scan_merges_explicit_function_name_entry() -> None:
     with _registry_lock:
         _openapi_registry["create_user"] = {
