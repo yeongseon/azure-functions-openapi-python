@@ -8,6 +8,7 @@ import warnings
 
 from pydantic import BaseModel
 
+from azure_functions_openapi import adapters
 from azure_functions_openapi._endpoint_contract import (
     ENDPOINT_NAMESPACE,
     SUPPORTED_ENDPOINT_VERSIONS,
@@ -62,11 +63,8 @@ def _normalize_path(
     return f"{prefix}{raw}"
 
 
-def _extract_http_binding(function_obj: Any) -> Any | None:
-    for binding in getattr(function_obj, "_bindings", []):
-        if str(getattr(binding, "type", "")).lower() == "httptrigger":
-            return binding
-    return None
+def _extract_http_binding(function: Any) -> Any | None:
+    return adapters.extract_http_binding(function)
 
 
 def _extract_methods(binding: Any) -> list[str]:
@@ -428,17 +426,14 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     (default ``"/api"``). Pass ``""`` for hosts that disable the prefix or
     a custom value such as ``"/v1"`` to match a non-default deployment.
     """
-    builders = getattr(app, "_function_builders", None)
-    if not builders:
+    functions = adapters.iter_functions(app)
+    if not functions:
         logger.debug("No function builders found on app; skipping validation scan")
         return
 
-    for builder in builders:
-        function_obj = getattr(builder, "_function", None)
-        if function_obj is None:
-            continue
-        function_name = str(getattr(function_obj, "_name", ""))
-        handler = getattr(function_obj, "_func", None)
+    for function in functions:
+        function_name = adapters.get_function_name(function)
+        handler = adapters.get_user_handler(function)
         if handler is None:
             continue
         endpoint_hints = _read_endpoint_hints(handler)
@@ -457,7 +452,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
 
         canonical_id = canonical_function_id(handler)
 
-        binding = _extract_http_binding(function_obj)
+        binding = _extract_http_binding(function)
         if binding is None:
             logger.debug(
                 "Function '%s' has validation metadata but is not HTTP triggered", function_name

@@ -167,3 +167,69 @@ def test_azure_facing_modules_are_allowed_to_import_sdk() -> None:
         "Expected at least one Azure-facing module to import the Azure Functions "
         "SDK; if this fails the SDK-free-core guard is vacuous."
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #325: SDK discovery is funneled through the adapters package.
+# ---------------------------------------------------------------------------
+
+# SDK-private tokens that must only ever be touched inside adapters/. The
+# discovery adapter is the single, audited seam onto the Azure Functions SDK's
+# undocumented internals; decorator.py and bridge.py must go through it.
+SDK_PRIVATE_ATTRS = ("_function", "_func", "_bindings", "_function_builders")
+SDK_DISCOVERY_CALLS = ("get_functions",)
+
+# Azure-facing modules that were refactored in #325 to delegate SDK access to
+# the adapters package instead of reaching into private SDK internals directly.
+ADAPTER_CONSUMERS = ("decorator", "bridge")
+
+
+def _sdk_internal_violations(module: str) -> list[str]:
+    """Report direct SDK-private attribute access / discovery calls in *module*."""
+    module_path = _resolve(module)
+    assert module_path is not None, f"cannot locate source for module '{module}'"
+    tree = ast.parse(module_path.read_text(encoding="utf-8"))
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in SDK_PRIVATE_ATTRS:
+            violations.append(f"{module}: accesses SDK-private attribute '.{node.attr}'")
+        elif isinstance(node, ast.Attribute) and node.attr in SDK_DISCOVERY_CALLS:
+            violations.append(f"{module}: calls SDK discovery method '.{node.attr}()'")
+        elif isinstance(node, ast.Name) and node.id in SDK_PRIVATE_ATTRS:
+            violations.append(f"{module}: references SDK-private name '{node.id}'")
+    return violations
+
+
+@pytest.mark.parametrize("module", ADAPTER_CONSUMERS)
+def test_adapter_consumers_do_not_touch_sdk_internals(module: str) -> None:
+    """decorator.py and bridge.py must delegate SDK access to adapters (#325)."""
+    violations = _sdk_internal_violations(module)
+    assert not violations, (
+        f"'{module}.py' must not reach into Azure Functions SDK internals "
+        "directly; route the access through the 'adapters' package instead:\n  "
+        + "\n  ".join(violations)
+    )
+
+
+def test_adapters_package_is_the_only_function_builders_seam() -> None:
+    """Only the adapters package may touch the SDK-private discovery token."""
+    offenders: list[str] = []
+    for path in sorted(SRC_ROOT.rglob("*.py")):
+        if path.parent.name == "adapters":
+            continue
+        source = path.read_text(encoding="utf-8")
+        if "_function_builders" in source:
+            offenders.append(str(path.relative_to(SRC_ROOT)))
+    assert not offenders, (
+        "'_function_builders' is an undocumented SDK internal and may only be "
+        f"accessed from the adapters package; found in: {offenders}"
+    )
+
+
+def test_adapters_package_actually_encapsulates_the_sdk() -> None:
+    """Sanity check: the adapter must genuinely own the SDK discovery token."""
+    adapter_src = (SRC_ROOT / "adapters" / "azure_functions.py").read_text(encoding="utf-8")
+    assert "_function_builders" in adapter_src, (
+        "Expected the discovery adapter to encapsulate '_function_builders'; "
+        "if this fails the #325 adapter guard is vacuous."
+    )

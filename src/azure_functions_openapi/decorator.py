@@ -5,10 +5,10 @@ import logging
 from typing import Any, Callable, TypeVar, cast
 import warnings
 
-from azure.functions.decorators.function_app import FunctionBuilder
 from pydantic import BaseModel
 
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
+from azure_functions_openapi import adapters
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry, canonical_function_id, registry
 from azure_functions_openapi.utils import sanitize_operation_id, validate_route_path
 
@@ -29,20 +29,13 @@ logger = logging.getLogger(__name__)
 
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     """Return the original decorated object and the underlying callable used for metadata."""
-    if isinstance(func, FunctionBuilder):
-        # ``FunctionBuilder._function._func`` is a private attribute of the
-        # ``azure-functions`` SDK. Guard against future renames/restructures so
-        # callers get an actionable error instead of an opaque AttributeError.
-        try:
-            return func, func._function._func
-        except AttributeError as exc:  # pragma: no cover - depends on SDK internals
-            raise SDKIncompatibleError(
-                "Unable to access FunctionBuilder._function._func; the installed "
-                "azure-functions SDK appears incompatible with @openapi. "
-                "Please report this issue at "
-                "https://github.com/yeongseon/azure-functions-openapi-python/issues "
-                f"with your azure-functions version. (underlying error: {exc})"
-            ) from exc
+    if adapters.is_function_builder(func):
+        # The user handler and bindings live on the SDK's FunctionBuilder, which
+        # only exposes them via private attributes. Route the access through the
+        # adapter so all SDK coupling (and the SDKIncompatibleError contract for
+        # renamed/restructured internals) stays in one place.
+        function = adapters.build_function(func)
+        return func, adapters.get_user_handler(function)
 
     if not callable(func):
         raise TypeError(f"Unsupported decorated object: {type(func).__name__}")
@@ -59,14 +52,11 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool]:
       HTTP method; in that case ``method`` is ``None`` and the caller must
       require an explicit ``method=`` argument from the user.
     """
-    if not isinstance(func, FunctionBuilder):
+    if not adapters.is_function_builder(func):
         return None, None, False
 
-    try:
-        function_obj = func._function
-        bindings = getattr(function_obj, "_bindings", [])
-    except AttributeError:
-        return None, None, False
+    function = adapters.build_function(func)
+    bindings = adapters.get_bindings(function)
 
     for binding in bindings:
         if str(getattr(binding, "type", "")).lower() != "httptrigger":

@@ -70,10 +70,31 @@ class MockFunction:
     _func: Any
     _bindings: list[Any]
 
+    # Public accessors mirroring azure.functions Function; the adapter reads the
+    # function exclusively through these (never the underscored fields).
+    def get_function_name(self) -> str:
+        return self._name
+
+    def get_user_function(self) -> Any:
+        return self._func
+
+    def get_bindings(self) -> list[Any]:
+        return self._bindings
+
+    def is_http_function(self) -> bool:
+        return any(
+            str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings
+        )
+
 
 @dataclass
 class MockBuilder:
     _function: MockFunction
+
+    # Public, idempotent build() mirroring FunctionBuilder.build; the adapter
+    # enumerates via _function_builders + this method (never get_functions()).
+    def build(self, auth_level: Any = None) -> MockFunction:
+        return self._function
 
 
 @dataclass
@@ -664,10 +685,16 @@ def test_scan_includes_headers_model_as_header_parameters() -> None:
 
 
 def test_scan_skips_builders_without_function_or_handler() -> None:
-    builder_without_function: Any = type("Builder", (), {"_function": None})()
+    # Under the public-accessor contract the only "skip" signal is a built
+    # function whose user handler is None (get_user_function() -> None).
     function_without_handler = MockFunction(_name="no_handler", _func=None, _bindings=[])
     builder_without_handler = MockBuilder(_function=function_without_handler)
-    app = MockApp(_function_builders=cast(Any, [builder_without_function, builder_without_handler]))
+    another_without_handler = MockBuilder(
+        _function=MockFunction(_name="also_no_handler", _func=None, _bindings=[])
+    )
+    app = MockApp(
+        _function_builders=cast(Any, [builder_without_handler, another_without_handler])
+    )
 
     scan_endpoint_metadata(app)
     assert get_openapi_registry() == {}
