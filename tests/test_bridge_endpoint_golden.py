@@ -141,8 +141,6 @@ def _canonical(spec: dict[str, Any]) -> str:
     would weaken the byte-identity guarantee this golden test enforces.
     """
     return json.dumps(spec, sort_keys=True)
-    """Deterministic, order-insensitive serialization for byte comparison."""
-    return json.dumps(spec, sort_keys=True, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -176,9 +174,10 @@ class Color(str, Enum):
 class EnumBody(BaseModel):
     """Flat body whose enum field forces an inline ``$defs`` block.
 
-    Both code paths embed ``request_body`` verbatim (the validation path also
-    uses ``type_to_schema(body, components=None)``), so even a ``$defs``-bearing
-    body stays byte-identical — hoisting only applies to ``response_model``.
+    Both code paths run ``request_body`` through the same inline-``$defs``
+    hoisting (``hoist_inline_defs`` now applies to request bodies, parameters,
+    and responses alike), so even a ``$defs``-bearing body stays byte-identical
+    across the endpoint and validation paths.
     """
 
     color: Color
