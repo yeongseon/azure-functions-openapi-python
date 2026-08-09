@@ -11,7 +11,7 @@ from typing import Any
 from pydantic import BaseModel
 import pytest
 
-from azure_functions_openapi.bridge import scan_validation_metadata
+from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.decorator import (
     clear_openapi_registry,
     get_openapi_registry,
@@ -147,7 +147,7 @@ def test_bridge_merges_into_correct_handler_on_name_collision(register_a_first: 
     # Attach validation metadata only to handler A and scan it.
     _set_validation(handler_a, {"body": Body})
     app = _make_app(name="create_user", route="users", handler=handler_a)
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
 
     reg = get_openapi_registry()
     a_id = canonical_function_id(handler_a)
@@ -167,9 +167,9 @@ def test_bridge_double_scan_does_not_duplicate(caplog: pytest.LogCaptureFixture)
     _set_validation(handler_a, {"body": Body})
     app = _make_app(name="create_user", route="users", handler=handler_a)
 
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
     count_after_first = len(get_openapi_registry())
-    scan_validation_metadata(app)
+    scan_endpoint_metadata(app)
     count_after_second = len(get_openapi_registry())
 
     assert count_after_first == count_after_second
@@ -189,7 +189,7 @@ def test_bridge_refuses_ambiguous_short_name_fallback(caplog: pytest.LogCaptureF
     app = _make_app(name="create_user", route="unrelated", handler=create_user)
 
     with caplog.at_level("WARNING"):
-        scan_validation_metadata(app)
+        scan_endpoint_metadata(app)
 
     assert any("ambiguous" in rec.message.lower() for rec in caplog.records)
     # A standalone endpoint was registered instead of a wrong merge.

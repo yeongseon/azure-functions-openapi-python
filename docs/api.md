@@ -18,7 +18,7 @@ from azure_functions_openapi import (
     openapi,
     register_openapi_metadata,
     render_swagger_ui,
-    scan_validation_metadata,
+    scan_endpoint_metadata,
 )
 ```
 
@@ -29,7 +29,7 @@ from azure_functions_openapi import (
 | `openapi` | decorator | Attach operation metadata to function handlers |
 | `register_openapi_metadata` | function | Register metadata for dynamically-created endpoints |
 | `clear_openapi_registry` | function | Remove all entries from the registry |
-| `scan_validation_metadata` | function | Auto-discover validation metadata from `@validate_http` handlers |
+| `scan_endpoint_metadata` | function | Auto-discover validation metadata from `@validate_http` handlers |
 | `generate_openapi_spec` | function | Build OpenAPI dictionary from decorator registry |
 | `get_openapi_json` | function | Build OpenAPI and serialize to JSON string |
 | `get_openapi_yaml` | function | Build OpenAPI and serialize to YAML string |
@@ -44,7 +44,7 @@ from azure_functions_openapi import (
 
 ```text
 @openapi metadata ---------> internal registry --> generate_openapi_spec --> JSON/YAML endpoint
-                                                    @validate_http metadata --> scan_validation_metadata(app) --^       `--> render_swagger_ui (docs)
+                                                    @validate_http metadata --> scan_endpoint_metadata(app) --^       `--> render_swagger_ui (docs)
 ```
 
 !!! note
@@ -161,22 +161,22 @@ The sections below are generated directly from source docstrings.
 
 ## Bridge: Auto-discover validation metadata
 
-### `scan_validation_metadata`
+### `scan_endpoint_metadata`
 
-::: azure_functions_openapi.scan_validation_metadata
+::: azure_functions_openapi.scan_endpoint_metadata
 
 Scans a `FunctionApp` for HTTP-triggered functions decorated with `@validate_http`
 and auto-registers their Pydantic models in the OpenAPI registry.
 
 ```python
-from azure_functions_openapi import scan_validation_metadata
+from azure_functions_openapi import scan_endpoint_metadata
 
 # Call after all routes are registered
-scan_validation_metadata(app)
+scan_endpoint_metadata(app)
 ```
 
 !!! info "No extra dependencies required"
-    `scan_validation_metadata()` reads the convention-based metadata attribute
+    `scan_endpoint_metadata()` reads the convention-based metadata attribute
     written by `@validate_http`.  No import from `azure-functions-validation` is needed —
     just install both packages in your project.
 

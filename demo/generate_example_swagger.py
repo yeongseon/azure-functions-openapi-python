@@ -15,7 +15,7 @@ registers all @openapi decorators via side-effect), then writes:
 Run once per example — in a separate subprocess per example so the
 process-global OpenAPI registry never leaks between runs. Do NOT call
 reload() because some examples (e.g. partner_import_bridge) call
-scan_validation_metadata(app) at module level — a second execution
+scan_endpoint_metadata(app) at module level — a second execution
 would conflict with the first import's registrations.
 """
 

@@ -25,7 +25,7 @@ To match this default, `azure-functions-openapi` uses `"/api"` as the default
 `route_prefix` in:
 
 - `generate_openapi_spec(..., route_prefix="/api")`
-- `scan_validation_metadata(app, route_prefix="/api")`
+- `scan_endpoint_metadata(app, route_prefix="/api")`
 - The CLI flag `azure-functions-openapi generate --route-prefix /api`
 
 ## Authoring routes with `@openapi`
@@ -56,7 +56,7 @@ azure-functions-openapi generate --app function_app --route-prefix ""
 
 ```python
 spec = generate_openapi_spec(route_prefix="")
-scan_validation_metadata(app, route_prefix="")
+scan_endpoint_metadata(app, route_prefix="")
 ```
 
 ### Custom prefix
@@ -69,7 +69,7 @@ azure-functions-openapi generate --app function_app --route-prefix /v1
 
 ```python
 spec = generate_openapi_spec(route_prefix="/v1")
-scan_validation_metadata(app, route_prefix="/v1")
+scan_endpoint_metadata(app, route_prefix="/v1")
 ```
 
 The prefix is normalized: leading slash is added if missing, trailing slashes
@@ -84,8 +84,8 @@ FunctionApp that mixes them produces a single, consistent `paths` map:
 | ------------------------------------ | ------------------------------------ |
 | `@openapi(route=...)` decorator      | `generate_openapi_spec(route_prefix=)` at spec-build time |
 | `register_openapi_metadata(path=...)`| `generate_openapi_spec(route_prefix=)` at spec-build time |
-| Validation bridge auto-discovery     | `scan_validation_metadata(route_prefix=)` at scan time and `generate_openapi_spec(route_prefix=)` at spec-build time |
+| Validation bridge auto-discovery     | `scan_endpoint_metadata(route_prefix=)` at scan time and `generate_openapi_spec(route_prefix=)` at spec-build time |
 
 To keep the bridge-discovered registry entries and the final spec aligned,
-pass the **same** `route_prefix` to both `scan_validation_metadata()` and
+pass the **same** `route_prefix` to both `scan_endpoint_metadata()` and
 `generate_openapi_spec()` (or the CLI `--route-prefix`).

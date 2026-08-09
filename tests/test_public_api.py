@@ -21,6 +21,8 @@ class TestAPISurface:
             "openapi",
             "register_openapi_metadata",
             "render_swagger_ui",
+            "scan_endpoint_metadata",
+            "scan_validation_metadata",
             "scan_validation_metadata",
         }
 
@@ -46,6 +48,7 @@ class TestAPISurface:
             openapi,
             register_openapi_metadata,
             render_swagger_ui,
+            scan_endpoint_metadata,  # noqa: F401
             scan_validation_metadata,
         )
 

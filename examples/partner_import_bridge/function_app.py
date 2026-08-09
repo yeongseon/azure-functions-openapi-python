@@ -3,7 +3,7 @@
 Demonstrates:
 - register_openapi_metadata() for dynamically registered routes
 - OpenAPIOperationMetadata dataclass
-- scan_validation_metadata(app) bridge integration
+- scan_endpoint_metadata(app) bridge integration
 - request_body_required parameter
 - Practical pattern: partner data import with batch processing
 """
@@ -24,7 +24,7 @@ from azure_functions_openapi import (
     OpenAPIOperationMetadata,
     get_openapi_json,
     register_openapi_metadata,
-    scan_validation_metadata,
+    scan_endpoint_metadata,
 )
 from azure_functions_openapi.swagger_ui import render_swagger_ui
 
@@ -152,11 +152,11 @@ def purge_partners(req: func.HttpRequest) -> func.HttpResponse:
 # ---------------------------------------------------------------------------
 # Bridge: auto-register OpenAPI metadata from @validate_http decorators
 # When azure-functions-validation exposes handler metadata,
-# scan_validation_metadata(app) picks it up automatically. For versions
+# scan_endpoint_metadata(app) picks it up automatically. For versions
 # that do not yet export metadata, register manually below.
 # ---------------------------------------------------------------------------
 
-scan_validation_metadata(app)
+scan_endpoint_metadata(app)
 
 
 # ---------------------------------------------------------------------------
