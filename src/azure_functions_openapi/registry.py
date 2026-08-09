@@ -134,16 +134,29 @@ class OpenAPIRegistry:
         logged at debug and vanished; recording it here lets the spec generator
         surface a structured ``discovery-skipped`` warning so CI can notice that
         an endpoint silently fell out of the spec.
+
+        Identical ``(function_name, reason)`` skips are deduplicated so repeated
+        scans (e.g. an app and its Blueprint, or a module re-import) do not spam
+        the same warning line — mirroring the idempotent merge of :attr:`entries`.
         """
         with self._lock:
-            self._discovery_warnings.append((function_name, reason))
+            record = (function_name, reason)
+            if record not in self._discovery_warnings:
+                self._discovery_warnings.append(record)
 
     @property
     def discovery_warnings(self) -> list[tuple[str | None, str]]:
-        """Return a copy of the recorded ``(function_name, reason)`` skips."""
-        with self._lock:
-            return list(self._discovery_warnings)
+        """Return the recorded ``(function_name, reason)`` skips, deduplicated.
 
+        The result is sorted deterministically (unnamed skips first, then by
+        name and reason) so downstream warning collection is reproducible, the
+        same guarantee :func:`_collect_skew_warnings` gives skew warnings.
+        """
+        with self._lock:
+            return sorted(
+                self._discovery_warnings,
+                key=lambda record: (record[0] is not None, record[0] or "", record[1]),
+            )
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import
 # time — before any application object exists — so a shared instance is required.

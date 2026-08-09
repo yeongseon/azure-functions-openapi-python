@@ -287,6 +287,36 @@ class TestDiscoverySkippedWarnings:
             for w in collect_spec_warnings(spec)
         )
 
+    def test_repeated_scans_do_not_duplicate_discovery_warning(self) -> None:
+        # Re-scanning the same app (idempotent like entry registration) must
+        # not accumulate duplicate discovery-skipped warnings (#352).
+        app = _make_app(_clean_namespaces())
+        app._function_builders.append(_UnbuildableBuilder("orphan"))
+
+        scan_endpoint_metadata(app)
+        scan_endpoint_metadata(app)
+        scan_endpoint_metadata(app)
+        report = generate_openapi_report()
+
+        skipped = [
+            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
+        ]
+        assert len(skipped) == 1
+
+    def test_discovery_warning_message_carries_sdk_reason(self) -> None:
+        # The build() failure reason must be surfaced in the warning message so
+        # operators can act on it, not just a fixed generic string (#352).
+        app = _make_app(_clean_namespaces())
+        app._function_builders.append(_UnbuildableBuilder("orphan"))
+        scan_endpoint_metadata(app)
+        report = generate_openapi_report()
+
+        skipped = [
+            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
+        ]
+        assert len(skipped) == 1
+        assert "does not have a trigger" in skipped[0].message
+
 
 # ---------------------------------------------------------------------------
 # CLI --fail-on-warnings exit-code gate

@@ -22,15 +22,19 @@ Two SDK facts shape this module:
    calling the *public*, idempotent :meth:`FunctionBuilder.build`. ``build`` runs
    the guarded, apply-once ``_validate_function`` and returns the *same*
    ``Function`` instance on every call, without touching ``functions_bindings``.
-   ``_function_builders`` is thus the one — and only — SDK-private token we keep,
-   and it lives exclusively in this module. ``Blueprint`` is a ``DecoratorApi``
-   and exposes ``_function_builders`` identically, so raw Blueprints, registered
-   Blueprints, and ``FunctionApp`` instances all enumerate through this one path.
+   ``_function_builders`` is the primary SDK-private token we keep, and it lives
+   exclusively in this module. ``Blueprint`` is a ``DecoratorApi`` and exposes
+   ``_function_builders`` identically, so raw Blueprints, registered Blueprints,
+   and ``FunctionApp`` instances all enumerate through this one path.
 
 2. **Per-function reads are entirely public.** Once a builder is built into a
    ``Function``, the name, user handler, bindings, HTTP-ness, and trigger are all
    available through documented public accessors — no ``_function`` / ``_func`` /
-   ``_bindings`` access is required anywhere.
+   ``_bindings`` access is required for a built function. The **one** exception is
+   :func:`_best_effort_builder_name`, which reads a *failed* builder's
+   ``_function`` solely to attribute a ``discovery-skipped`` warning (a builder
+   that never built exposes no public name); that read is guarded and falls back
+   to ``None``. See its docstring for the rationale.
 
 See issue #325 for the full rationale and empirical reproduction.
 """
