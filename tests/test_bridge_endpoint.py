@@ -641,3 +641,50 @@ def test_scan_validation_metadata_alias_matches_canonical_output() -> None:
     via_canonical = generate_openapi_spec()
 
     assert via_alias == via_canonical
+
+
+# ---------------------------------------------------------------------------
+# Additive non-success response metadata (issue #328)
+# ---------------------------------------------------------------------------
+
+
+def test_endpoint_v1_additive_422_response_is_preserved_in_spec() -> None:
+    """A non-success ``"422"`` response in an endpoint v1 payload survives the
+    scan/consumer path into the generated OpenAPI spec.
+
+    ``422`` is the first real *additive* ``version: 1`` case (validation #283):
+    adding a non-success response is an additive change that keeps ``version``
+    at ``1``. This test pins that contract with a payload authored **inline**,
+    so coverage does not depend on which ``azure-functions-validation`` release
+    happens to be installed on a given CI cell.
+    """
+    payload: dict[str, Any] = {
+        "version": 1,
+        "request_body": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+        "request_body_required": True,
+        "responses": {
+            "200": {"schema": {"type": "object", "properties": {"id": {"type": "integer"}}}},
+            "422": {
+                "description": "Validation error",
+                "schema": {
+                    "type": "object",
+                    "properties": {"detail": {"type": "string"}},
+                },
+            },
+        },
+    }
+    app = _make_app({"endpoint": payload})
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec()
+    responses = spec["paths"]["/api/users"]["post"]["responses"]
+    # The additive non-success status is present alongside the success status.
+    assert "200" in responses
+    assert "422" in responses
+    # The 422 response schema is carried through, not dropped or flattened away.
+    schema = responses["422"]["content"]["application/json"]["schema"]
+    assert schema["properties"]["detail"]["type"] == "string"
