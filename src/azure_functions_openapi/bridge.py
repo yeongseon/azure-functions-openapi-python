@@ -110,6 +110,37 @@ def _extract_methods(binding: Any) -> tuple[list[str], bool]:
     return ["get"], False
 
 
+def _reconcile_all_methods_expansion(function: Any, handler: Any) -> None:
+    """Set ``_expand_all_methods`` on an already-registered ``@openapi`` entry
+    when the SDK scan finds binding evidence the decorator lacked (#354).
+
+    In the README-recommended decorator order (``@app.route`` above
+    ``@openapi``), ``@openapi`` decorates the *raw* function before ``@app.route``
+    wraps it, so no HTTP-trigger binding is visible at decoration time and the
+    entry is registered without the all-method expansion flag (emitting only a
+    single ``get``). The scan, however, sees the fully wrapped builder: when it
+    carries an ``httptrigger`` binding that omits ``methods=`` we set the flag on
+    the matching entry here, restoring parity with the reverse order (which
+    records the flag at decoration time, #347/#350). Matching is by collision-
+    free canonical function id, and an explicit ``method=`` is never overridden.
+    """
+    binding = _extract_http_binding(function)
+    if binding is None:
+        return
+    _methods, methods_expanded = _extract_methods(binding)
+    if not methods_expanded:
+        return
+    canonical_id = canonical_function_id(handler)
+    with registry.lock:
+        target = registry.find_by_function_id(canonical_id)
+        if (
+            target is not None
+            and target.get("method") is None
+            and not target.get("_expand_all_methods")
+        ):
+            target["_expand_all_methods"] = True
+
+
 def _merge_parameters(
     existing: list[dict[str, Any]],
     discovered: list[dict[str, Any]],
@@ -478,6 +509,10 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         endpoint_hints = _read_endpoint_hints(handler)
         metadata = None if endpoint_hints is not None else _read_validation_hints(handler)
         if endpoint_hints is None and metadata is None:
+            # Plain @openapi route (no endpoint/validation metadata): the main
+            # scan below does not revisit it, so reconcile all-method expansion
+            # from binding evidence the decorator could not see (#354).
+            _reconcile_all_methods_expansion(function, handler)
             continue
 
         handler_skew: set[WarningCode] = set()
