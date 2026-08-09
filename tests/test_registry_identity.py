@@ -16,11 +16,13 @@ from azure_functions_openapi.decorator import (
     clear_openapi_registry,
     get_openapi_registry,
     openapi,
+    register_openapi_metadata,
 )
 from azure_functions_openapi.registry import (
     OpenAPIRegistry,
     canonical_function_id,
 )
+from azure_functions_openapi.spec import generate_openapi_spec
 
 
 @pytest.fixture(autouse=True)
@@ -194,3 +196,32 @@ def test_bridge_refuses_ambiguous_short_name_fallback(caplog: pytest.LogCaptureF
     assert any("ambiguous" in rec.message.lower() for rec in caplog.records)
     # A standalone endpoint was registered instead of a wrong merge.
     assert "post::/api/unrelated" in get_openapi_registry()
+
+
+# ── Injected registry: generate_openapi_spec(registry=...) (#324) ───────────
+def test_generate_openapi_spec_uses_injected_registry_not_global() -> None:
+    """An injected registry is used verbatim and the global one is not consulted."""
+    # Populate a detached registry with one entry...
+    register_openapi_metadata(path="/api/injected", method="get", summary="Injected")
+    injected = OpenAPIRegistry()
+    for key, entry in get_openapi_registry().items():
+        injected.set(key, entry)
+
+    # ...then empty the global registry so any leakage would be observable.
+    clear_openapi_registry()
+    assert get_openapi_registry() == {}
+
+    spec = generate_openapi_spec(registry=injected)
+
+    # The injected entry drives the spec even though the global registry is empty.
+    assert "/api/injected" in spec["paths"]
+    assert "get" in spec["paths"]["/api/injected"]
+
+
+def test_generate_openapi_spec_falls_back_to_global_when_registry_absent() -> None:
+    """Without an injected registry, the global registry remains the source."""
+    register_openapi_metadata(path="/api/global", method="get", summary="Global")
+
+    spec = generate_openapi_spec()
+
+    assert "/api/global" in spec["paths"]

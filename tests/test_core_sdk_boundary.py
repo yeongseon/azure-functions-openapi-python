@@ -38,24 +38,54 @@ FORBIDDEN_SYMBOLS = ("FunctionBuilder",)
 FORBIDDEN_ATTRS = ("_function_builders",)
 
 
-def _module_path(module: str) -> Path:
-    return SRC_ROOT / f"{module}.py"
+def _resolve(dotted: str) -> Path | None:
+    """Resolve a first-party dotted module (relative to PACKAGE) to its file.
+
+    Handles both plain modules (``spec`` -> ``spec.py``) and packages
+    (``adapters`` -> ``adapters/__init__.py``, ``adapters.azure_functions`` ->
+    ``adapters/azure_functions.py``) so SDK coupling hidden inside a subpackage
+    is not silently dropped by truncating to the first path segment.
+    """
+    parts = dotted.split(".")
+    module_file = SRC_ROOT.joinpath(*parts).with_suffix(".py")
+    if module_file.exists():
+        return module_file
+    package_init = SRC_ROOT.joinpath(*parts, "__init__.py")
+    if package_init.exists():
+        return package_init
+    return None
 
 
 def _first_party_imports(tree: ast.AST) -> set[str]:
-    """Return the set of first-party sibling modules imported by *tree*."""
+    """Return first-party modules (dotted, relative to PACKAGE) imported by *tree*.
+
+    The full relative path after the package prefix is preserved so a submodule
+    import such as ``azure_functions_openapi.adapters.azure_functions`` resolves
+    to ``adapters/azure_functions.py`` instead of being truncated to
+    ``adapters`` (which would miss SDK coupling living in the submodule).
+    """
+    prefix = f"{PACKAGE}."
     modules: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             mod = node.module or ""
-            if mod.startswith(f"{PACKAGE}."):
-                modules.add(mod.split(".", 1)[1].split(".", 1)[0])
+            if not mod.startswith(prefix):
+                continue
+            base = mod[len(prefix) :]
+            if _resolve(base) is not None:
+                modules.add(base)
+            # ``from pkg.sub import name`` may import a submodule, not a symbol.
+            for alias in node.names:
+                candidate = f"{base}.{alias.name}"
+                if _resolve(candidate) is not None:
+                    modules.add(candidate)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name.startswith(f"{PACKAGE}."):
-                    modules.add(alias.name.split(".", 1)[1].split(".", 1)[0])
-    # Only keep those that map to a real module file in the package.
-    return {m for m in modules if _module_path(m).exists()}
+                if alias.name.startswith(prefix):
+                    base = alias.name[len(prefix) :]
+                    if _resolve(base) is not None:
+                        modules.add(base)
+    return modules
 
 
 def _import_closure(root: str) -> set[str]:
@@ -67,8 +97,8 @@ def _import_closure(root: str) -> set[str]:
         if current in seen:
             continue
         seen.add(current)
-        path = _module_path(current)
-        if not path.exists():
+        path = _resolve(current)
+        if path is None:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         stack.extend(_first_party_imports(tree) - seen)
@@ -77,7 +107,10 @@ def _import_closure(root: str) -> set[str]:
 
 def _sdk_violations(module: str) -> list[str]:
     """Return human-readable SDK-coupling violations for a single module."""
-    tree = ast.parse(_module_path(module).read_text(encoding="utf-8"))
+    path = _resolve(module)
+    if path is None:
+        return []
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     violations: list[str] = []
     for node in ast.walk(tree):
         # Forbidden imports (direct SDK import).
