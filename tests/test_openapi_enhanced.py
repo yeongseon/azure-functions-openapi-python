@@ -190,6 +190,7 @@ class TestGetOpenAPIJSONEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                registry=None,
             )
 
     def test_get_openapi_json_error(self) -> None:
@@ -218,6 +219,7 @@ class TestGetOpenAPIJSONEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                registry=None,
             )
 
     def test_get_openapi_json_logging(self) -> None:
@@ -255,6 +257,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                registry=None,
             )
 
     def test_get_openapi_yaml_error(self) -> None:
@@ -283,6 +286,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                registry=None,
             )
 
     def test_get_openapi_yaml_logging(self) -> None:
