@@ -243,6 +243,11 @@ def handle_generate(args: argparse.Namespace) -> int:
                     _json.dumps(warning.to_dict(), ensure_ascii=False),
                     file=sys.stderr,
                 )
+        # --fail-on-warnings gate: short-circuit BEFORE writing any artifact,
+        # so a wrong-but-plausible spec is never emitted (warnings were already
+        # surfaced to stderr above for CI to parse).
+        if getattr(args, "fail_on_warnings", False) is True and warnings:
+            return 2
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):
@@ -273,8 +278,6 @@ def handle_generate(args: argparse.Namespace) -> int:
         else:
             print(content)
 
-        if getattr(args, "fail_on_warnings", False) is True and warnings:
-            return 2
         return 0
     except OpenAPISpecConfigError as e:
         print(f"Error: {e}", file=sys.stderr)

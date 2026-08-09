@@ -276,3 +276,20 @@ class TestCliFailOnWarnings:
     def test_returns_zero_without_warnings_even_with_flag(self) -> None:
         scan_endpoint_metadata(_make_app(_clean_namespaces()))
         assert handle_generate(_args(fail_on_warnings=True)) == 0
+
+    def test_fail_on_warnings_does_not_write_output(self, tmp_path: Any) -> None:
+        # The gate must short-circuit BEFORE the artifact is written, so a
+        # wrong-but-plausible spec is never emitted (#345).
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        out = tmp_path / "openapi.json"
+        rc = handle_generate(_args(fail_on_warnings=True, output=str(out)))
+        assert rc == 2
+        assert not out.exists()
+
+    def test_output_written_when_flag_absent(self, tmp_path: Any) -> None:
+        # Without the gate, warnings do not block the artifact.
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        out = tmp_path / "openapi.json"
+        rc = handle_generate(_args(fail_on_warnings=False, output=str(out)))
+        assert rc == 0
+        assert out.exists()
