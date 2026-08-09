@@ -46,10 +46,25 @@ class MockFunction:
     _func: Any
     _bindings: list[Any]
 
+    def get_function_name(self) -> str:
+        return self._name
+
+    def get_user_function(self) -> Any:
+        return self._func
+
+    def get_bindings(self) -> list[Any]:
+        return self._bindings
+
+    def is_http_function(self) -> bool:
+        return any(str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings)
+
 
 @dataclass
 class MockBuilder:
     _function: MockFunction
+
+    def build(self, auth_level: Any = None) -> MockFunction:
+        return self._function
 
 
 @dataclass
