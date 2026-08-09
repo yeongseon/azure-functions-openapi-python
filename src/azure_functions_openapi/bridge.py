@@ -457,7 +457,9 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     (default ``"/api"``). Pass ``""`` for hosts that disable the prefix or
     a custom value such as ``"/v1"`` to match a non-default deployment.
     """
-    functions = adapters.iter_functions(app)
+    functions = adapters.iter_functions(
+        app, on_skip=lambda name, reason: registry.add_discovery_warning(name, reason)
+    )
     if not functions:
         logger.debug("No function builders found on app; skipping validation scan")
         return

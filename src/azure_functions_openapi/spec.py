@@ -762,6 +762,10 @@ _SKEW_MESSAGES: dict[WarningCode, str] = {
         "Validation metadata could not be merged: the short function name is "
         "shared across modules. Registered a standalone endpoint instead."
     ),
+    WarningCode.DISCOVERY_SKIPPED: (
+        "A function builder could not be built during discovery and was omitted "
+        "from the spec; its trigger may be missing from its bindings."
+    ),
 }
 
 
@@ -804,6 +808,29 @@ def _collect_skew_warnings(registry: OpenAPIRegistry | None = None) -> list[Spec
                 )
             )
     return collected
+
+
+def _collect_discovery_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive discovery-skipped warnings from the registry's recorded skips.
+
+    The scan adapter records every function builder it could not build (see
+    :meth:`OpenAPIRegistry.add_discovery_warning`); this turns each recorded
+    ``(function_name, reason)`` into a structured :class:`SpecWarning` so a
+    silently omitted endpoint is observable to CI. When ``registry`` is provided
+    its skips are used, keeping warnings isolated to the same registry the spec
+    was built from; otherwise the process-wide global registry is consulted.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.DISCOVERY_SKIPPED,
+            message=_SKEW_MESSAGES[WarningCode.DISCOVERY_SKIPPED],
+            function_name=function_name,
+        )
+        for function_name, _reason in reg.discovery_warnings
+    ]
 
 
 def generate_openapi_report(
@@ -863,6 +890,7 @@ def collect_spec_warnings(
         A deterministic tuple of :class:`SpecWarning`.
     """
     warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
+    warnings_list.extend(_collect_discovery_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
     return tuple(warnings_list)
