@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 import sys
 
+from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
@@ -15,32 +16,57 @@ from azure_functions_openapi.spec import (
 )
 
 
-def _import_app_module(app: str) -> None:
+def _import_app_module(app: str) -> tuple[object | None, bool]:
     """Import a user module to trigger @openapi decorator registration.
 
     Accepts either ``module_name`` or ``module_name:variable`` format.
-    When the ``variable`` part is provided it is validated to exist on the
-    imported module so that typos are caught early.
+    When the ``variable`` part is provided it is resolved on the imported
+    module and returned so the caller can run endpoint-metadata discovery on
+    the live ``FunctionApp`` object. No variable-name guessing is performed:
+    metadata discovery only runs when an explicit ``:variable`` is supplied.
 
     Parameters:
         app: Module import path, optionally with a ``:variable`` suffix.
 
+    Returns:
+        A ``(resolved_app, variable_given)`` tuple. ``resolved_app`` is the
+        named attribute when a ``:variable`` suffix is present, otherwise
+        ``None``. ``variable_given`` records whether a ``:variable`` suffix
+        was supplied so the caller can emit an accurate discovery note.
+
     Raises:
+        ValueError: If the ``--app`` value is malformed (empty module, a
+            trailing ``:`` with no variable name, or a ``:variable`` that
+            resolves to ``None``).
         ImportError: If the module cannot be found or fails to import.
         AttributeError: If the named variable does not exist on the module.
     """
-    module_name, _, variable = app.partition(":")
+    module_name, sep, variable = app.partition(":")
     module_name = module_name.strip()
     if not module_name:
         raise ValueError(f"Invalid --app value: {app!r}. Expected 'module' or 'module:variable'.")
     mod = importlib.import_module(module_name)
-    if variable:
-        variable = variable.strip()
-        if not hasattr(mod, variable):
-            raise AttributeError(
-                f"Module '{module_name}' has no attribute '{variable}'. "
-                f"Check the variable name after the colon in --app {app!r}."
-            )
+    if not sep:
+        # No ``:variable`` suffix supplied — module-only import.
+        return None, False
+    variable = variable.strip()
+    if not variable:
+        raise ValueError(
+            f"Invalid --app value: {app!r}. Expected a non-empty variable name after "
+            "the ':' (e.g. 'function_app:app')."
+        )
+    if not hasattr(mod, variable):
+        raise AttributeError(
+            f"Module '{module_name}' has no attribute '{variable}'. "
+            f"Check the variable name after the colon in --app {app!r}."
+        )
+    resolved = getattr(mod, variable)
+    if resolved is None:
+        raise ValueError(
+            f"Variable '{variable}' resolved to None in --app {app!r}; expected a "
+            "FunctionApp object for endpoint-metadata discovery."
+        )
+    return resolved, True
 
 
 def main() -> int:
@@ -150,15 +176,33 @@ def handle_generate(args: argparse.Namespace) -> int:
     """Handle generate command."""
     try:
         # Import user module first so @openapi decorators populate the registry.
+        # When an explicit ``module:variable`` is given, resolve the FunctionApp
+        # object and run endpoint-metadata discovery so producers that register
+        # only via the ``endpoint`` namespace (e.g. @validate_http) are included.
         if getattr(args, "app", None):
             try:
-                _import_app_module(args.app)
+                resolved_app, variable_given = _import_app_module(args.app)
             except (ImportError, ValueError, AttributeError) as e:
                 print(
                     f"Error: Could not import module from --app {args.app!r}: {e}",
                     file=sys.stderr,
                 )
                 return 1
+
+            if variable_given and resolved_app is not None:
+                # One-shot discovery through the #325 adapter. `build()` is
+                # idempotent; we never call the non-idempotent `get_functions()`.
+                scan_endpoint_metadata(
+                    resolved_app, route_prefix=getattr(args, "route_prefix", "/api")
+                )
+            else:
+                print(
+                    "Note: metadata discovery skipped — no ':variable' given in "
+                    f"--app {args.app!r}. Only @openapi-decorated routes were "
+                    "registered on import. Pass 'module:variable' (e.g. "
+                    "function_app:app) to also discover endpoint-metadata routes.",
+                    file=sys.stderr,
+                )
 
         openapi_version = (
             OPENAPI_VERSION_3_1 if args.openapi_version == "3.1" else OPENAPI_VERSION_3_0

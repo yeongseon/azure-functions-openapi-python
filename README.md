@@ -151,10 +151,14 @@ azure-functions-openapi generate --app function_app --title "My API" --pretty --
 azure-functions-openapi generate --app function_app --format yaml --output openapi.yaml
 ```
 
-Pass `module:variable` when the `FunctionApp` instance has a non-default name:
+Pass `module:variable` to resolve the `FunctionApp` instance and also discover
+endpoint-metadata routes — those registered by producers like `@validate_http`
+or `azure-functions-langgraph` — merging them with your `@openapi` routes into a
+single spec. With `module` alone the CLI imports the module (firing `@openapi`
+decorators) but does not scan for endpoint metadata:
 
 ```bash
-azure-functions-openapi generate --app function_app:my_app --title "My API"
+azure-functions-openapi generate --app function_app:app --title "My API"
 ```
 
 See the [CLI Guide](docs/cli.md) for all options and CI integration examples.
