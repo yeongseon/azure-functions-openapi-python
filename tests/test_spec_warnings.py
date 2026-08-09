@@ -1,0 +1,228 @@
+"""Tests for structured spec-generation warnings and the CLI exit-code gate.
+
+Covers issue #318: version skew and namespace fallback must be observable as
+structured warnings and, under ``--fail-on-warnings``, must fail a CI build so a
+wrong-but-plausible spec is never promoted to an artifact.
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+from typing import Any
+
+from pydantic import BaseModel
+import pytest
+
+from azure_functions_openapi._warnings import SpecWarning, WarningCode
+from azure_functions_openapi.bridge import scan_endpoint_metadata
+from azure_functions_openapi.cli import handle_generate
+from azure_functions_openapi.decorator import clear_openapi_registry
+from azure_functions_openapi.spec import (
+    generate_openapi_report,
+    generate_openapi_spec,
+)
+
+# ---------------------------------------------------------------------------
+# Mock Azure Functions app scaffolding
+# ---------------------------------------------------------------------------
+
+
+class MockBinding:
+    def __init__(self, route: str, methods: list[str], type: str = "httpTrigger") -> None:
+        self.route = route
+        self.methods = methods
+        self.type = type
+
+
+class MockFunction:
+    def __init__(self, name: str, func: Any, bindings: list[Any]) -> None:
+        self._name = name
+        self._func = func
+        self._bindings = bindings
+
+    # Public accessors mirroring azure.functions Function; the adapter reads the
+    # function exclusively through these (never the underscored fields).
+    def get_function_name(self) -> str:
+        return self._name
+
+    def get_user_function(self) -> Any:
+        return self._func
+
+    def get_bindings(self) -> list[Any]:
+        return self._bindings
+
+    def is_http_function(self) -> bool:
+        return any(
+            str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings
+        )
+
+
+class MockBuilder:
+    def __init__(self, function: MockFunction) -> None:
+        self._function = function
+
+    # Public, idempotent build() mirroring FunctionBuilder.build; the adapter
+    # enumerates via _function_builders + this method (never get_functions()).
+    def build(self, auth_level: Any = None) -> MockFunction:
+        return self._function
+
+
+class MockApp:
+    def __init__(self, builders: list[MockBuilder]) -> None:
+        self._function_builders = builders
+
+
+class _Body(BaseModel):
+    name: str
+
+
+def _make_app(
+    namespaces: dict[str, Any],
+    *,
+    name: str = "create_user",
+    route: str = "users",
+    methods: list[str] | None = None,
+) -> MockApp:
+    def handler(req: Any) -> Any:
+        return req
+
+    setattr(handler, "_azure_functions_metadata", namespaces)
+    binding = MockBinding(route=route, methods=methods or ["POST"])
+    fn = MockFunction(name=name, func=handler, bindings=[binding])
+    return MockApp([MockBuilder(fn)])
+
+
+def _skewed_namespaces() -> dict[str, Any]:
+    """Endpoint namespace present but at an unsupported version, plus a valid
+    validation namespace — the exact shape that triggers a silent fallback."""
+    return {
+        "endpoint": {"version": 99, "request_body": {"type": "object"}},
+        "validation": {"version": 1, "body": _Body},
+    }
+
+
+def _clean_namespaces() -> dict[str, Any]:
+    return {"endpoint": {"version": 1, "request_body": {"type": "object"}}}
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry() -> Any:
+    clear_openapi_registry()
+    yield
+    clear_openapi_registry()
+
+
+# ---------------------------------------------------------------------------
+# SpecWarning / WarningCode value object
+# ---------------------------------------------------------------------------
+
+
+class TestSpecWarning:
+    def test_warning_code_serialises_as_plain_string(self) -> None:
+        assert WarningCode.VERSION_SKEW.value == "version-skew"
+        assert str(WarningCode.NAMESPACE_FALLBACK) == "namespace-fallback"
+
+    def test_to_dict_is_json_serialisable(self) -> None:
+        warning = SpecWarning(
+            code=WarningCode.VERSION_SKEW,
+            message="skewed",
+            function_name="post::/api/users",
+        )
+        payload = warning.to_dict()
+        assert payload == {
+            "code": "version-skew",
+            "message": "skewed",
+            "function_name": "post::/api/users",
+        }
+        # Round-trips through json without a custom encoder.
+        assert json.loads(json.dumps(payload)) == payload
+
+    def test_warning_is_frozen(self) -> None:
+        warning = SpecWarning(code=WarningCode.SPEC_VALIDATION, message="x")
+        # Frozen dataclasses raise FrozenInstanceError (an AttributeError
+        # subclass); assert the narrow type so unrelated failures don't pass.
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            warning.message = "y"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# generate_openapi_report
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateReport:
+    def test_report_spec_matches_generate_openapi_spec(self) -> None:
+        scan_endpoint_metadata(_make_app(_clean_namespaces()))
+        report = generate_openapi_report()
+        # Regenerating the plain spec from the same registry must be identical.
+        assert report.spec == generate_openapi_spec()
+
+    def test_clean_endpoint_has_no_warnings(self) -> None:
+        scan_endpoint_metadata(_make_app(_clean_namespaces()))
+        report = generate_openapi_report()
+        assert report.warnings == ()
+
+    def test_version_skew_surfaces_structured_warnings(self) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        report = generate_openapi_report()
+        codes = {w.code for w in report.warnings}
+        assert WarningCode.VERSION_SKEW in codes
+        assert WarningCode.NAMESPACE_FALLBACK in codes
+        # Every warning is attributed to the affected operation.
+        assert all(w.function_name for w in report.warnings)
+
+    def test_warnings_are_deterministic(self) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        first = generate_openapi_report().warnings
+        second = generate_openapi_report().warnings
+        assert first == second
+
+
+# ---------------------------------------------------------------------------
+# CLI --fail-on-warnings exit-code gate
+# ---------------------------------------------------------------------------
+
+
+def _args(**overrides: Any) -> argparse.Namespace:
+    base: dict[str, Any] = {
+        "title": "API",
+        "version": "1.0.0",
+        "openapi_version": "3.1",
+        "description": None,
+        "route_prefix": "/api",
+        "strict": False,
+        "fail_on_empty_paths": False,
+        "fail_on_warnings": False,
+        "format": "json",
+        "pretty": False,
+        "output": None,
+        "app": None,
+    }
+    base.update(overrides)
+    return argparse.Namespace(**base)
+
+
+class TestCliFailOnWarnings:
+    def test_returns_zero_with_warnings_when_flag_absent(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        assert handle_generate(_args(fail_on_warnings=False)) == 0
+        # Warnings are surfaced on stderr as pure JSON lines (no human-readable
+        # prefix) so CI can parse them with jsonlines/jq.
+        err_lines = [ln for ln in capsys.readouterr().err.splitlines() if ln.strip()]
+        assert err_lines
+        payloads = [json.loads(ln) for ln in err_lines]
+        assert any(p.get("code") == "version-skew" for p in payloads)
+
+    def test_returns_two_with_warnings_when_flag_set(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        assert handle_generate(_args(fail_on_warnings=True)) == 2
+
+    def test_returns_zero_without_warnings_even_with_flag(self) -> None:
+        scan_endpoint_metadata(_make_app(_clean_namespaces()))
+        assert handle_generate(_args(fail_on_warnings=True)) == 0
