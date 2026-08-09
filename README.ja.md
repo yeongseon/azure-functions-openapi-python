@@ -167,6 +167,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **拡張する:** [Producer Guide — 独自の endpoint メタデータを作成する](docs/extending/producer-guide.md)
 
 ## Ecosystem
 

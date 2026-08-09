@@ -167,6 +167,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **직접 확장하기:** [Producer Guide — 나만의 endpoint 메타데이터 작성하기](docs/extending/producer-guide.md)
 
 ## Ecosystem
 

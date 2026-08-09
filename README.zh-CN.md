@@ -167,6 +167,7 @@ func start
 - [Usage Guide](docs/usage.md)
 - [API Reference](docs/api.md)
 - [CLI Guide](docs/cli.md)
+- **扩展它:** [Producer Guide — 编写你自己的 endpoint 元数据](docs/extending/producer-guide.md)
 
 ## Ecosystem
 
