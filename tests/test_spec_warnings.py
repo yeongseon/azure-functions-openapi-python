@@ -381,3 +381,24 @@ class TestCliFailOnWarnings:
         rc = handle_generate(_args(fail_on_warnings=False, output=str(out)))
         assert rc == 0
         assert out.exists()
+
+    def test_empty_paths_hint_survives_and_priority_preserved(
+        self, tmp_path: Any, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # #353: when warnings AND empty paths coincide, the --fail-on-warnings
+        # gate must not pre-empt the empty-paths diagnostic. The hint must still
+        # print, --fail-on-empty-paths must remain reachable (exit 1), and no
+        # artifact may be written.
+        app = MockApp([_UnbuildableBuilder("orphan")])
+        scan_endpoint_metadata(app)
+        out = tmp_path / "openapi.json"
+        rc = handle_generate(
+            _args(
+                fail_on_warnings=True,
+                fail_on_empty_paths=True,
+                output=str(out),
+            )
+        )
+        assert rc == 1
+        assert not out.exists()
+        assert "Hint: use --app" in capsys.readouterr().err
