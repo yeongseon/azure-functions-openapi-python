@@ -244,6 +244,31 @@ def test_iter_functions_returns_empty_for_app_without_builders() -> None:
     assert adapters.iter_functions(_EmptyApp()) == []
 
 
+def test_iter_functions_skips_builder_that_fails_to_build() -> None:
+    """Regression (#337): a trigger-less builder is skipped, not fatal.
+
+    ``FunctionBuilder.build()`` raises ``ValueError`` for a function with no
+    trigger. Before #337 that ``ValueError`` propagated out of
+    ``iter_functions`` and aborted the entire scan, breaking the user's
+    Function App at import time. The adapter must skip the unbuildable builder
+    and still return the validly-built functions.
+    """
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="healthy", methods=["GET"])
+    def healthy(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=200)
+
+    @app.function_name(name="orphan")  # builder with no trigger decorator
+    def orphan(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("nope")
+
+    functions = adapters.iter_functions(app)
+
+    names = [adapters.get_function_name(fn) for fn in functions]
+    assert names == ["healthy"]
+
+
 @pytest.mark.parametrize("bad_type", ["queueTrigger", "timerTrigger", ""])
 def test_extract_http_binding_ignores_non_http_triggers(bad_type: str) -> None:
     """Only httpTrigger bindings are returned; other trigger types yield None."""
