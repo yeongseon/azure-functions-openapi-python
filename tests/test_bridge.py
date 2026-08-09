@@ -246,6 +246,11 @@ def test_scan_expands_unspecified_methods_to_all_http_methods() -> None:
 
     scan_endpoint_metadata(app)
 
+    registry_keys = set(get_openapi_registry())
+    for method in ("get", "post", "put", "delete", "patch", "head", "options"):
+        assert f"{method}::/api/users" in registry_keys
+
+
 def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
     # Policy (#335): when methods= is unspecified we expand to all HTTP methods,
     # but GET/HEAD/DELETE must not carry a requestBody (OpenAPI leaves it

@@ -373,3 +373,19 @@ def test_spec_explicit_method_stays_single_operation() -> None:
 
     spec = generate_openapi_spec()
     assert set(spec["paths"]["/api/explicit"]) == {"post"}
+
+
+def test_spec_expanded_methods_keep_unique_operation_ids() -> None:
+    # #335 regression: an explicit operation_id on an unspecified-method route
+    # must not be reused verbatim across every expanded operation (duplicate
+    # operationIds are invalid and error under strict=True). Each emitted
+    # operation is suffixed with its method to stay unique.
+    @openapi(route="/api/dup", operation_id="myOp")
+    def dup() -> None:  # pragma: no cover - registration only
+        ...
+
+    spec = generate_openapi_spec()
+    path_item = spec["paths"]["/api/dup"]
+    op_ids = [op["operationId"] for op in path_item.values()]
+    assert len(op_ids) == len(set(op_ids))
+    assert set(op_ids) == {f"myOp_{m}" for m in path_item}

@@ -36,7 +36,9 @@ def test_openapi_spec_http_trigger_metadata() -> None:
     http_get = spec["paths"]["/api/http_trigger"]["get"]
 
     # Basic metadata
-    assert http_get["operationId"] == "greetUser"
+    # method= unspecified -> #335 expands to all methods with per-method-unique
+    # operationIds (explicit operation_id suffixed by method).
+    assert http_get["operationId"] == "greetUser_get"
     assert http_get["tags"] == ["Example"]
     assert http_get["summary"] == "HTTP Trigger with name parameter"
 

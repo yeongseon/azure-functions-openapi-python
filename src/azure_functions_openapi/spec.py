@@ -68,6 +68,25 @@ def _ensure_default_response(
         "content": {"application/json": {"schema": resolved_schema}},
     }
 
+def _operation_id_for(
+    provided_id: str | None,
+    method: str,
+    logical_name: str,
+    methods_expanded: bool,
+) -> str:
+    """Return a unique ``operationId`` for one emitted method operation.
+
+    When an explicit ``operation_id`` is provided but the (unspecified) method
+    was auto-expanded to the full HTTP set, the same id would otherwise be
+    reused across every emitted operation, producing duplicate ``operationId``
+    values that violate the OpenAPI spec (an error under ``strict=True`` and
+    rejected by many tools). Suffix the provided id with the method in that
+    case; the auto-generated fallback is already per-method unique.
+    """
+    if provided_id:
+        return f"{provided_id}_{method}" if methods_expanded else provided_id
+    return f"{method}_{logical_name}"
+
 
 def _convert_nullable_to_type_array(schema: dict[str, Any]) -> dict[str, Any]:
     """Convert OpenAPI 3.0 nullable to 3.1 type array syntax."""
@@ -408,7 +427,9 @@ def generate_openapi_spec(
                     op: dict[str, Any] = {
                         "summary": meta.get("summary", ""),
                         "description": meta.get("description", ""),
-                        "operationId": meta.get("operation_id") or f"{method}_{logical_name}",
+                        "operationId": _operation_id_for(
+                            meta.get("operation_id"), method, logical_name, methods_expanded
+                        ),
                         "tags": meta.get("tags") or ["default"],
                         "responses": copy.deepcopy(responses),
                     }
