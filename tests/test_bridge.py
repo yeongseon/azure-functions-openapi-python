@@ -459,6 +459,54 @@ def test_scan_below_route_does_not_override_explicit_openapi_method() -> None:
     assert set(spec["paths"]["/api/things"].keys()) == {"put"}
 
 
+def test_scan_below_route_preserves_binding_route_when_name_differs() -> None:
+    # #360: the explode branch must carry the binding route onto each clone.
+    # @openapi below @app.route registers route=None; without preservation the
+    # spec falls back to the function name and emits the wrong path. Uses a
+    # route that can never equal the function name (real-world case).
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="create user")
+    def handler_one(req: Any) -> Any:
+        return req
+
+    setattr(handler_one, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_one", _func=handler_one, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    assert registry["post::/api/users/create"]["route"] == "users/create"
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    # Correct binding-derived path, NOT /api/handler_one, and not double-prefixed.
+    assert set(spec["paths"].keys()) == {"/api/users/create"}
+    assert set(spec["paths"]["/api/users/create"].keys()) == {"post"}
+
+
+def test_scan_below_route_preserves_explicit_openapi_route_override() -> None:
+    # #360: an explicit @openapi(route=...) must win over the binding route.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="create user", route="custom/path")
+    def handler_three(req: Any) -> Any:
+        return req
+
+    setattr(handler_three, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_three", _func=handler_three, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"].keys()) == {"/api/custom/path"}
+
+
 def test_scan_merges_explicit_function_name_entry() -> None:
     with _registry_lock:
         _openapi_registry["create_user"] = {
