@@ -11,8 +11,6 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **翻訳保留:** CLI の `--app module:variable` エンドポイントメタデータ検出セクション（#331）および **SDK 互換性** セクション（#332）は英語版 [README.md](README.md) に追加されましたが、まだ翻訳されていません。追跡: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334)。
-
 他の言語: [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md)
 
 **Azure Functions Python v2 プログラミング モデル**向けの OpenAPI（Swagger）ドキュメント生成と Swagger UI を提供します。
@@ -95,6 +93,32 @@ def create_user(req):
 - セキュアなデフォルトを備えた Swagger UI helper
 - 生成および検証ワークフローのための CLI ツール
 
+## CLI Quick Start
+
+デコレーターを適用した関数アプリから OpenAPI スペックを生成します。
+
+```bash
+# インストール
+pip install azure-functions-openapi
+
+# 関数アプリモジュールからスペックを生成（@openapi ルートを登録）
+azure-functions-openapi generate --app function_app --title "My API" --format json
+
+# 整形してファイルに出力
+azure-functions-openapi generate --app function_app --title "My API" --pretty --output openapi.json
+
+# YAML 出力
+azure-functions-openapi generate --app function_app --format yaml --output openapi.yaml
+```
+
+`module:variable` 形式を渡すと、`FunctionApp` インスタンスを解決し、`@validate_http` や `azure-functions-langgraph` などのプロデューサーが登録したエンドポイントメタデータのルートも検出して、`@openapi` ルートと 1 つのスペックにマージします。`module` のみを渡すと、CLI はモジュールをインポートし（`@openapi` デコレーターを実行）スペックを生成しますが、エンドポイントメタデータは検出しません。
+
+```bash
+azure-functions-openapi generate --app function_app:app --title "My API"
+```
+
+すべてのオプションと CI 統合の例は [CLI ガイド](docs/cli.md)を参照してください。
+
 ## Installation
 
 ```bash
@@ -107,6 +131,18 @@ Function App の依存関係には次を含めてください。
 azure-functions
 azure-functions-openapi
 ```
+
+## SDK Compatibility
+
+このパッケージは、`azure-functions` SDK からルート、メソッド、ハンドラーを 1 つの分離されたアダプター（`azure_functions_openapi.adapters`）を介して検出します。検出は **公開 API 優先** で、公開された冪等な `FunctionBuilder.build()` で列挙し、その他はすべて公開 `Function` アクセサー（`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`）を介して読み取ります。アダプターは冪等でない `FunctionApp.get_functions()` を決して呼び出しません。列挙に公開の代替手段がない **唯一** の非公開トークン `app._function_builders` のみがアダプター内部に分離され、必須のガードテストで保護されます。CI で明示的なマトリックスで検証します。経緯は [イシュー #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) と [イシュー #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327) を参照してください。
+
+| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0`（下限）  | ✅ 検証済 |             |             |             |             |
+| `1.24.0`          | ✅ 検証済 |             |             |             |             |
+| `latest` (`<2.0`) | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 |
+
+`pyproject.toml` のバージョンピンは `azure-functions>=1.21.0,<2.0.0` です。下限が `1.21.0` なのは、それ以前のリリースが `FunctionBuilder.__call__` から `None` を返すためです（テストと CLI 抽出でデコレートされたハンドラーの直接呼び出しが壊れる）。より新しい SDK が必要な場合はイシューを開いてください。上限を設けているのは、`azure-functions` 2.x が Python < 3.13 のサポートを廃止し、まだ `@openapi` で検証されていないためです。
 
 ## Quick Start
 
