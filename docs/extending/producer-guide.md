@@ -19,10 +19,13 @@ A producer attaches a **plain dict** to its HTTP handler under the
 `_azure_functions_metadata` attribute, in the `"endpoint"` namespace:
 
 ```python
+import azure.functions as func
+
+
 def make_handler():
-    def handler(req):
+    def handler(req: func.HttpRequest) -> func.HttpResponse:
         # ... your real handler logic ...
-        return req
+        return func.HttpResponse("ok")
 
     # The producer convention: a plain dict, no runtime dependency on
     # azure-functions-openapi / -validation / -langgraph.
