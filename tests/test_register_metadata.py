@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+import azure.functions as func
 from pydantic import BaseModel
 import pytest
 
@@ -331,17 +332,31 @@ def test_register_request_model_and_request_body_raises() -> None:
         )
 
 
-def test_spec_expands_unspecified_method_to_all_http_methods() -> None:
-    # #335: @openapi without method= must produce one operation per HTTP method
-    # (the Azure runtime responds to all methods when methods= is omitted),
-    # not a single GET operation.
+def test_spec_bare_openapi_without_binding_stays_single_get() -> None:
+    # #347: a bare @openapi with no @app.route binding and no method= has no
+    # evidence that the runtime answers every method, so it must emit a single
+    # GET operation rather than fanning out to all seven HTTP verbs.
     @openapi(route="/api/hello", summary="Hello")
     def hello() -> None:  # pragma: no cover - registration only
         ...
 
     spec = generate_openapi_spec()
-    path_item = spec["paths"]["/api/hello"]
-    assert set(path_item) == {
+    assert set(spec["paths"]["/api/hello"]) == {"get"}
+
+
+def test_spec_expands_unspecified_method_with_route_binding() -> None:
+    # #335/#347: @openapi over an @app.route that omits methods= DOES carry
+    # binding evidence that the runtime answers every method, so it expands to
+    # one operation per HTTP method.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(route="/api/hello", summary="Hello")
+    @app.route(route="hello")
+    def hello(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("OK", status_code=200)
+
+    spec = generate_openapi_spec()
+    assert set(spec["paths"]["/api/hello"]) == {
         "get",
         "post",
         "put",
@@ -353,11 +368,14 @@ def test_spec_expands_unspecified_method_to_all_http_methods() -> None:
 
 
 def test_spec_expanded_methods_omit_body_on_get_head_delete() -> None:
-    # #335 policy 1: a body-carrying @openapi with unspecified method expands to
-    # all methods but must not attach requestBody to GET/HEAD/DELETE.
+    # #335 policy 1: a body-carrying route whose binding omits methods= expands
+    # to all methods but must not attach requestBody to GET/HEAD/DELETE.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
     @openapi(route="/api/thing", request_model=DemoRequestModel)
-    def thing() -> None:  # pragma: no cover - registration only
-        ...
+    @app.route(route="thing")
+    def thing(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("OK", status_code=200)
 
     spec = generate_openapi_spec()
     path_item = spec["paths"]["/api/thing"]
@@ -377,12 +395,15 @@ def test_spec_explicit_method_stays_single_operation() -> None:
 
 def test_spec_expanded_methods_keep_unique_operation_ids() -> None:
     # #335 regression: an explicit operation_id on an unspecified-method route
-    # must not be reused verbatim across every expanded operation (duplicate
-    # operationIds are invalid and error under strict=True). Each emitted
-    # operation is suffixed with its method to stay unique.
+    # (binding present, methods= omitted) must not be reused verbatim across
+    # every expanded operation (duplicate operationIds are invalid and error
+    # under strict=True). Each emitted operation is suffixed with its method.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
     @openapi(route="/api/dup", operation_id="myOp")
-    def dup() -> None:  # pragma: no cover - registration only
-        ...
+    @app.route(route="dup")
+    def dup(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("OK", status_code=200)
 
     spec = generate_openapi_spec()
     path_item = spec["paths"]["/api/dup"]

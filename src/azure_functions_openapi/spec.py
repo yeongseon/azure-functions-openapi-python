@@ -302,14 +302,21 @@ def generate_openapi_spec(
                 # route & method --------------------------------------------------
                 raw_path = f"/{(meta.get('route') or logical_name).lstrip('/')}"
                 path = apply_route_prefix(raw_path, normalized_prefix)
-                # An unspecified method (``None``) means the Azure runtime
-                # responds to every HTTP method, so expand to the full set to
-                # match the endpoint-metadata scan path. An explicit method is
-                # emitted as a single operation, unchanged.
+                # An unspecified method (``None``) expands to the full HTTP set
+                # ONLY when there is binding evidence that the Azure runtime
+                # answers every method (an ``@app.route`` binding that omits
+                # ``methods=``), recorded as ``_expand_all_methods`` at
+                # registration. A bare ``@openapi`` with no binding leaves the
+                # method unresolved and emits a single ``get`` operation, and an
+                # explicit method is emitted as a single operation, unchanged.
                 raw_method = meta.get("method")
                 if raw_method is None:
-                    methods_to_emit = list(ALL_HTTP_METHODS)
-                    methods_expanded = True
+                    if meta.get("_expand_all_methods"):
+                        methods_to_emit = list(ALL_HTTP_METHODS)
+                        methods_expanded = True
+                    else:
+                        methods_to_emit = ["get"]
+                        methods_expanded = False
                 else:
                     methods_to_emit = [str(raw_method).lower()]
                     methods_expanded = False

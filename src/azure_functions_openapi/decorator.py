@@ -43,17 +43,22 @@ def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     return func, cast(Callable[..., Any], func)
 
 
-def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool]:
+def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool, bool]:
     """Extract route and method from a FunctionBuilder's HTTP trigger binding.
 
-    Returns ``(route, method, multiple_methods)`` where:
+    Returns ``(route, method, multiple_methods, methods_unspecified)`` where:
     - ``route`` and ``method`` may each be ``None`` if not available.
     - ``multiple_methods`` is ``True`` when the binding declares more than one
       HTTP method; in that case ``method`` is ``None`` and the caller must
       require an explicit ``method=`` argument from the user.
+    - ``methods_unspecified`` is ``True`` only when an ``httptrigger`` binding
+      is present but omits ``methods=`` entirely. This is the sole evidence
+      that the Azure runtime will answer *every* HTTP method, so it gates the
+      all-method expansion in the spec generator (a bare ``@openapi`` with no
+      binding must NOT expand).
     """
     if not adapters.is_function_builder(func):
-        return None, None, False
+        return None, None, False, False
 
     function = adapters.build_function(func)
     bindings = adapters.get_bindings(function)
@@ -70,14 +75,15 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool]:
             binding_method = methods_attr.lower()
         elif isinstance(methods_attr, (list, tuple)):
             if len(methods_attr) > 1:
-                return binding_route, None, True  # ambiguous — caller must require explicit method
+                # ambiguous — caller must require an explicit method=
+                return binding_route, None, True, False
             if methods_attr:
                 val = methods_attr[0]
                 binding_method = str(getattr(val, "value", val)).lower()
 
-        return binding_route, binding_method, False
+        return binding_route, binding_method, False, binding_method is None
 
-    return None, None, False
+    return None, None, False, False
 
 
 def openapi(
@@ -168,7 +174,11 @@ def openapi(
     route:
         Override for the HTTP route path (e.g. "/items/{id}").
     method:
-        Explicit HTTP method if not inferrable.
+        Explicit HTTP method for this operation. When omitted, the method is
+        inferred from the ``@app.route`` binding: a single ``methods=`` value is
+        used directly, and a binding that omits ``methods=`` expands to every
+        HTTP method (matching the Azure runtime). A bare ``@openapi`` with no
+        route binding and no ``method=`` emits a single ``get`` operation.
     parameters:
         List of param objects (query/path/header/cookie).
     security:
@@ -222,7 +232,9 @@ def openapi(
             # not explicitly provided by the caller.
             effective_route = route
             effective_method = method
-            binding_route, binding_method, binding_multi = _extract_binding_hints(func)
+            binding_route, binding_method, binding_multi, binding_methods_unspecified = (
+                _extract_binding_hints(func)
+            )
             if effective_route is None and binding_route is not None:
                 effective_route = binding_route
             if effective_method is None:
@@ -235,6 +247,12 @@ def openapi(
                         "Pass method=... explicitly to @openapi, "
                         "or create a separate @openapi-decorated function per method."
                     )
+
+            # All-method expansion (see spec generator) is only justified when a
+            # real httptrigger binding is present but omits ``methods=``; a bare
+            # @openapi with no binding leaves the method unresolved and must emit
+            # a single operation instead of fanning out to every HTTP verb (#347).
+            expand_all_methods = effective_method is None and binding_methods_unspecified
 
             # Enhanced input validation and sanitization
             validated_route = _validate_and_sanitize_route(effective_route, metadata_func.__name__)
@@ -333,6 +351,11 @@ def openapi(
                     # ── routing info ─────────────────────────────────────────
                     "route": validated_route,
                     "method": validated_method,
+                    # Evidence that the runtime answers every HTTP method
+                    # (binding present, ``methods=`` omitted). Gates all-method
+                    # expansion in the spec generator; a bare @openapi stays
+                    # single-operation (#347).
+                    "_expand_all_methods": expand_all_methods,
                     "parameters": validated_parameters,
                     "security": validated_security,
                     "security_scheme": validated_security_scheme,

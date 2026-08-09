@@ -94,7 +94,7 @@ def test_resolve_metadata_target_returns_original_and_callable() -> None:
 
 def test_extract_binding_hints_reads_route_and_method_from_real_binding() -> None:
     """``_extract_binding_hints`` must read the httptrigger binding produced
-    by the current SDK and return ``(route, method, multiple_methods)``.
+    by the current SDK and return ``(route, method, multiple_methods, methods_unspecified)``.
 
     This exercises the full integration between the SDK's binding shape
     (``binding.type``, ``binding.route``, ``binding.methods``) and our
@@ -106,10 +106,11 @@ def test_extract_binding_hints_reads_route_and_method_from_real_binding() -> Non
     def update_item(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("OK", status_code=200)
 
-    route, method, multi = _extract_binding_hints(update_item)
+    route, method, multi, unspecified = _extract_binding_hints(update_item)
     assert route == "items/{id}"
     assert method == "put"
     assert multi is False
+    assert unspecified is False
 
 
 def test_extract_binding_hints_signals_multiple_methods_from_real_binding() -> None:
@@ -126,7 +127,25 @@ def test_extract_binding_hints_signals_multiple_methods_from_real_binding() -> N
     def collection(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("OK", status_code=200)
 
-    route, method, multi = _extract_binding_hints(collection)
+    route, method, multi, unspecified = _extract_binding_hints(collection)
     assert route == "collection"
     assert method is None
     assert multi is True
+    assert unspecified is False
+
+
+def test_extract_binding_hints_flags_unspecified_methods_from_real_binding() -> None:
+    """``_extract_binding_hints`` must set ``methods_unspecified`` when an
+    httptrigger binding omits ``methods=`` entirely — the sole evidence that
+    justifies all-method expansion in the spec generator (#347)."""
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="anymethod")
+    def anymethod(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=200)
+
+    route, method, multi, unspecified = _extract_binding_hints(anymethod)
+    assert route == "anymethod"
+    assert method is None
+    assert multi is False
+    assert unspecified is True
