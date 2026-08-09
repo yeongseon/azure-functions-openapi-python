@@ -457,6 +457,12 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     (default ``"/api"``). Pass ``""`` for hosts that disable the prefix or
     a custom value such as ``"/v1"`` to match a non-default deployment.
     """
+    # Discovery skips are recorded on the *global* ``registry`` because this scan
+    # registers entries there too (see ``register_openapi_metadata`` below), so
+    # the skips and entries stay in the same registry. NOTE: if this function
+    # ever gains a ``registry`` parameter, route ``on_skip`` to that registry as
+    # well — otherwise discovery warnings would leak to / be read from the wrong
+    # registry, the exact mirror of the bug #344 fixed for skew warnings.
     functions = adapters.iter_functions(
         app, on_skip=lambda name, reason: registry.add_discovery_warning(name, reason)
     )

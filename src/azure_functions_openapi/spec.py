@@ -762,11 +762,15 @@ _SKEW_MESSAGES: dict[WarningCode, str] = {
         "Validation metadata could not be merged: the short function name is "
         "shared across modules. Registered a standalone endpoint instead."
     ),
-    WarningCode.DISCOVERY_SKIPPED: (
-        "A function builder could not be built during discovery and was omitted "
-        "from the spec; its trigger may be missing from its bindings."
-    ),
 }
+
+# Discovery-skipped is not a skew signal, so its message lives outside
+# ``_SKEW_MESSAGES``. The recorded SDK ``reason`` (which itself names the
+# function) is appended by :func:`_collect_discovery_warnings` for attribution.
+_DISCOVERY_SKIPPED_MESSAGE = (
+    "A function builder could not be built during discovery and was omitted "
+    "from the spec"
+)
 
 
 @dataclass(frozen=True)
@@ -826,10 +830,10 @@ def _collect_discovery_warnings(
     return [
         SpecWarning(
             code=WarningCode.DISCOVERY_SKIPPED,
-            message=_SKEW_MESSAGES[WarningCode.DISCOVERY_SKIPPED],
+            message=f"{_DISCOVERY_SKIPPED_MESSAGE}: {reason}",
             function_name=function_name,
         )
-        for function_name, _reason in reg.discovery_warnings
+        for function_name, reason in reg.discovery_warnings
     ]
 
 
