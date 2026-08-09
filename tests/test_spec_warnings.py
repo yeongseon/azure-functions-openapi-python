@@ -19,7 +19,9 @@ from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.cli import handle_generate
 from azure_functions_openapi.decorator import clear_openapi_registry
+from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
+    collect_spec_warnings,
     generate_openapi_report,
     generate_openapi_spec,
 )
@@ -178,6 +180,54 @@ class TestGenerateReport:
         first = generate_openapi_report().warnings
         second = generate_openapi_report().warnings
         assert first == second
+
+
+# ---------------------------------------------------------------------------
+# #344: injected-registry isolation for report/warnings
+# ---------------------------------------------------------------------------
+
+
+class TestReportRegistryIsolation:
+    """Report/warnings must honor an injected registry and never leak skew
+    warnings from a polluted global registry (#344)."""
+
+    @staticmethod
+    def _clean_registry() -> OpenAPIRegistry:
+        isolated = OpenAPIRegistry()
+        isolated.set(
+            "get::/api/isolated",
+            {
+                "function_name": "isolated",
+                "route": "isolated",
+                "method": "get",
+                "response": {"200": {"description": "OK"}},
+            },
+        )
+        return isolated
+
+    def test_report_ignores_global_skew_when_registry_injected(self) -> None:
+        # Pollute the global registry with version-skew + namespace fallback.
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        # Sanity: the default (global) path surfaces the skew.
+        global_codes = {w.code for w in generate_openapi_report().warnings}
+        assert WarningCode.VERSION_SKEW in global_codes
+        # An injected clean registry must not inherit the global skew.
+        report = generate_openapi_report(registry=self._clean_registry())
+        isolated_codes = {w.code for w in report.warnings}
+        assert WarningCode.VERSION_SKEW not in isolated_codes
+        assert WarningCode.NAMESPACE_FALLBACK not in isolated_codes
+
+    def test_collect_spec_warnings_honors_injected_registry(self) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        isolated = self._clean_registry()
+        spec = generate_openapi_spec(registry=isolated)
+        isolated_codes = {w.code for w in collect_spec_warnings(spec, registry=isolated)}
+        assert WarningCode.VERSION_SKEW not in isolated_codes
+        assert WarningCode.NAMESPACE_FALLBACK not in isolated_codes
+        # Without injection, the same spec still reflects the global skew.
+        assert any(
+            w.code == WarningCode.VERSION_SKEW for w in collect_spec_warnings(spec)
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -773,15 +773,17 @@ class SpecReport:
     warnings: tuple[SpecWarning, ...] = field(default_factory=tuple)
 
 
-def _collect_skew_warnings() -> list[SpecWarning]:
+def _collect_skew_warnings(registry: OpenAPIRegistry | None = None) -> list[SpecWarning]:
     """Derive skew warnings from ``_skew_flags`` recorded on registry entries.
 
     The bridge scanner tags entries at scan time; this re-derives structured
     warnings from a registry snapshot deterministically (entries sorted by key,
-    codes already stored in sorted order) with no global accumulator.
+    codes already stored in sorted order) with no global accumulator. When
+    ``registry`` is provided its snapshot is used instead of the global one, so
+    warnings stay isolated to the same registry the spec was built from.
     """
     collected: list[SpecWarning] = []
-    snapshot = get_openapi_registry()
+    snapshot = registry.snapshot() if registry is not None else get_openapi_registry()
     for key, entry in sorted(snapshot.items()):
         flags = entry.get("_skew_flags") or []
         function_name = entry.get("function_name") or key
@@ -805,6 +807,7 @@ def generate_openapi_report(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
 ) -> SpecReport:
     """Generate the spec together with structured, machine-readable warnings.
 
@@ -827,12 +830,15 @@ def generate_openapi_report(
         security_schemes=security_schemes,
         route_prefix=route_prefix,
         strict=strict,
+        registry=registry,
     )
-    warnings_list = collect_spec_warnings(spec)
+    warnings_list = collect_spec_warnings(spec, registry=registry)
     return SpecReport(spec=spec, warnings=warnings_list)
 
 
-def collect_spec_warnings(spec: dict[str, Any]) -> tuple[SpecWarning, ...]:
+def collect_spec_warnings(
+    spec: dict[str, Any], registry: OpenAPIRegistry | None = None
+) -> tuple[SpecWarning, ...]:
     """Derive the deterministic warning tuple for an already-generated spec.
 
     Combines scan-time skew signals (version skew, namespace fallback, ambiguous
@@ -842,11 +848,14 @@ def collect_spec_warnings(spec: dict[str, Any]) -> tuple[SpecWarning, ...]:
 
     Parameters:
         spec: The generated OpenAPI document to validate.
+        registry: Optional injected registry whose snapshot the skew warnings
+            are derived from. Defaults to the process-wide global registry so
+            the warnings match the spec built from that same registry.
 
     Returns:
         A deterministic tuple of :class:`SpecWarning`.
     """
-    warnings_list: list[SpecWarning] = _collect_skew_warnings()
+    warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
     return tuple(warnings_list)
