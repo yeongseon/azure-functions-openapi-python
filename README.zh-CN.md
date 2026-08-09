@@ -11,8 +11,6 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **翻译待处理：** CLI 的 `--app module:variable` 端点元数据发现部分（#331）和 **SDK 兼容性** 部分（#332）已添加到英文 [README.md](README.md)，但尚未翻译。跟踪：[#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334)。
-
 其他语言: [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md)
 
 为 **Azure Functions Python v2 编程模型**提供 OpenAPI（Swagger）文档生成和 Swagger UI。
@@ -95,6 +93,32 @@ def create_user(req):
 - 带有安全默认值的 Swagger UI helper
 - 用于生成和校验工作流的 CLI 工具
 
+## CLI Quick Start
+
+从应用了装饰器的函数应用生成 OpenAPI 规范：
+
+```bash
+# 安装
+pip install azure-functions-openapi
+
+# 从函数应用模块生成规范（注册 @openapi 路由）
+azure-functions-openapi generate --app function_app --title "My API" --format json
+
+# 美化输出并写入文件
+azure-functions-openapi generate --app function_app --title "My API" --pretty --output openapi.json
+
+# YAML 输出
+azure-functions-openapi generate --app function_app --format yaml --output openapi.yaml
+```
+
+传入 `module:variable` 会解析 `FunctionApp` 实例，并同时发现由 `@validate_http` 或 `azure-functions-langgraph` 等生产者注册的端点元数据路由，将它们与你的 `@openapi` 路由合并为单一规范。仅传入 `module` 时，CLI 会导入模块（触发 `@openapi` 装饰器）生成规范，但不会扫描端点元数据。
+
+```bash
+azure-functions-openapi generate --app function_app:app --title "My API"
+```
+
+有关所有选项和 CI 集成示例，请参阅 [CLI 指南](docs/cli.md)。
+
 ## Installation
 
 ```bash
@@ -107,6 +131,18 @@ pip install azure-functions-openapi
 azure-functions
 azure-functions-openapi
 ```
+
+## SDK Compatibility
+
+本包通过单一隔离适配器（`azure_functions_openapi.adapters`）从 `azure-functions` SDK 发现路由、方法和处理器。发现采用 **公共 API 优先** 策略：通过公共、幂等的 `FunctionBuilder.build()` 枚举，其余内容均通过公共 `Function` 访问器（`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`）读取。适配器绝不调用非幂等的 `FunctionApp.get_functions()`。枚举时没有公共替代方案的 **唯一** 非公开令牌 `app._function_builders` 仅驻留在适配器内部，并由强制守卫测试覆盖。我们在 CI 中使用明确的矩阵进行验证。背景请参阅 [问题 #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) 和 [问题 #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327)。
+
+| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0`（下限）  | ✅ 已测试 |             |             |             |             |
+| `1.24.0`          | ✅ 已测试 |             |             |             |             |
+| `latest` (`<2.0`) | ✅ 已测试 | ✅ 已测试 | ✅ 已测试 | ✅ 已测试 | ✅ 已测试 |
+
+`pyproject.toml` 中的版本锁定为 `azure-functions>=1.21.0,<2.0.0`。下限为 `1.21.0` 是因为更早的版本会从 `FunctionBuilder.__call__` 返回 `None`（会破坏测试和 CLI 提取中对装饰处理器的直接调用）。如果你需要更新的 SDK，请提交问题；设置上限是有意为之，因为 `azure-functions` 2.x 放弃了对 Python < 3.13 的支持，且尚未针对 `@openapi` 进行验证。
 
 ## Quick Start
 

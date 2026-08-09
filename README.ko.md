@@ -11,8 +11,6 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Translation pending:** The CLI `--app module:variable` endpoint-metadata discovery section (#331) and the **SDK Compatibility** section (#332), added to the English [README.md](README.md), are not yet translated here. Tracking: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334).
-
 다른 언어: [English](README.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
 **Azure Functions Python v2 프로그래밍 모델**을 위한 OpenAPI(Swagger) 문서화와 Swagger UI를 제공합니다.
@@ -95,6 +93,32 @@ def create_user(req):
 - 보안 기본값이 포함된 Swagger UI helper
 - 생성 및 검증 워크플로를 위한 CLI 도구
 
+## CLI Quick Start
+
+데코레이터가 적용된 함수 앱에서 OpenAPI 스펙을 생성합니다.
+
+```bash
+# 설치
+pip install azure-functions-openapi
+
+# 함수 앱 모듈에서 스펙 생성 (@openapi 라우트 등록)
+azure-functions-openapi generate --app function_app --title "My API" --format json
+
+# 예쁘게 출력하여 파일로 저장
+azure-functions-openapi generate --app function_app --title "My API" --pretty --output openapi.json
+
+# YAML 출력
+azure-functions-openapi generate --app function_app --format yaml --output openapi.yaml
+```
+
+`module:variable` 형식을 전달하면 `FunctionApp` 인스턴스를 확인하고, `@validate_http`나 `azure-functions-langgraph` 같은 프로듀서가 등록한 엔드포인트 메타데이터 라우트까지 함께 검색하여 `@openapi` 라우트와 하나의 스펙으로 병합합니다. `module`만 전달하면 CLI가 모듈을 임포트하여(`@openapi` 데코레이터 실행) 스펙을 생성하지만 엔드포인트 메타데이터는 검색하지 않습니다.
+
+```bash
+azure-functions-openapi generate --app function_app:app --title "My API"
+```
+
+모든 옵션과 CI 통합 예제는 [CLI 가이드](docs/cli.md)를 참고하세요.
+
 ## Installation
 
 ```bash
@@ -107,6 +131,18 @@ Function App 의존성에는 다음이 포함되어야 합니다.
 azure-functions
 azure-functions-openapi
 ```
+
+## SDK Compatibility
+
+이 패키지는 `azure-functions` SDK에서 라우트, 메서드, 핸들러를 하나의 격리된 어댑터(`azure_functions_openapi.adapters`)를 통해 검색합니다. 검색은 **공개 API 우선**으로, 공개적이고 멱등한 `FunctionBuilder.build()`로 열거하며 나머지는 모두 공개 `Function` 접근자(`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`)를 통해 읽습니다. 어댑터는 멱등하지 않은 `FunctionApp.get_functions()`를 절대 호출하지 않습니다. 열거에 공개 대체 수단이 없는 **유일한** 비공개 토큰 `app._function_builders`만 어댑터 내부에 격리되어 있으며 필수 가드 테스트로 보호됩니다. CI에서 명시적 매트릭스로 검증합니다. 배경은 [이슈 #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258)과 [이슈 #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327)을 참고하세요.
+
+| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0` (최소)   | ✅ 테스트됨 |             |             |             |             |
+| `1.24.0`          | ✅ 테스트됨 |             |             |             |             |
+| `latest` (`<2.0`) | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 |
+
+`pyproject.toml`의 버전 핀은 `azure-functions>=1.21.0,<2.0.0`입니다. 최소 버전이 `1.21.0`인 이유는 그 이전 릴리스가 `FunctionBuilder.__call__`에서 `None`을 반환하기 때문입니다(테스트와 CLI 추출에서 데코레이트된 핸들러의 직접 호출이 깨짐). 더 새로운 SDK가 필요하면 이슈를 열어 주세요. 상한을 둔 이유는 `azure-functions` 2.x가 Python < 3.13 지원을 중단하며 아직 `@openapi`로 검증되지 않았기 때문입니다.
 
 ## Quick Start
 
