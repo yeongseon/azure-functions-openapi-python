@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 import copy
 import logging
-from typing import Any, get_origin
+from typing import Any, cast, get_origin
 import warnings
 
 from pydantic import BaseModel
@@ -114,15 +114,18 @@ def _reconcile_all_methods_expansion(function: Any, handler: Any) -> None:
     """Set ``_expand_all_methods`` on an already-registered ``@openapi`` entry
     when the SDK scan finds binding evidence the decorator lacked (#354).
 
-    In the README-recommended decorator order (``@app.route`` above
-    ``@openapi``), ``@openapi`` decorates the *raw* function before ``@app.route``
-    wraps it, so no HTTP-trigger binding is visible at decoration time and the
-    entry is registered without the all-method expansion flag (emitting only a
-    single ``get``). The scan, however, sees the fully wrapped builder: when it
-    carries an ``httptrigger`` binding that omits ``methods=`` we set the flag on
-    the matching entry here, restoring parity with the reverse order (which
-    records the flag at decoration time, #347/#350). Matching is by collision-
-    free canonical function id, and an explicit ``method=`` is never overridden.
+    Whichever decorator order is used, ``@openapi`` decorates the function
+    before the HTTP-trigger binding is observable, so the entry is registered
+    with ``method=None`` and without the all-method expansion flag (emitting
+    only a single ``get``). This is easiest to hit in the README-recommended
+    order (``@openapi`` above ``@app.route``), where ``@openapi`` wraps the
+    ``@app.route`` result but still cannot read the binding's ``methods=``. The
+    scan, however, sees the fully wrapped builder: when it carries an
+    ``httptrigger`` binding that omits ``methods=`` we set the flag on the
+    matching entry here, restoring parity with the entry the decorator would
+    have recorded had the binding been visible (#347/#350). Matching is by
+    collision-free canonical function id, and an explicit ``method=`` is never
+    overridden.
     """
     binding = _extract_http_binding(function)
     if binding is None:
@@ -538,6 +541,18 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         path = _normalize_path(getattr(binding, "route", None), function_name, route_prefix)
         methods, methods_expanded = _extract_methods(binding)
 
+        # Resolve the canonical @openapi entry once (it does not vary per
+        # method). When @openapi decorates the handler BELOW @app.route, the
+        # decorator cannot see the HTTP binding and registers the entry with
+        # method=None. We must then explode that entry into one operation per
+        # bound method instead of merging every method into it, which would
+        # otherwise collapse the generated spec to a single GET (#358).
+        with registry.lock:
+            canonical_target = registry.find_by_function_id(canonical_id)
+        explode_canonical = (
+            canonical_target is not None and canonical_target.get("method") is None
+        )
+
         for method in methods:
             if endpoint_hints is not None:
                 discovered = _discovered_operation_from_endpoint(
@@ -558,6 +573,22 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
             entry_skew = set(handler_skew)
 
             with registry.lock:
+                if explode_canonical:
+                    # @openapi was applied BELOW @app.route, so its entry was
+                    # registered with method=None. Collapsing every bound
+                    # method into that single entry would make spec.py emit a
+                    # lone GET (#358). Instead, seed one per-method entry from
+                    # the @openapi metadata and merge the discovered operation
+                    # into it.
+                    seed = cast("dict[str, Any]", canonical_target)
+                    clone = copy.deepcopy(seed)
+                    clone["method"] = method
+                    _merge_into_existing(clone, discovered)
+                    if methods_expanded and method in BODYLESS_HTTP_METHODS:
+                        clone["request_body"] = None
+                    _tag_skew(clone, entry_skew)
+                    registry.set(endpoint_key, clone)
+                    continue
                 # Resolve the target entry by, in order of trust:
                 #   1. canonical callable identity (collision-free),
                 #   2. the OpenAPI endpoint key (method::path),
@@ -623,6 +654,17 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                 registered = registry.get(endpoint_key)
                 if registered is not None:
                     _tag_skew(registered, entry_skew)
+
+        # After exploding a method=None @openapi entry into per-method entries,
+        # drop the original so spec.py does not additionally emit it as a bare
+        # GET duplicate (#358). Match by identity: find_by_function_id returns
+        # the live entry but not its registry key.
+        if explode_canonical:
+            with registry.lock:
+                for key, entry in list(registry.entries.items()):
+                    if entry is canonical_target:
+                        del registry.entries[key]
+                        break
 
 
 def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:

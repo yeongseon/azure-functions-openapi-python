@@ -274,12 +274,13 @@ def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
 
 
 def test_scan_reconciles_plain_openapi_recommended_order_expansion() -> None:
-    # #354: in the README-recommended order (@app.route above @openapi), @openapi
-    # decorates the raw function before @app.route wraps it, so no binding is
-    # visible at decoration time and the entry emits GET only. The scan sees the
+    # #354: whichever decorator order is used, @openapi decorates the function
+    # before the HTTP-trigger binding is observable, so the entry is registered
+    # with method=None and emits GET only. This is easiest to hit in the
+    # README-recommended order (@openapi above @app.route). The scan sees the
     # wrapped builder with an httptrigger binding that omits methods=, and must
-    # reconcile the entry to expand to every HTTP method — matching the reverse
-    # order — even though the handler carries no endpoint/validation metadata.
+    # reconcile the entry to expand to every HTTP method — even though the
+    # handler carries no endpoint/validation metadata.
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -324,6 +325,138 @@ def test_scan_does_not_expand_plain_openapi_with_explicit_method() -> None:
     spec = generate_openapi_spec("T", "1.0.0")
 
     assert set(spec["paths"]["/api/things"].keys()) == {"post"}
+
+
+def test_scan_reconciles_method_for_openapi_below_route_post() -> None:
+    # #358: when @openapi sits BELOW @app.route, it decorates the raw function
+    # and registers with method=None (no binding visible). The scan sees the
+    # POST binding and must explode the method=None entry into a per-method
+    # entry — otherwise every method collapses into a lone GET.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="create thing", route="things")
+    def make_thing(req: Any) -> Any:
+        return req
+
+    setattr(make_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="make_thing", _func=make_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    # The original method=None short-name entry must be gone; only the
+    # per-method entry remains.
+    assert "make_thing" not in registry
+    assert "post::/api/things" in registry
+    entry = registry["post::/api/things"]
+    assert entry["method"] == "post"
+    assert entry["summary"] == "create thing"
+    assert entry["request_body"] is not None
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {"post"}
+
+
+def test_scan_reconciles_method_for_openapi_below_route_unspecified_expands() -> None:
+    # #358: an unspecified-methods binding below @openapi expands to every HTTP
+    # method, with GET/HEAD/DELETE stripped of the request body.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="any thing", route="things")
+    def any_thing(req: Any) -> Any:
+        return req
+
+    setattr(any_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="any_thing", _func=any_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    assert "any_thing" not in registry
+    for method in ("get", "head", "delete"):
+        assert registry[f"{method}::/api/things"]["request_body"] is None
+    for method in ("post", "put", "patch"):
+        assert registry[f"{method}::/api/things"]["request_body"] is not None
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+    }
+
+
+def test_scan_reconciles_method_for_openapi_below_route_multi_method() -> None:
+    # #358: an explicit multi-method binding below @openapi produces one entry
+    # per method (not a single collapsed GET).
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="rw thing", route="things")
+    def rw_thing(req: Any) -> Any:
+        return req
+
+    setattr(rw_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
+    fn = MockFunction(_name="rw_thing", _func=rw_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {"get", "post"}
+
+
+def test_scan_below_route_is_idempotent_across_repeated_scans() -> None:
+    # #358: re-running the scan must not duplicate or drop per-method entries.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="idem thing", route="things")
+    def idem_thing(req: Any) -> Any:
+        return req
+
+    setattr(idem_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="idem_thing", _func=idem_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {"post"}
+
+
+def test_scan_below_route_does_not_override_explicit_openapi_method() -> None:
+    # #358 guard: an explicit method= on @openapi must never be exploded or
+    # overridden by the binding — the entry keeps its declared method.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="explicit thing", route="things", method="put")
+    def explicit_thing(req: Any) -> Any:
+        return req
+
+    setattr(explicit_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="explicit_thing", _func=explicit_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {"put"}
 
 
 def test_scan_merges_explicit_function_name_entry() -> None:
