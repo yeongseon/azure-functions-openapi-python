@@ -94,6 +94,7 @@ Spec matches code. Always. Swagger UI out of the box.
 - **Auto-generated spec** — `/openapi.json` and `/openapi.yaml` endpoints from decorated handlers
 - **Swagger UI** — built-in `/docs` endpoint with security defaults
 - **CLI tooling** — generate specs at build time for CI validation
+- **Schema support** — query, path, header, body, and response schemas
 
 
 ### How it fits together
@@ -131,14 +132,6 @@ This package does not own:
 - Runtime exposure or graph deployment — use [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph-python)
 - Request/response validation or serialization — use [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)
 - Project scaffolding — use [`azure-functions-scaffold`](https://github.com/yeongseon/azure-functions-scaffold-python)
-
-## Features
-
-- `@openapi` decorator for operation metadata
-- `/openapi.json`, `/openapi.yaml`, and `/docs` endpoints
-- Query, path, header, body, and response schema support
-- Swagger UI helper with security defaults
-- CLI tooling for spec generation (JSON and YAML output)
 
 ## CLI Quick Start
 
@@ -392,7 +385,7 @@ This package is part of the **Azure Functions Python DX Toolkit**.
 |---------|------|
 | **azure-functions-openapi-python** | OpenAPI spec generation and Swagger UI |
 | [azure-functions-validation-python](https://github.com/yeongseon/azure-functions-validation-python) | Request/response validation and serialization |
-| [azure-functions-db-python](https://github.com/yeongseon/azure-functions-db-python) | Database bindings for SQL, PostgreSQL, MySQL, SQLite, and Cosmos DB |
+| [azure-functions-db-python](https://github.com/yeongseon/azure-functions-db-python) | SQLAlchemy-powered DB integration helpers (poll-based pseudo trigger, input/output/client injection) |
 | [azure-functions-langgraph-python](https://github.com/yeongseon/azure-functions-langgraph-python) | LangGraph deployment adapter for Azure Functions |
 | [azure-functions-scaffold-python](https://github.com/yeongseon/azure-functions-scaffold-python) | Project scaffolding CLI |
 | [azure-functions-logging-python](https://github.com/yeongseon/azure-functions-logging-python) | Structured logging and observability |

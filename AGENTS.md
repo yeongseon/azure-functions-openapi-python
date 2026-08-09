@@ -18,6 +18,11 @@
 - Keep documentation examples, generated schema expectations, and tests synchronized.
 - Prefer focused changes inside the existing extension points.
 
+### Documentation & Translations
+- When a change touches `README.md` or any English documentation, update the translated READMEs (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`) **in the same PR** so translations never drift from the English source.
+- This applies to any code change that alters documented behavior, CLI output, or the ecosystem/package table — not just direct edits to prose.
+- If a full translation cannot land in the same PR, add a short "translation pending" note to the affected translated file and open a tracking issue before merging.
+
 ## PR Workflow
 
 **Always issue-first.** Before opening any PR:
@@ -38,17 +43,15 @@ Follow these conventions when opening issues so the backlog stays consistent wit
 - Use Conventional Commit prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `build:`, `perf:`.
 - Add a scope qualifier when it narrows the area: `feat(cli):`, `docs(spec):`, `refactor(bridge):`.
 - Keep the title imperative, under ~80 characters, no trailing period.
-- Do **not** put `[P0]` / `[P1]` / `[P2]` (or any priority marker) in the title — priority lives in the body.
+- Do **not** put `[P0]` / `[P1]` / `[P2]` (or any priority marker) in the title — priority is tracked with a `priority:p0` / `priority:p1` / `priority:p2` label.
 
 ### Body
 
 Use the following sections, in order, omitting any that do not apply:
 
 ```
-## Priority: P0 | P1 | P2 (target vX.Y.Z, optional)
-
 ## Context
-What problem this issue addresses and why now.
+What problem this issue addresses and why now. Note the target release (e.g. vX.Y.Z) here if known.
 
 ## Acceptance Checklist
 - [ ] Concrete, verifiable items.
@@ -63,6 +66,7 @@ What problem this issue addresses and why now.
 ### Labels
 
 - Apply at least one of `bug`, `enhancement`, `documentation`, `chore`.
+- Apply exactly one `priority:p0` / `priority:p1` / `priority:p2` label to record priority (replaces the old `## Priority` body line).
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 
