@@ -540,6 +540,10 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
 
         path = _normalize_path(getattr(binding, "route", None), function_name, route_prefix)
         methods, methods_expanded = _extract_methods(binding)
+        # Raw binding route (prefix NOT applied): spec.py re-applies the route
+        # prefix to meta["route"] via apply_route_prefix, so storing the already
+        # normalized ``path`` (which includes the prefix) would double-prefix.
+        raw_route = getattr(binding, "route", None)
 
         # Resolve the canonical @openapi entry once (it does not vary per
         # method). When @openapi decorates the handler BELOW @app.route, the
@@ -583,6 +587,13 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     seed = cast("dict[str, Any]", canonical_target)
                     clone = copy.deepcopy(seed)
                     clone["method"] = method
+                    # Preserve the binding route on the clone. The decorator
+                    # could not see the binding, so @openapi registered
+                    # route=None; without this, spec.py falls back to the
+                    # function name and emits the wrong path (#360). An explicit
+                    # @openapi(route=...) stays truthy and is never overwritten.
+                    if clone.get("route") is None and raw_route:
+                        clone["route"] = raw_route
                     _merge_into_existing(clone, discovered)
                     if methods_expanded and method in BODYLESS_HTTP_METHODS:
                         clone["request_body"] = None
