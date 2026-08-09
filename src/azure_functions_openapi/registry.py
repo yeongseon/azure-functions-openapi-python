@@ -29,6 +29,7 @@ class OpenAPIRegistry:
 
     def __init__(self) -> None:
         self._entries: dict[str, dict[str, Any]] = {}
+        self._discovery_warnings: list[tuple[str | None, str]] = []
         self._lock = threading.RLock()
 
     @property
@@ -93,6 +94,7 @@ class OpenAPIRegistry:
         """Remove all entries, under :attr:`lock`."""
         with self._lock:
             self._entries.clear()
+            self._discovery_warnings.clear()
 
     def find_by_function_id(self, function_id: str) -> dict[str, Any] | None:
         """Return the entry whose ``_function_id`` equals *function_id*.
@@ -122,6 +124,25 @@ class OpenAPIRegistry:
                 for entry in self._entries.values()
                 if entry.get("function_name") == function_name
             )
+
+    def add_discovery_warning(self, function_name: str | None, reason: str) -> None:
+        """Record that a function builder was skipped during discovery.
+
+        The adapter enumeration path (:func:`iter_functions`) skips any builder
+        whose ``build()`` raises ``ValueError`` (a user-app state such as a
+        trigger missing from its bindings). Historically that skip was only
+        logged at debug and vanished; recording it here lets the spec generator
+        surface a structured ``discovery-skipped`` warning so CI can notice that
+        an endpoint silently fell out of the spec.
+        """
+        with self._lock:
+            self._discovery_warnings.append((function_name, reason))
+
+    @property
+    def discovery_warnings(self) -> list[tuple[str | None, str]]:
+        """Return a copy of the recorded ``(function_name, reason)`` skips."""
+        with self._lock:
+            return list(self._discovery_warnings)
 
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import

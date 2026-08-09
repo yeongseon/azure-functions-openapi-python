@@ -37,6 +37,7 @@ See issue #325 for the full rationale and empirical reproduction.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 from typing import Any, cast
 
@@ -79,7 +80,9 @@ def build_function(builder: Any, auth_level: Any = None) -> Function:
         ) from exc
 
 
-def iter_functions(app: Any) -> list[Function]:
+def iter_functions(
+    app: Any, on_skip: Callable[[str | None, str], None] | None = None
+) -> list[Function]:
     """Enumerate the built ``Function`` objects registered on *app*.
 
     Enumerates via the SDK-private ``_function_builders`` list (the only
@@ -95,6 +98,11 @@ def iter_functions(app: Any) -> list[Function]:
     logged at debug and omitted rather than aborting the whole scan. Returns an
     empty list when *app* exposes no builders (e.g. an app with no registered
     functions), matching the previous "skip quietly" behaviour.
+
+    When *on_skip* is provided it is invoked as ``on_skip(function_name, reason)``
+    for each skipped builder (name is best-effort and may be ``None`` when the
+    pre-build name is unavailable), letting callers record the omission as a
+    structured warning instead of losing it to a debug log.
     """
     builders = getattr(app, "_function_builders", None)
     if not builders:
@@ -106,7 +114,32 @@ def iter_functions(app: Any) -> list[Function]:
             functions.append(build_function(builder, auth_level))
         except ValueError as exc:  # no trigger / trigger not in bindings
             _logger.debug("Skipping unbuildable function during discovery: %s", exc)
+            if on_skip is not None:
+                on_skip(_best_effort_builder_name(builder), str(exc))
     return functions
+
+
+def _best_effort_builder_name(builder: Any) -> str | None:
+    """Best-effort function name for a builder that failed to build.
+
+    A builder whose ``build()`` raises never produces a ``Function``, so the
+    public per-function accessors are unavailable. The name a user assigned via
+    ``@function_name`` still lives on the builder's ``_function``; this reads it
+    defensively for the sole purpose of attributing a ``discovery-skipped``
+    warning. It is the one place besides ``_function_builders`` enumeration that
+    reaches for a private token, and only for an already-skipped builder — every
+    lookup is guarded and falls back to ``None`` so a shape change never breaks
+    discovery; the skip is still recorded, just without a name.
+    """
+    function = getattr(builder, "_function", None)
+    getter = getattr(function, "get_function_name", None)
+    if not callable(getter):
+        return None
+    try:
+        name = getter()
+    except Exception:  # pragma: no cover - defensive; name is best-effort only
+        return None
+    return str(name) if name is not None else None
 
 
 def get_function_name(function: Any) -> str:

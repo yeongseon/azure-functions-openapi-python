@@ -31,6 +31,7 @@ class WarningCode(str, Enum):
     AMBIGUOUS_NAMESPACE = "ambiguous-namespace"
     DUPLICATE_OPERATION = "duplicate-operation"
     SPEC_VALIDATION = "spec-validation"
+    DISCOVERY_SKIPPED = "discovery-skipped"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.value

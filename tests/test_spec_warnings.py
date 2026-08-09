@@ -72,7 +72,7 @@ class MockBuilder:
 
 
 class MockApp:
-    def __init__(self, builders: list[MockBuilder]) -> None:
+    def __init__(self, builders: list[Any]) -> None:
         self._function_builders = builders
 
 
@@ -227,6 +227,64 @@ class TestReportRegistryIsolation:
         # Without injection, the same spec still reflects the global skew.
         assert any(
             w.code == WarningCode.VERSION_SKEW for w in collect_spec_warnings(spec)
+        )
+
+
+# ---------------------------------------------------------------------------
+# #346: discovery-skipped warnings for unbuildable function builders
+# ---------------------------------------------------------------------------
+
+
+class _UnbuildableBuilder:
+    """Mimics a FunctionBuilder whose build() raises (e.g. a trigger-less
+    function) so the adapter skips it during discovery."""
+
+    def __init__(self, name: str) -> None:
+        # Mirror the real FunctionBuilder, which holds the pre-build name on a
+        # private ``_function`` (the only place a failed builder's name lives).
+        self._function = MockFunction(name=name, func=lambda req: req, bindings=[])
+
+    def build(self, auth_level: Any = None) -> Any:
+        raise ValueError(
+            f"Function {self._function.get_function_name()} does not have a trigger"
+        )
+
+
+class TestDiscoverySkippedWarnings:
+    """An unbuildable builder must surface a structured discovery-skipped
+    warning without aborting the scan (#346)."""
+
+    def test_skipped_builder_surfaces_discovery_warning(self) -> None:
+        app = _make_app(_clean_namespaces())
+        # Append a trigger-less builder alongside the valid one.
+        app._function_builders.append(_UnbuildableBuilder("orphan"))
+
+        scan_endpoint_metadata(app)
+        report = generate_openapi_report()
+
+        skipped = [
+            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
+        ]
+        assert len(skipped) == 1
+        assert skipped[0].function_name == "orphan"
+        # The valid endpoint is still present in the spec (scan not aborted).
+        assert report.spec["paths"]
+
+    def test_discovery_warning_honors_injected_registry(self) -> None:
+        app = _make_app(_clean_namespaces())
+        app._function_builders.append(_UnbuildableBuilder("orphan"))
+        scan_endpoint_metadata(app)
+        # An injected clean registry has recorded no skips of its own.
+        isolated = OpenAPIRegistry()
+        spec = generate_openapi_spec(registry=isolated)
+        isolated_codes = {
+            w.code for w in collect_spec_warnings(spec, registry=isolated)
+        }
+        assert WarningCode.DISCOVERY_SKIPPED not in isolated_codes
+        # The global path still reports the skip.
+        assert any(
+            w.code == WarningCode.DISCOVERY_SKIPPED
+            for w in collect_spec_warnings(spec)
         )
 
 

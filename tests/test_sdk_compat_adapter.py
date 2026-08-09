@@ -269,6 +269,37 @@ def test_iter_functions_skips_builder_that_fails_to_build() -> None:
     assert names == ["healthy"]
 
 
+def test_iter_functions_reports_skipped_builder_via_on_skip() -> None:
+    """A skipped builder is surfaced through the ``on_skip`` callback (#346).
+
+    Skipping keeps the scan alive (regression #337), but the omission must not
+    vanish silently: ``iter_functions`` invokes ``on_skip(name, reason)`` for
+    each unbuildable builder so callers can record a structured warning. The
+    best-effort name comes from the public ``function_name`` decorator.
+    """
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="healthy", methods=["GET"])
+    def healthy(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=200)
+
+    @app.function_name(name="orphan")  # builder with no trigger decorator
+    def orphan(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("nope")
+
+    skipped: list[tuple[str | None, str]] = []
+    functions = adapters.iter_functions(app, on_skip=lambda n, r: skipped.append((n, r)))
+
+    assert [adapters.get_function_name(fn) for fn in functions] == ["healthy"]
+    assert len(skipped) == 1
+    name, reason = skipped[0]
+    assert name == "orphan"
+    assert reason
+
+    names = [adapters.get_function_name(fn) for fn in functions]
+    assert names == ["healthy"]
+
+
 @pytest.mark.parametrize("bad_type", ["queueTrigger", "timerTrigger", ""])
 def test_extract_http_binding_ignores_non_http_triggers(bad_type: str) -> None:
     """Only httpTrigger bindings are returned; other trigger types yield None."""
