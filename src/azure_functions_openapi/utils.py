@@ -1,12 +1,15 @@
 # src/azure_functions_openapi/utils.py
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, cast, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+
+logger = logging.getLogger(__name__)
 
 
 def _rewrite_ref(ref: str) -> str:
@@ -72,6 +75,13 @@ def _resolve_name_collision(
     while True:
         candidate = f"{name}_{index}"
         if candidate not in existing:
+            logger.warning(
+                "Schema name collision while hoisting $defs: %r already exists in "
+                "components.schemas with different content; emitting deterministic "
+                "alias %r instead. Rename the producer model to silence this warning.",
+                name,
+                candidate,
+            )
             return candidate
         if existing[candidate] == schema:
             return candidate
