@@ -37,11 +37,14 @@ See issue #325 for the full rationale and empirical reproduction.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from azure.functions.decorators.function_app import Function, FunctionBuilder
 
 from azure_functions_openapi.exceptions import SDKIncompatibleError
+
+_logger = logging.getLogger(__name__)
 
 _HTTP_TRIGGER_TYPE = "httptrigger"
 
@@ -86,14 +89,24 @@ def iter_functions(app: Any) -> list[Function]:
     would poison the app's ``functions_bindings`` indexing state and break the
     user's Function App at boot.
 
-    Returns an empty list when *app* exposes no builders (e.g. an app with no
-    registered functions), matching the previous "skip quietly" behaviour.
+    Skips any builder whose :meth:`FunctionBuilder.build` raises ``ValueError``
+    (e.g. a function with no trigger, or a trigger not present in its bindings).
+    Such a function is a *user app state*, not an SDK incompatibility, so it is
+    logged at debug and omitted rather than aborting the whole scan. Returns an
+    empty list when *app* exposes no builders (e.g. an app with no registered
+    functions), matching the previous "skip quietly" behaviour.
     """
     builders = getattr(app, "_function_builders", None)
     if not builders:
         return []
     auth_level = getattr(app, "auth_level", None)
-    return [build_function(builder, auth_level) for builder in builders]
+    functions: list[Function] = []
+    for builder in builders:
+        try:
+            functions.append(build_function(builder, auth_level))
+        except ValueError as exc:  # no trigger / trigger not in bindings
+            _logger.debug("Skipping unbuildable function during discovery: %s", exc)
+    return functions
 
 
 def get_function_name(function: Any) -> str:
