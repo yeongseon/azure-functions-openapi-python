@@ -11,7 +11,7 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **翻訳保留:** CLI の `--app module:variable` エンドポイントメタデータ検出セクション（#331 で英語版 [README.md](README.md) に追加）はまだ翻訳されていません。追跡: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334)。
+> **翻訳保留:** CLI の `--app module:variable` エンドポイントメタデータ検出セクション（#331）および **SDK 互換性** セクション（#332）は英語版 [README.md](README.md) に追加されましたが、まだ翻訳されていません。追跡: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334)。
 
 他の言語: [English](README.md) | [한국어](README.ko.md) | [简体中文](README.zh-CN.md)
 

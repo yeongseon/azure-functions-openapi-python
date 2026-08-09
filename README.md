@@ -178,7 +178,7 @@ azure-functions-openapi
 
 ## SDK Compatibility
 
-This package extracts route and method metadata from `FunctionBuilder` produced by the `azure-functions` SDK. Because that extraction reads private SDK attributes, we validate the package against an explicit matrix in CI. See [issue #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) for background.
+This package discovers routes, methods, and handlers from the `azure-functions` SDK through a single isolated adapter (`azure_functions_openapi.adapters`). Discovery is **public-API-first**: it enumerates via the public, idempotent `FunctionBuilder.build()` and reads everything else through public `Function` accessors (`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`). The adapter never calls the non-idempotent `FunctionApp.get_functions()`. The **one** unavoidable private token — `app._function_builders`, which has no public substitute for enumeration — lives exclusively in the adapter and is covered by a mandatory guard test. We validate the package against an explicit matrix in CI. See [issue #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) and [issue #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327) for background.
 
 | `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
 | ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |

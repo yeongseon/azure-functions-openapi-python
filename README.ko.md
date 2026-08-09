@@ -11,7 +11,7 @@
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://yeongseon.github.io/azure-functions-openapi-python/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Translation pending:** The CLI `--app module:variable` endpoint-metadata discovery section (added to the English [README.md](README.md) in #331) is not yet translated here. Tracking: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334).
+> **Translation pending:** The CLI `--app module:variable` endpoint-metadata discovery section (#331) and the **SDK Compatibility** section (#332), added to the English [README.md](README.md), are not yet translated here. Tracking: [#334](https://github.com/yeongseon/azure-functions-openapi-python/issues/334).
 
 다른 언어: [English](README.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
