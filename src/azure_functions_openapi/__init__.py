@@ -1,4 +1,5 @@
 # src/azure_functions_openapi/__init__.py
+from azure_functions_openapi._warnings import SpecWarning, WarningCode
 import azure_functions_openapi.bridge as _bridge
 from azure_functions_openapi.decorator import (
     clear_openapi_registry,
@@ -9,6 +10,8 @@ from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncomp
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    SpecReport,
+    generate_openapi_report,
     generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
@@ -27,7 +30,11 @@ __all__ = [
     "OpenAPISpecConfigError",
     "SDKIncompatibleError",
     "OpenAPIOperationMetadata",
+    "SpecReport",
+    "SpecWarning",
+    "WarningCode",
     "clear_openapi_registry",
+    "generate_openapi_report",
     "generate_openapi_spec",
     "get_openapi_json",
     "get_openapi_yaml",
