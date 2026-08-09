@@ -1,6 +1,7 @@
 # src/azure_functions_openapi/spec.py
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import json
 import logging
 import re
@@ -8,6 +9,7 @@ from typing import Any
 
 import yaml
 
+from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.decorator import get_openapi_registry
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.routes import (
@@ -128,8 +130,7 @@ def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
                 return True
 
     # Recurse into nested structures
-    for key in ("properties", "items", "allOf", "anyOf", "oneOf",
-                "additionalProperties", "$defs"):
+    for key in ("properties", "items", "allOf", "anyOf", "oneOf", "additionalProperties", "$defs"):
         val = schema.get(key)
         if isinstance(val, dict):
             if key == "properties":
@@ -146,9 +147,7 @@ def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
     return False
 
 
-def _check_schemas_3_0_compatible(
-    schemas: dict[str, Any], strict: bool
-) -> list[str]:
+def _check_schemas_3_0_compatible(schemas: dict[str, Any], strict: bool) -> list[str]:
     """Check component schemas for OpenAPI 3.1-only constructs when targeting 3.0.
 
     Returns a list of warning messages for incompatible schemas.
@@ -170,7 +169,6 @@ def _check_schemas_3_0_compatible(
         )
 
     return warnings
-
 
 
 def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
@@ -205,9 +203,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                     if isinstance(content, dict):
                         for _media, media_obj in content.items():
                             if isinstance(media_obj, dict) and "schema" in media_obj:
-                                media_obj["schema"] = _convert_schema_to_3_1(
-                                    media_obj["schema"]
-                                )
+                                media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
 
             # parameters
             for param in operation.get("parameters", []):
@@ -215,6 +211,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                     param["schema"] = _convert_schema_to_3_1(param["schema"])
 
     return paths
+
 
 def generate_openapi_spec(
     title: str = "API",
@@ -280,9 +277,7 @@ def generate_openapi_spec(
                             if isinstance(media_obj, dict) and "schema" in media_obj:
                                 media_obj = {
                                     **media_obj,
-                                    "schema": hoist_inline_defs(
-                                        media_obj["schema"], components
-                                    ),
+                                    "schema": hoist_inline_defs(media_obj["schema"], components),
                                 }
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
@@ -354,9 +349,7 @@ def generate_openapi_spec(
                             "required": required,
                             "content": {
                                 "application/json": {
-                                    "schema": hoist_inline_defs(
-                                        meta["request_body"], components
-                                    )
+                                    "schema": hoist_inline_defs(meta["request_body"], components)
                                 }
                             },
                         }
@@ -436,9 +429,7 @@ def generate_openapi_spec(
             if openapi_version == OPENAPI_VERSION_3_1:
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
             elif openapi_version == OPENAPI_VERSION_3_0:
-                compat_warnings = _check_schemas_3_0_compatible(
-                    components["schemas"], strict
-                )
+                compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
                 for w in compat_warnings:
                     logger.warning("OpenAPI 3.0 compatibility: %s", w)
         if components.get("schemas") or components.get("securitySchemes"):
@@ -534,9 +525,7 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                 key = (name, location)
 
                 if key in seen_param_keys:
-                    warnings.append(
-                        f"Duplicate parameter ({location}:{name}) in {op_label}"
-                    )
+                    warnings.append(f"Duplicate parameter ({location}:{name}) in {op_label}")
                 seen_param_keys.add(key)
 
                 if location not in _VALID_PARAM_LOCATIONS:
@@ -548,9 +537,7 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                 if location == "path":
                     path_param_names.add(name)
                     if not param.get("required", False):
-                        warnings.append(
-                            f"Path parameter '{name}' in {op_label} must be required"
-                        )
+                        warnings.append(f"Path parameter '{name}' in {op_label} must be required")
 
             # --- template var ↔ path parameter matching ---
             missing = template_vars - path_param_names
@@ -677,3 +664,115 @@ def get_openapi_yaml(
     except Exception as e:
         logger.error(f"Failed to generate OpenAPI YAML: {str(e)}")
         raise RuntimeError("Failed to generate OpenAPI YAML") from e
+
+
+# Human-readable messages for each structured skew warning code. Kept here (not
+# on the enum) so the wording can evolve without touching the stable code values.
+_SKEW_MESSAGES: dict[WarningCode, str] = {
+    WarningCode.VERSION_SKEW: (
+        "Endpoint contract version is unsupported; the operation was generated "
+        "from a fallback namespace and may not match the intended contract."
+    ),
+    WarningCode.NAMESPACE_FALLBACK: (
+        "Endpoint namespace was present but rejected; fell back to the legacy "
+        "validation namespace for OpenAPI generation."
+    ),
+    WarningCode.AMBIGUOUS_NAMESPACE: (
+        "Validation metadata could not be merged: the short function name is "
+        "shared across modules. Registered a standalone endpoint instead."
+    ),
+}
+
+
+@dataclass(frozen=True)
+class SpecReport:
+    """An OpenAPI spec plus the structured warnings emitted while generating it.
+
+    ``spec`` is byte-for-byte the same mapping :func:`generate_openapi_spec`
+    returns; ``warnings`` surfaces version skew, namespace fallbacks, and
+    post-generation validation issues that would otherwise only appear in logs.
+    Consumers (notably CI) can inspect ``warnings`` to fail a build before a
+    wrong-but-plausible spec is promoted to an artifact.
+    """
+
+    spec: dict[str, Any]
+    warnings: tuple[SpecWarning, ...] = field(default_factory=tuple)
+
+
+def _collect_skew_warnings() -> list[SpecWarning]:
+    """Derive skew warnings from ``_skew_flags`` recorded on registry entries.
+
+    The bridge scanner tags entries at scan time; this re-derives structured
+    warnings from a registry snapshot deterministically (entries sorted by key,
+    codes already stored in sorted order) with no global accumulator.
+    """
+    collected: list[SpecWarning] = []
+    snapshot = get_openapi_registry()
+    for key, entry in sorted(snapshot.items()):
+        flags = entry.get("_skew_flags") or []
+        function_name = entry.get("function_name") or key
+        for code_value in flags:
+            code = WarningCode(code_value)
+            collected.append(
+                SpecWarning(
+                    code=code,
+                    message=_SKEW_MESSAGES.get(code, code.value),
+                    function_name=function_name,
+                )
+            )
+    return collected
+
+
+def generate_openapi_report(
+    title: str = "API",
+    version: str = "1.0.0",
+    openapi_version: str = OPENAPI_VERSION_3_1,
+    description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
+    security_schemes: dict[str, dict[str, Any]] | None = None,
+    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    strict: bool = False,
+) -> SpecReport:
+    """Generate the spec together with structured, machine-readable warnings.
+
+    Mirrors :func:`generate_openapi_spec` and returns the identical spec mapping
+    alongside a tuple of :class:`~azure_functions_openapi._warnings.SpecWarning`.
+    Warnings combine scan-time skew signals (version skew, namespace fallback,
+    ambiguous namespace) with post-generation spec validation findings, so a
+    caller can gate a build on their presence without parsing log output.
+
+    Parameters mirror :func:`generate_openapi_spec`.
+
+    Returns:
+        A :class:`SpecReport` with ``spec`` and a deterministic ``warnings`` tuple.
+    """
+    spec = generate_openapi_spec(
+        title,
+        version,
+        openapi_version,
+        description=description,
+        security_schemes=security_schemes,
+        route_prefix=route_prefix,
+        strict=strict,
+    )
+    warnings_list = collect_spec_warnings(spec)
+    return SpecReport(spec=spec, warnings=warnings_list)
+
+
+def collect_spec_warnings(spec: dict[str, Any]) -> tuple[SpecWarning, ...]:
+    """Derive the deterministic warning tuple for an already-generated spec.
+
+    Combines scan-time skew signals (version skew, namespace fallback, ambiguous
+    namespace) read from the registry with post-generation spec-validation
+    findings. Exposed separately so the CLI can pair it with a spec it generated
+    (or mocked) without regenerating.
+
+    Parameters:
+        spec: The generated OpenAPI document to validate.
+
+    Returns:
+        A deterministic tuple of :class:`SpecWarning`.
+    """
+    warnings_list: list[SpecWarning] = _collect_skew_warnings()
+    for message in _validate_spec(spec):
+        warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
+    return tuple(warnings_list)

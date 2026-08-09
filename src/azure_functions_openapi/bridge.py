@@ -17,6 +17,7 @@ from azure_functions_openapi._validation_contract import (
     SUPPORTED_VALIDATION_VERSIONS,
     VALIDATION_NAMESPACE,
 )
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import canonical_function_id, registry
@@ -24,6 +25,22 @@ from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route
 from azure_functions_openapi.utils import type_to_schema
 
 logger = logging.getLogger(__name__)
+
+
+def _tag_skew(entry: dict[str, Any], codes: Iterable[WarningCode]) -> None:
+    """Attach structured skew codes to a registry entry (deterministic order).
+
+    Stores the codes under the private ``_skew_flags`` key as a sorted list of
+    string values so :func:`generate_openapi_report` can re-derive structured
+    :class:`~azure_functions_openapi._warnings.SpecWarning` objects from the
+    registry snapshot without any global accumulator.
+    """
+    codes = list(codes)
+    if not codes:
+        return
+    merged: set[str] = {str(flag) for flag in entry.get("_skew_flags", ())}
+    merged.update(code.value for code in codes)
+    entry["_skew_flags"] = sorted(merged)
 
 
 def _is_base_model_type(model: Any) -> bool:
@@ -438,6 +455,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         if endpoint_hints is None and metadata is None:
             continue
 
+        handler_skew: set[WarningCode] = set()
         if endpoint_hints is None and metadata is not None and _has_endpoint_namespace(handler):
             logger.warning(
                 "Function '%s' carries an unsupported or malformed endpoint "
@@ -446,6 +464,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                 "endpoint contract.",
                 function_name,
             )
+            handler_skew.update({WarningCode.NAMESPACE_FALLBACK, WarningCode.VERSION_SKEW})
 
         canonical_id = canonical_function_id(handler)
 
@@ -469,6 +488,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
             else:  # pragma: no cover - guarded above (endpoint or metadata is set)
                 continue
             endpoint_key = f"{method}::{path}"
+            entry_skew = set(handler_skew)
 
             with registry.lock:
                 # Resolve the target entry by, in order of trust:
@@ -494,12 +514,14 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                             "instead.",
                             function_name,
                         )
+                        entry_skew.add(WarningCode.AMBIGUOUS_NAMESPACE)
                     else:
                         target = registry.get(function_name)
                         match_kind = "short-name fallback"
 
                 if target is not None:
                     _merge_into_existing(target, discovered)
+                    _tag_skew(target, entry_skew)
                     logger.debug(
                         "Merged validation metadata via %s into endpoint '%s'",
                         match_kind,
@@ -527,6 +549,9 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     parameters=discovered.get("parameters") or None,
                 )
             logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
+            registered = registry.get(endpoint_key)
+            if registered is not None:
+                _tag_skew(registered, entry_skew)
 
 
 def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:

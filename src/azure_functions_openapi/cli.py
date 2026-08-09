@@ -11,6 +11,7 @@ from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    collect_spec_warnings,
     generate_openapi_spec,
 )
 
@@ -128,6 +129,16 @@ Examples:
             "Recommended for CI pipelines where a missing path should break the build."
         ),
     )
+    generate_parser.add_argument(
+        "--fail-on-warnings",
+        action="store_true",
+        default=False,
+        help=(
+            "Exit with code 2 if the generator emits any structured warnings "
+            "(version skew, namespace fallback, or spec-validation issues). "
+            "Use in CI to stop a wrong-but-plausible spec from being published."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -176,6 +187,18 @@ def handle_generate(args: argparse.Namespace) -> int:
             route_prefix=getattr(args, "route_prefix", "/api"),
             strict=getattr(args, "strict", False),
         )
+        warnings = collect_spec_warnings(spec)
+        # Surface structured warnings (version skew / namespace fallback /
+        # spec-validation) as JSON lines on stderr so CI can parse them, and
+        # gate the exit code on them when --fail-on-warnings is set.
+        if warnings:
+            import json as _json
+
+            for warning in warnings:
+                print(
+                    "Warning: " + _json.dumps(warning.to_dict(), ensure_ascii=False),
+                    file=sys.stderr,
+                )
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):
@@ -206,6 +229,8 @@ def handle_generate(args: argparse.Namespace) -> int:
         else:
             print(content)
 
+        if getattr(args, "fail_on_warnings", False) is True and warnings:
+            return 2
         return 0
     except OpenAPISpecConfigError as e:
         print(f"Error: {e}", file=sys.stderr)
