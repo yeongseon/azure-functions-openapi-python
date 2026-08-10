@@ -107,6 +107,30 @@ def test_trivial_scalar_schema_left_inline_even_when_opted_in() -> None:
     assert components["schemas"] == {}
 
 
+def test_dict_map_schema_via_additional_properties_is_hoisted() -> None:
+    schema = {
+        "title": "WidgetMap",
+        "type": "object",
+        "additionalProperties": {"type": "integer"},
+    }
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components, hoist_flat=True)
+
+    assert result == {"$ref": "#/components/schemas/WidgetMap"}
+    assert components["schemas"]["WidgetMap"]["additionalProperties"] == {"type": "integer"}
+
+
+def test_open_object_with_bool_additional_properties_left_inline() -> None:
+    schema = {"type": "object", "additionalProperties": True}
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components, hoist_flat=True)
+
+    assert result == schema
+    assert components["schemas"] == {}
+
+
 def test_schema_with_defs_uses_main_path_regardless_of_flag() -> None:
     schema = {
         "type": "object",

@@ -148,18 +148,23 @@ def _schema_short_hash(schema: dict[str, Any]) -> str:
 def _is_hoistable_flat_schema(schema: Any) -> bool:
     """Return ``True`` for a flat schema worth promoting to ``components``.
 
-    Only structured schemas (objects with ``properties`` or a schema using a
-    composition keyword such as ``items``/``anyOf``) are hoisted; trivial
-    scalars like ``{"type": "string"}`` are left inline to avoid noisy,
-    single-use component entries.
+    Precondition: the caller has already established the schema is *flat* --
+    ``_needs_hoisting(schema) is False`` -- so this only classifies whether a
+    flat schema is *structured* enough to hoist (and never re-walks the tree).
+    Structured means an object with ``properties``, a dict/map object using a
+    schema-valued ``additionalProperties``, or a schema using a composition
+    keyword such as ``items``/``anyOf``. Trivial scalars like
+    ``{"type": "string"}`` (and ``additionalProperties: true``) are left inline
+    to avoid noisy, single-use component entries.
     """
     if not isinstance(schema, dict):
         return False
-    if _needs_hoisting(schema):  # nested $defs are handled by the main path
-        return False
     if "$ref" in schema:
         return False
-    return any(key in schema for key in _FLAT_COMPOSITION_KEYS)
+    if any(key in schema for key in _FLAT_COMPOSITION_KEYS):
+        return True
+    # dict/map schemas emit a schema-valued ``additionalProperties`` (not a bool).
+    return isinstance(schema.get("additionalProperties"), dict)
 
 
 def _flat_schema_name(schema: dict[str, Any]) -> str:
