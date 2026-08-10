@@ -327,6 +327,55 @@ def test_scan_does_not_expand_plain_openapi_with_explicit_method() -> None:
     assert set(spec["paths"]["/api/things"].keys()) == {"post"}
 
 
+def test_scan_reconciles_route_for_plain_openapi_explicit_method_no_route() -> None:
+    # #364 review C2: a plain @openapi(method=...) with no route= (decorated
+    # ABOVE @app.route, so the decorator cannot see the binding) registers with
+    # route=None. Without reconciliation spec.py falls back to the function name.
+    # The scan must fill the missing route from the HTTP binding WITHOUT
+    # exploding or overriding the explicit method.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="make thing", method="post")
+    def make_thing(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="make_thing", _func=make_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    assert registry["make_thing"]["route"] == "things"
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert "/api/things" in spec["paths"]
+    assert set(spec["paths"]["/api/things"].keys()) == {"post"}
+    assert "/api/make_thing" not in spec["paths"]
+
+
+def test_scan_preserves_explicit_route_for_plain_openapi_explicit_method() -> None:
+    # #364 review C2 guard: an explicit @openapi(route=...) must never be
+    # overwritten by the binding route during reconciliation.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="make thing", route="custom", method="post")
+    def make_thing_custom(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="make_thing_custom", _func=make_thing_custom, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert "/api/custom" in spec["paths"]
+    assert "/api/things" not in spec["paths"]
+
+
 def test_scan_reconciles_method_for_openapi_below_route_post() -> None:
     # #358: when @openapi sits BELOW @app.route, it decorates the raw function
     # and registers with method=None (no binding visible). The scan sees the
