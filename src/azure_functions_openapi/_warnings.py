@@ -32,6 +32,7 @@ class WarningCode(str, Enum):
     DUPLICATE_OPERATION = "duplicate-operation"
     SPEC_VALIDATION = "spec-validation"
     DISCOVERY_SKIPPED = "discovery-skipped"
+    EMPTY_DISCOVERY = "empty-discovery"
     METHOD_BINDING_MISMATCH = "method-binding-mismatch"
 
     def __str__(self) -> str:  # pragma: no cover - trivial

@@ -30,6 +30,7 @@ class OpenAPIRegistry:
     def __init__(self) -> None:
         self._entries: dict[str, dict[str, Any]] = {}
         self._discovery_warnings: list[tuple[str | None, str]] = []
+        self._empty_discoveries: list[str] = []
         self._lock = threading.RLock()
 
     @property
@@ -95,6 +96,7 @@ class OpenAPIRegistry:
         with self._lock:
             self._entries.clear()
             self._discovery_warnings.clear()
+            self._empty_discoveries.clear()
 
     def find_by_function_id(
         self, function_id: str, method: str | None = None
@@ -178,6 +180,26 @@ class OpenAPIRegistry:
                 self._discovery_warnings,
                 key=lambda record: (record[0] is not None, record[0] or "", record[1]),
             )
+
+    def add_empty_discovery(self, app_repr: str) -> None:
+        """Record that a scanned application object exposed no function builders.
+
+        This is a *different* condition from a builder-build failure recorded by
+        :meth:`add_discovery_warning`: no individual builder failed -- the app
+        simply had nothing to enumerate (#380). Keeping it on its own channel
+        lets the spec generator surface a distinct ``empty-discovery`` warning
+        instead of mislabelling it as a builder failure. Identical ``app_repr``
+        values are deduplicated, mirroring :meth:`add_discovery_warning`.
+        """
+        with self._lock:
+            if app_repr not in self._empty_discoveries:
+                self._empty_discoveries.append(app_repr)
+
+    @property
+    def empty_discoveries(self) -> list[str]:
+        """Return the recorded empty-app type names, deduplicated and sorted."""
+        with self._lock:
+            return sorted(self._empty_discoveries)
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import
 # time — before any application object exists — so a shared instance is required.

@@ -791,6 +791,15 @@ _DISCOVERY_SKIPPED_MESSAGE = (
     "A function builder could not be built during discovery and was omitted from the spec"
 )
 
+# Empty-discovery is distinct from a builder-build failure (#380): the scanned
+# application object exposed no builders at all, so no per-builder failure
+# occurred. It carries its own message so ``--fail-on-warnings`` users are not
+# told a builder "could not be built" when none was ever present.
+_EMPTY_DISCOVERY_MESSAGE = (
+    "No function builders were discovered on the scanned application object"
+)
+
+
 # Method/binding mismatch is authored disagreement, not a skew signal: an
 # explicit ``@openapi(method=...)`` names a verb the HTTP binding does not serve,
 # so the generated operation cannot be reached at runtime.
@@ -861,6 +870,28 @@ def _collect_discovery_warnings(
             function_name=function_name,
         )
         for function_name, reason in reg.discovery_warnings
+    ]
+
+
+def _collect_empty_discovery_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive empty-discovery warnings from the registry's recorded empty scans.
+
+    A scanned application object that exposes no function builders (#380) is a
+    distinct condition from a builder-build failure, so it gets its own
+    :class:`WarningCode.EMPTY_DISCOVERY` rather than reusing the builder-failure
+    template. When ``registry`` is provided its records are used, keeping
+    warnings isolated to the same registry the spec was built from.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.EMPTY_DISCOVERY,
+            message=f"{_EMPTY_DISCOVERY_MESSAGE} ({app_repr})",
+            function_name=None,
+        )
+        for app_repr in reg.empty_discoveries
     ]
 
 
@@ -957,6 +988,7 @@ def collect_spec_warnings(
     """
     warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
     warnings_list.extend(_collect_discovery_warnings(registry))
+    warnings_list.extend(_collect_empty_discovery_warnings(registry))
     warnings_list.extend(_collect_binding_mismatch_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
