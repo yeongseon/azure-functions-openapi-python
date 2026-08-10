@@ -75,7 +75,6 @@ def _resolve_name_collision(
     name = _sanitize_component_name(name)
     if name not in existing:
         return name
-        return name
     if existing[name] == schema:
         return name
     index = 2

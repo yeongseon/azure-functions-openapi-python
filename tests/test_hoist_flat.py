@@ -373,3 +373,21 @@ def test_defs_path_sanitizes_names_without_opt_in() -> None:
     assert "Order_Item" in components["schemas"]
     assert "Order/Item" not in components["schemas"]
     assert result["properties"]["item"] == {"$ref": "#/components/schemas/Order_Item"}
+
+
+def test_model_path_sanitizes_name_and_rewrites_ref() -> None:
+    # Regression (#379): the model hoisting path (``model_to_schema``) also flows
+    # through ``_resolve_name_collision``, so a model whose name contains ``/``
+    # must be sanitized and its root ``$ref`` rewritten to the resolvable key.
+    from pydantic import create_model
+
+    from azure_functions_openapi.utils import model_to_schema
+
+    weird_model = create_model("Order/Item", id=(int, ...))
+    components = _make_components()
+
+    result = model_to_schema(weird_model, components)
+
+    assert result == {"$ref": "#/components/schemas/Order_Item"}
+    assert "Order_Item" in components["schemas"]
+    assert "Order/Item" not in components["schemas"]
