@@ -468,6 +468,15 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     )
     if not functions:
         logger.debug("No function builders found on app; skipping validation scan")
+        # #373: an app that exposes no discoverable functions produces an empty
+        # ``paths`` object. Record a structured discovery-skipped warning (in
+        # addition to the debug log) so ``--fail-on-warnings`` can catch a
+        # silently-empty spec instead of the skip vanishing.
+        registry.add_discovery_warning(
+            None,
+            "no functions were discovered on the application object "
+            f"({type(app).__name__}); the generated spec will have empty paths",
+        )
         return
 
     for function in functions:

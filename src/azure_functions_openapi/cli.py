@@ -246,11 +246,18 @@ def handle_generate(args: argparse.Namespace) -> int:
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):
+            hint = (
+                "Hint: your function app imported cleanly but exposes no "
+                "@openapi-decorated routes, so there is nothing to document."
+                if getattr(args, "app", None)
+                else (
+                    "Hint: use --app <module> to import your function app before "
+                    "generating (e.g. --app function_app or --app function_app:app)."
+                )
+            )
             print(
                 "Warning: No routes found in the OpenAPI registry. "
-                "The generated spec contains no paths.\n"
-                "Hint: use --app <module> to import your function app before generating "
-                "(e.g. --app function_app or --app function_app:app).",
+                "The generated spec contains no paths.\n" + hint,
                 file=sys.stderr,
             )
             if getattr(args, "fail_on_empty_paths", False) is True:

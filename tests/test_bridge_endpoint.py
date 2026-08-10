@@ -282,6 +282,20 @@ def test_scan_endpoint_request_body_not_required() -> None:
     assert entry["request_body_required"] is False
 
 
+def test_scan_empty_app_records_discovery_warning() -> None:
+    # Regression (#373): an app exposing no discoverable functions must record a
+    # structured discovery-skipped warning (not just a debug log) so
+    # ``--fail-on-warnings`` can catch a silently-empty spec.
+    from azure_functions_openapi.registry import registry
+
+    app = MockApp([])
+    scan_endpoint_metadata(app)
+
+    warnings = registry.discovery_warnings
+    assert warnings, "expected a discovery-skipped warning for an empty app"
+    assert any(name is None and "empty paths" in reason for name, reason in warnings)
+
+
 # ---------------------------------------------------------------------------
 # Version-skew: endpoint preferred, validation fallback
 # ---------------------------------------------------------------------------
