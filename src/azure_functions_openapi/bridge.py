@@ -595,9 +595,23 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         # otherwise collapse the generated spec to a single GET (#358).
         with registry.lock:
             canonical_target = registry.find_by_function_id(canonical_id)
-        explode_canonical = (
-            canonical_target is not None and canonical_target.get("method") is None
-        )
+            explode_canonical = (
+                canonical_target is not None and canonical_target.get("method") is None
+            )
+            # An explicit @openapi(method=...) that the binding does not serve is
+            # a mismatch: stamp the binding's specified method set on the entry so
+            # spec.py can flag the unreachable operation (#362/#368). This mirrors
+            # the plain-@openapi path in _reconcile_openapi_binding; without it the
+            # warning only ever surfaced for handlers WITHOUT validation/endpoint
+            # metadata. Unspecified (auto-expanded) bindings serve every verb, so
+            # they are never stamped and never contradict the authored method.
+            if (
+                not explode_canonical
+                and canonical_target is not None
+                and canonical_target.get("method") is not None
+                and not methods_expanded
+            ):
+                canonical_target["_binding_methods"] = list(methods)
 
         for method in methods:
             if endpoint_hints is not None:
