@@ -12,6 +12,7 @@ from azure_functions_openapi.utils import (
     _resolve_name_collision,
     _rewrite_ref,
     _rewrite_refs_with_map,
+    _sanitize_component_name,
     model_to_schema,
     sanitize_operation_id,
     type_to_schema,
@@ -727,3 +728,36 @@ class TestPydanticV2EdgeCases:
         # PersonWithOptional should not have PersonWithLiteral's fields
         assert "role" not in components["schemas"]["PersonWithOptional"].get("properties", {})
         assert "nickname" not in components["schemas"]["PersonWithLiteral"].get("properties", {})
+
+
+class TestSanitizeComponentName:
+    """Test _sanitize_component_name enforces OpenAPI-name-safe keys (#394)."""
+
+    def test_json_pointer_chars_are_normalized(self) -> None:
+        assert _sanitize_component_name("Order/Item") == "Order_Item"
+        assert _sanitize_component_name("A~B") == "A_B"
+
+    def test_plain_names_are_preserved(self) -> None:
+        assert _sanitize_component_name("OrderItem") == "OrderItem"
+        assert _sanitize_component_name("Order_Item.v1-beta") == "Order_Item.v1-beta"
+
+    def test_openapi_invalid_chars_are_normalized(self) -> None:
+        # Spaces, '#', '@' are outside ^[a-zA-Z0-9._-]+$ and must not leak.
+        assert _sanitize_component_name("Order Item") == "Order_Item"
+        assert _sanitize_component_name("Order#1") == "Order_1"
+        assert _sanitize_component_name("user@example") == "user_example"
+
+    def test_result_always_matches_openapi_name_pattern(self) -> None:
+        import re
+
+        pattern = re.compile(r"^[a-zA-Z0-9._-]+$")
+        for raw in ("Order/Item", "Order Item", "###", "@@@", "héllo", "a b c"):
+            assert pattern.match(_sanitize_component_name(raw)), raw
+
+    def test_all_symbol_name_falls_back_to_deterministic_hash(self) -> None:
+        first = _sanitize_component_name("###")
+        second = _sanitize_component_name("###")
+        assert first == second  # deterministic
+        assert first.startswith("Schema_")
+        # A different all-symbol name yields a different key.
+        assert _sanitize_component_name("@@@") != first

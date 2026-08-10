@@ -142,10 +142,12 @@ def _needs_hoisting(obj: Any) -> bool:
 
 _FLAT_COMPOSITION_KEYS = ("properties", "items", "anyOf", "oneOf", "allOf")
 
-# JSON Pointer (RFC 6901) treats ``/`` as a path separator and ``~`` as an
-# escape; either inside a hoisted component name breaks ``#/components/schemas``
-# references, so they are normalized out of derived component identifiers.
-_UNSAFE_COMPONENT_NAME_CHARS = re.compile(r"[/~]")
+# OpenAPI component keys must match ``^[a-zA-Z0-9._-]+$``. That set also keeps a
+# hoisted name JSON-Pointer safe (RFC 6901), since ``/`` (path separator) and
+# ``~`` (escape) are excluded. Any other character -- spaces, ``#``, ``@``, etc.
+# -- would produce an invalid ``components``/``$defs`` key, so it is normalized
+# out of derived component identifiers.
+_UNSAFE_COMPONENT_NAME_CHARS = re.compile(r"[^a-zA-Z0-9._-]+")
 
 
 def _schema_short_hash(schema: dict[str, Any]) -> str:
@@ -184,15 +186,23 @@ def _is_hoistable_flat_schema(schema: Any) -> bool:
 
 
 def _sanitize_component_name(name: str) -> str:
-    """Normalize a component name to a JSON-Pointer-safe identifier.
+    """Normalize a component name to an OpenAPI-name-safe identifier.
 
-    A hoisted name is emitted as ``#/components/schemas/<name>``. The JSON
-    Pointer special characters ``/`` and ``~`` would otherwise be read as path
-    separators / escapes (RFC 6901), so ``"Order/Item"`` would resolve to
-    ``components -> schemas -> Order -> Item`` instead of the single key. We
-    normalize them to ``_`` so the reference always resolves to one component.
+    A hoisted name is emitted as ``#/components/schemas/<name>``. OpenAPI
+    component keys must match ``^[a-zA-Z0-9._-]+$``; any other character is
+    normalized to ``_``. This subsumes the JSON-Pointer safety concern (RFC
+    6901): ``/`` (path separator) and ``~`` (escape) are outside the allowed
+    set, so ``"Order/Item"`` becomes ``"Order_Item"`` and always resolves to a
+    single component key rather than a nested path. When no usable character
+    survives (e.g. an all-symbol title like ``"###"``), a deterministic
+    ``Schema_<hash>`` derived from the original name is returned so identical
+    inputs dedupe to one key and the result still matches ``^[a-zA-Z0-9._-]+$``.
     """
-    return _UNSAFE_COMPONENT_NAME_CHARS.sub("_", name)
+    sanitized = _UNSAFE_COMPONENT_NAME_CHARS.sub("_", name)
+    if not sanitized.strip("_"):
+        digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        return f"Schema_{digest}"
+    return sanitized
 
 
 def _flat_schema_name(schema: dict[str, Any]) -> str:
