@@ -512,6 +512,28 @@ class TestDuplicateOperationWarnings:
         second = collect_spec_warnings(generate_openapi_spec(registry=reg), registry=reg)
         assert not any(w.code == WarningCode.DUPLICATE_OPERATION for w in second)
 
+    def test_programmatic_reregistration_is_last_writer_wins(self) -> None:
+        # #397 (by design): a method+path pair is a single OpenAPI operation, so
+        # re-registering it replaces the prior entry rather than raising. This
+        # powers the scan-then-enrich pattern where the bridge seeds a minimal
+        # entry and the caller overrides it with richer metadata. Exactly one
+        # entry survives, and it is the last registration.
+        reg = OpenAPIRegistry()
+        register_openapi_metadata(
+            path="/api/dup", method="POST", summary="first", registry=reg
+        )
+        register_openapi_metadata(
+            path="/api/dup", method="POST", summary="second", registry=reg
+        )
+        snapshot = reg.snapshot()
+        assert len(snapshot) == 1
+        assert snapshot["post::/api/dup"]["summary"] == "second"
+        # A single surviving entry means no duplicate-operation warning: there is
+        # no second operation for the shared path to collide with.
+        spec = generate_openapi_spec(registry=reg)
+        codes = {w.code for w in collect_spec_warnings(spec, registry=reg)}
+        assert WarningCode.DUPLICATE_OPERATION not in codes
+
 
 # ---------------------------------------------------------------------------
 # #381: app-scoped (isolated) registry
