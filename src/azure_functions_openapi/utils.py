@@ -138,10 +138,22 @@ def _needs_hoisting(obj: Any) -> bool:
 
 _FLAT_COMPOSITION_KEYS = ("properties", "items", "anyOf", "oneOf", "allOf")
 
+# JSON Pointer (RFC 6901) treats ``/`` as a path separator and ``~`` as an
+# escape; either inside a hoisted component name breaks ``#/components/schemas``
+# references, so they are normalized out of derived component identifiers.
+_UNSAFE_COMPONENT_NAME_CHARS = re.compile(r"[/~]")
+
 
 def _schema_short_hash(schema: dict[str, Any]) -> str:
-    """Return a stable 8-char hash of a schema's canonical JSON form."""
-    canonical = json.dumps(schema, sort_keys=True, default=str)
+    """Return a stable 8-char hash of a schema's canonical JSON form.
+
+    Uses strict JSON serialization (no ``default=`` fallback) so a non-JSON
+    value raises :class:`TypeError` instead of being coerced to a string. That
+    keeps the hash deterministic across processes -- ``str(obj)`` can embed a
+    per-process memory address -- and enforces the endpoint-metadata contract
+    that schemas are plain, JSON-compatible dicts.
+    """
+    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
 
 
@@ -167,16 +179,29 @@ def _is_hoistable_flat_schema(schema: Any) -> bool:
     return isinstance(schema.get("additionalProperties"), dict)
 
 
+def _sanitize_component_name(name: str) -> str:
+    """Normalize a component name to a JSON-Pointer-safe identifier.
+
+    A hoisted name is emitted as ``#/components/schemas/<name>``. The JSON
+    Pointer special characters ``/`` and ``~`` would otherwise be read as path
+    separators / escapes (RFC 6901), so ``"Order/Item"`` would resolve to
+    ``components -> schemas -> Order -> Item`` instead of the single key. We
+    normalize them to ``_`` so the reference always resolves to one component.
+    """
+    return _UNSAFE_COMPONENT_NAME_CHARS.sub("_", name)
+
+
 def _flat_schema_name(schema: dict[str, Any]) -> str:
     """Derive a component name for a flat schema.
 
-    Prefers the schema's ``title`` (the natural name Pydantic emits); falls back
-    to a deterministic ``InlineSchema_<hash>`` for anonymous schemas so identical
-    schemas dedupe to the same component.
+    Prefers the schema's ``title`` (the natural name Pydantic emits), sanitized
+    to a JSON-Pointer-safe identifier; falls back to a deterministic
+    ``InlineSchema_<hash>`` for anonymous schemas so identical schemas dedupe to
+    the same component.
     """
     title = schema.get("title")
     if isinstance(title, str) and title.strip():
-        return title.strip()
+        return _sanitize_component_name(title.strip())
     return f"InlineSchema_{_schema_short_hash(schema)}"
 
 
