@@ -479,6 +479,8 @@ def generate_openapi_spec(
                         if strict:
                             raise OpenAPISpecConfigError(_dup_msg)
                         logger.warning("OpenAPI spec: %s", _dup_msg)
+                        _dup_registry = registry if registry is not None else _default_registry
+                        _dup_registry.add_duplicate_operation(method, path)
                     path_item[method] = op
 
             except (KeyError, TypeError, ValueError):
@@ -814,6 +816,15 @@ _EMPTY_DISCOVERY_MESSAGE = (
 )
 
 
+# Duplicate-operation is a merge-time collision, not a skew signal: two
+# registrations resolve to the same METHOD path and the last one silently
+# overwrites the earlier operation. The recorded ``METHOD path`` is appended by
+# :func:`_collect_duplicate_operation_warnings` for attribution.
+_DUPLICATE_OPERATION_MESSAGE = (
+    "A duplicate METHOD path collision dropped an operation; only the last "
+    "@openapi registration appears in the spec"
+)
+
 # Method/binding mismatch is authored disagreement, not a skew signal: an
 # explicit ``@openapi(method=...)`` names a verb the HTTP binding does not serve,
 # so the generated operation cannot be reached at runtime.
@@ -906,6 +917,31 @@ def _collect_empty_discovery_warnings(
             function_name=None,
         )
         for app_repr in reg.empty_discoveries
+    ]
+
+
+def _collect_duplicate_operation_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive duplicate-operation warnings from the registry's recorded collisions.
+
+    When two ``@openapi`` registrations resolve to the same ``METHOD path`` the
+    spec generator keeps only the last operation and drops the earlier one (#386);
+    :meth:`OpenAPIRegistry.add_duplicate_operation` records each such collision
+    during generation. This turns each recorded ``METHOD path`` into a structured
+    :class:`WarningCode.DUPLICATE_OPERATION` so ``--fail-on-warnings`` can observe
+    a silently dropped operation instead of it only appearing in the logs. When
+    ``registry`` is provided its records are used, keeping warnings isolated to the
+    same registry the spec was built from.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.DUPLICATE_OPERATION,
+            message=f"{_DUPLICATE_OPERATION_MESSAGE}: {operation}",
+            function_name=None,
+        )
+        for operation in reg.duplicate_operations
     ]
 
 
@@ -1005,6 +1041,7 @@ def collect_spec_warnings(
     warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
     warnings_list.extend(_collect_discovery_warnings(registry))
     warnings_list.extend(_collect_empty_discovery_warnings(registry))
+    warnings_list.extend(_collect_duplicate_operation_warnings(registry))
     warnings_list.extend(_collect_binding_mismatch_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))

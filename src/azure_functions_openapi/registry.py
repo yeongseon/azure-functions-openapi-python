@@ -31,6 +31,7 @@ class OpenAPIRegistry:
         self._entries: dict[str, dict[str, Any]] = {}
         self._discovery_warnings: list[tuple[str | None, str]] = []
         self._empty_discoveries: list[str] = []
+        self._duplicate_operations: list[str] = []
         self._lock = threading.RLock()
 
     @property
@@ -97,6 +98,7 @@ class OpenAPIRegistry:
             self._entries.clear()
             self._discovery_warnings.clear()
             self._empty_discoveries.clear()
+            self._duplicate_operations.clear()
 
     def find_by_function_id(
         self, function_id: str, method: str | None = None
@@ -200,6 +202,27 @@ class OpenAPIRegistry:
         """Return the recorded empty-app type names, deduplicated and sorted."""
         with self._lock:
             return sorted(self._empty_discoveries)
+    def add_duplicate_operation(self, method: str, path: str) -> None:
+        """Record that two registrations collided on the same ``METHOD path``.
+
+        When two ``@openapi`` registrations resolve to the same HTTP method and
+        path, the spec generator keeps only the last operation and drops the
+        earlier one (non-strict mode). Historically that drop was only logged,
+        so ``--fail-on-warnings`` could not observe a silently vanished
+        operation. Recording it here lets the generator surface a structured
+        ``duplicate-operation`` warning. Identical ``METHOD path`` collisions are
+        deduplicated, mirroring :meth:`add_discovery_warning`.
+        """
+        with self._lock:
+            record = f"{method.upper()} {path}"
+            if record not in self._duplicate_operations:
+                self._duplicate_operations.append(record)
+
+    @property
+    def duplicate_operations(self) -> list[str]:
+        """Return the recorded ``METHOD path`` collisions, deduplicated and sorted."""
+        with self._lock:
+            return sorted(self._duplicate_operations)
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import
 # time — before any application object exists — so a shared instance is required.
