@@ -354,3 +354,22 @@ def test_anonymous_hash_rejects_non_json_schema() -> None:
 
     with pytest.raises(TypeError):
         hoist_inline_defs(schema, components, hoist_flat=True)
+
+
+def test_defs_path_sanitizes_names_without_opt_in() -> None:
+    # Regression (#379): the JSON-Pointer-safety bug is NOT opt-in-only. The
+    # default ``$defs`` hoisting path (``hoist_flat=False``) flows through the
+    # same ``_resolve_name_collision`` entry, so a ``$defs`` key containing ``/``
+    # must also be sanitized and its ref rewritten to resolve.
+    schema = {
+        "$defs": {"Order/Item": {"type": "object", "properties": {"id": {"type": "integer"}}}},
+        "type": "object",
+        "properties": {"item": {"$ref": "#/$defs/Order/Item"}},
+    }
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components)  # default: hoist_flat=False
+
+    assert "Order_Item" in components["schemas"]
+    assert "Order/Item" not in components["schemas"]
+    assert result["properties"]["item"] == {"$ref": "#/components/schemas/Order_Item"}

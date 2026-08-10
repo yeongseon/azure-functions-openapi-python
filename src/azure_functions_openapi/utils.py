@@ -69,7 +69,12 @@ def _resolve_name_collision(
     schema: dict[str, Any],
     existing: dict[str, dict[str, Any]],
 ) -> str:
+    # Sanitize first so JSON-Pointer-unsafe characters (``/``, ``~``) can never
+    # reach a ``#/components/schemas/<name>`` reference, regardless of which
+    # hoisting path (``$defs``, model class, or flat schema) supplied the name.
+    name = _sanitize_component_name(name)
     if name not in existing:
+        return name
         return name
     if existing[name] == schema:
         return name
@@ -194,14 +199,15 @@ def _sanitize_component_name(name: str) -> str:
 def _flat_schema_name(schema: dict[str, Any]) -> str:
     """Derive a component name for a flat schema.
 
-    Prefers the schema's ``title`` (the natural name Pydantic emits), sanitized
-    to a JSON-Pointer-safe identifier; falls back to a deterministic
-    ``InlineSchema_<hash>`` for anonymous schemas so identical schemas dedupe to
-    the same component.
+    Prefers the schema's ``title`` (the natural name Pydantic emits); falls back
+    to a deterministic ``InlineSchema_<hash>`` for anonymous schemas so identical
+    schemas dedupe to the same component. JSON-Pointer sanitization of the name
+    is applied centrally in :func:`_resolve_name_collision`, so every hoisting
+    path shares one escaping rule.
     """
     title = schema.get("title")
     if isinstance(title, str) and title.strip():
-        return _sanitize_component_name(title.strip())
+        return title.strip()
     return f"InlineSchema_{_schema_short_hash(schema)}"
 
 
