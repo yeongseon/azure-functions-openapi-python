@@ -25,6 +25,17 @@ from azure_functions_openapi.spec import (
 OPENAPI_MODULE = importlib.import_module("azure_functions_openapi.spec")
 
 
+@pytest.fixture(autouse=True)
+def _isolate_registry() -> Any:
+    # #392: distinct same-qualname closures now register as distinct entries
+    # (previously they silently collapsed onto one). Order-dependent tests must
+    # therefore start from a clean registry so accumulated fixtures from earlier
+    # tests do not trip duplicate-operation detection.
+    clear_openapi_registry()
+    yield
+    clear_openapi_registry()
+
+
 def _register_http_trigger() -> None:
     @openapi(
         route="/api/http_trigger",
