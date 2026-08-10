@@ -532,6 +532,39 @@ def _decorated_app(
     return MockApp([MockBuilder(fn)])
 
 
+def _binding_only_app(
+    *,
+    fn_name: str,
+    route: str,
+    method: str = "POST",
+    qual_prefix: str = "_binding_only_app.<locals>",
+    func: Any = None,
+) -> MockApp:
+    """Build a MockApp whose handler is decorated WITHOUT method/route.
+
+    Unlike :func:`_decorated_app`, ``@openapi`` records a ``method=None`` /
+    ``route=None`` canonical entry; the HTTP verb and path come only from the
+    binding. This is the shape that makes reconciliation *explode* the canonical
+    into a per-method ``method::path`` entry and delete the original key, which is
+    the precondition for the #388 isolated re-scan phantom regression.
+
+    Passing ``func`` reuses an already-decorated handler (same ``_function_id``),
+    so a Blueprint and the app that registers it can be modelled as two builders
+    over one handler.
+    """
+    if func is None:
+
+        def handler(req: Any) -> Any:
+            return req
+
+        handler.__name__ = fn_name
+        handler.__qualname__ = f"{qual_prefix}.{fn_name}"
+        func = openapi(summary=fn_name)(handler)
+    binding = MockBinding(route=route, methods=[method.upper()])
+    fn = MockFunction(name=fn_name, func=func, bindings=[binding])
+    return MockApp([MockBuilder(fn)])
+
+
 class TestIsolatedRegistry:
     def test_isolated_scan_excludes_other_apps_openapi(self) -> None:
         # Two apps register @openapi entries globally at decoration time. An
@@ -600,6 +633,49 @@ class TestIsolatedRegistry:
 
         assert "/api/a/one" in spec["paths"]
         assert "/api/prog" not in spec["paths"]
+
+    def test_isolated_rescan_is_idempotent(self) -> None:
+        # #388 regression: scanning the SAME app twice into one isolated registry
+        # must not fabricate a phantom endpoint. Reconciliation explodes the
+        # seeded method=None canonical into a method::path entry and deletes the
+        # original key; a second scan that re-seeds purely because that key is
+        # gone would resurrect a stale route=None canonical, which spec.py then
+        # documents as GET /api/<function-name>. Seeding must be idempotent.
+        app = _binding_only_app(fn_name="handler_one", route="users/create")
+        iso = OpenAPIRegistry()
+
+        scan_endpoint_metadata(app, registry=iso)
+        first = generate_openapi_spec(registry=iso)
+        assert sorted(first["paths"]) == ["/api/users/create"]
+
+        scan_endpoint_metadata(app, registry=iso)
+        second = generate_openapi_spec(registry=iso)
+        # No phantom: the second scan yields byte-for-byte the same paths.
+        assert sorted(second["paths"]) == ["/api/users/create"]
+        assert "/api/handler_one" not in second["paths"]
+
+    def test_isolated_shared_handler_scan_no_phantom(self) -> None:
+        # #388 regression, single-call form: a Blueprint and the app that
+        # registers it expose the SAME handler, so a single isolated generate
+        # scans that handler twice (once per builder). Sharing one _function_id
+        # must still reconcile to one operation -- not seed a phantom that also
+        # trips a duplicate operationId during validation.
+        def handler(req: Any) -> Any:
+            return req
+
+        handler.__name__ = "bph"
+        handler.__qualname__ = "test_shared.bph"
+        decorated = openapi(summary="bph")(handler)
+        blueprint = _binding_only_app(fn_name="bph", route="bp/one", func=decorated)
+        app = _binding_only_app(fn_name="bph", route="bp/one", func=decorated)
+
+        iso = OpenAPIRegistry()
+        scan_endpoint_metadata(blueprint, registry=iso)
+        scan_endpoint_metadata(app, registry=iso)
+        spec = generate_openapi_spec(registry=iso)
+
+        assert sorted(spec["paths"]) == ["/api/bp/one"]
+        assert sorted(spec["paths"]["/api/bp/one"]) == ["post"]
 
 
 class TestCliIsolateApp:
