@@ -545,9 +545,13 @@ def _validate_method(method: str | None, func_name: str) -> str | None:
     """Validate and normalize HTTP method.
 
     Returns the lowercased method string, or ``None`` when *method* is not
-    provided. An unspecified method is later expanded by the spec generator to
-    every HTTP method (matching the Azure runtime, which responds to all methods
-    when ``methods=`` is omitted), rather than defaulting to ``"get"``.
+    provided. A ``None`` result records that the method is unresolved at
+    registration time; how it is later rendered depends on binding evidence
+    (#347/#350). Only when a real ``httptrigger`` binding is present but omits
+    ``methods=`` does the spec generator expand the operation to every HTTP
+    method (matching the Azure runtime). A bare ``@openapi`` with no route
+    binding and no ``method=`` stays a single ``get`` operation instead of
+    fanning out to every verb.
     """
     if method is None:
         return None

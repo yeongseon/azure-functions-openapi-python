@@ -7,6 +7,7 @@ from azure_functions_openapi.decorator import (
     register_openapi_metadata,
 )
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
+from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
@@ -30,6 +31,7 @@ __all__ = [
     "OpenAPISpecConfigError",
     "SDKIncompatibleError",
     "OpenAPIOperationMetadata",
+    "OpenAPIRegistry",
     "SpecReport",
     "SpecWarning",
     "WarningCode",
