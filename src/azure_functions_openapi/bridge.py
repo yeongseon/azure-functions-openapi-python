@@ -493,9 +493,11 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
             continue
 
         methods, methods_expanded = _extract_methods(binding)
-        # Raw binding route (prefix NOT applied): spec.py re-applies the route
-        # prefix to meta["route"] via apply_route_prefix, so storing the already
-        # normalized ``path`` (which includes the prefix) would double-prefix.
+        # Store the raw binding route (prefix NOT applied). spec.py re-applies
+        # apply_route_prefix to meta["route"], and that call is idempotent, so
+        # the reason for keeping the raw value is not to avoid double-prefixing
+        # but to keep meta["route"] as the binding's source-of-truth route rather
+        # than a pre-normalized path that already folds in the prefix.
         raw_route = getattr(binding, "route", None)
 
         # Namespace-fallback skew: only when validation metadata is consumed
@@ -596,9 +598,21 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     continue
 
                 if discovered is None:
-                    # Plain @openapi with an explicit method and no enrichment:
-                    # the existing @openapi entry stands as-is (its binding methods
-                    # were already stamped above for mismatch detection).
+                    # Plain @openapi with an explicit method and no enrichment.
+                    # The entry's authored method stands (its binding methods
+                    # were already stamped above for mismatch detection), but
+                    # when @openapi decorated the handler before the @app.route
+                    # binding was visible the entry was registered with
+                    # route=None and spec.py would fall back to the function
+                    # name. Reconcile the missing route from the binding without
+                    # exploding or overriding the explicit method. An explicit
+                    # @openapi(route=...) stays truthy and is never overwritten.
+                    if (
+                        canonical_target is not None
+                        and canonical_target.get("route") is None
+                        and raw_route
+                    ):
+                        canonical_target["route"] = raw_route
                     continue
 
                 # Resolve the target entry by, in order of trust:
