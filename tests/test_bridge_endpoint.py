@@ -293,7 +293,10 @@ def test_scan_empty_app_records_discovery_warning() -> None:
 
     warnings = registry.discovery_warnings
     assert warnings, "expected a discovery-skipped warning for an empty app"
-    assert any(name is None and "empty paths" in reason for name, reason in warnings)
+    assert any(
+        name is None and "discovered from the selected application object" in reason
+        for name, reason in warnings
+    )
 
 
 # ---------------------------------------------------------------------------
