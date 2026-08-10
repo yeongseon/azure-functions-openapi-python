@@ -402,3 +402,20 @@ class TestCliFailOnWarnings:
         assert rc == 1
         assert not out.exists()
         assert "Hint: use --app" in capsys.readouterr().err
+
+    def test_empty_paths_hint_adapts_when_app_was_provided(
+        self, tmp_path: Any, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # When the user already passed --app, the circular "use --app" hint is
+        # misleading; the diagnostic should instead explain that the app
+        # imported cleanly but exposes no @openapi-decorated routes.
+        # Use a real importable module with no ':variable' so the import
+        # succeeds (discovery is skipped) and the registry stays empty.
+        out = tmp_path / "openapi.json"
+        rc = handle_generate(
+            _args(app="os", fail_on_empty_paths=True, output=str(out))
+        )
+        assert rc == 1
+        err = capsys.readouterr().err
+        assert "Hint: use --app" not in err
+        assert "no" in err and "@openapi-decorated routes" in err
