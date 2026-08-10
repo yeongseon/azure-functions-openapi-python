@@ -506,6 +506,212 @@ def test_scan_below_route_preserves_explicit_openapi_route_override() -> None:
     spec = generate_openapi_spec("T", "1.0.0")
     assert set(spec["paths"].keys()) == {"/api/custom/path"}
 
+def test_scan_reconciles_plain_openapi_below_route_explicit_method() -> None:
+    # #361: a plain @openapi (no validation/endpoint metadata) below @app.route
+    # must infer BOTH the binding method and route. The decorator registered
+    # method=None, route=None; the scan sees a POST binding at a route that can
+    # never equal the function name (real-world case).
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="create user")
+    def handler_p1(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_p1", _func=handler_p1, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    assert "handler_p1" not in registry
+    assert registry["post::/api/users/create"]["route"] == "users/create"
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"].keys()) == {"/api/users/create"}
+    assert set(spec["paths"]["/api/users/create"].keys()) == {"post"}
+
+
+def test_scan_reconciles_plain_openapi_below_route_multi_method() -> None:
+    # #361: a plain @openapi with an explicit multi-method binding produces one
+    # operation per method at the binding route (not a collapsed lone GET).
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="rw thing")
+    def handler_p2(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things/rw", methods=["GET", "POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_p2", _func=handler_p2, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"].keys()) == {"/api/things/rw"}
+    assert set(spec["paths"]["/api/things/rw"].keys()) == {"get", "post"}
+
+
+def test_scan_reconciles_plain_openapi_below_route_unspecified_preserves_route() -> None:
+    # #361: an unspecified-methods binding expands to every HTTP method AND keeps
+    # the binding route (previously the route fell back to the function name).
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="any thing")
+    def handler_p3(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things/any", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="handler_p3", _func=handler_p3, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    registry = get_openapi_registry()
+    assert "handler_p3" not in registry
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"].keys()) == {"/api/things/any"}
+    assert set(spec["paths"]["/api/things/any"].keys()) == {
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+    }
+
+
+def test_scan_plain_openapi_preserves_explicit_route_override() -> None:
+    # #361: an explicit @openapi(route=...) on a plain handler must win over the
+    # binding route.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="create user", route="custom/path")
+    def handler_p4(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_p4", _func=handler_p4, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"].keys()) == {"/api/custom/path"}
+    assert set(spec["paths"]["/api/custom/path"].keys()) == {"post"}
+
+
+def test_scan_plain_openapi_preserves_explicit_method() -> None:
+    # #361 guard: an explicit @openapi(method=...) on a plain handler is never
+    # exploded or overridden by the binding.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import generate_openapi_spec
+
+    @openapi(summary="explicit", route="things", method="put")
+    def handler_p5(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_p5", _func=handler_p5, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+
+    spec = generate_openapi_spec("T", "1.0.0")
+    assert set(spec["paths"]["/api/things"].keys()) == {"put"}
+
+
+def test_collect_spec_warnings_flags_method_binding_mismatch() -> None:
+    # #362: an explicit @openapi(method=...) naming a verb the binding does not
+    # serve yields an unreachable operation; surface METHOD_BINDING_MISMATCH.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="mismatch", route="things", method="put")
+    def handler_m1(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_m1", _func=handler_m1, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    warnings = collect_spec_warnings(spec)
+
+    codes = [w.code for w in warnings]
+    assert WarningCode.METHOD_BINDING_MISMATCH in codes
+    mismatch = next(w for w in warnings if w.code == WarningCode.METHOD_BINDING_MISMATCH)
+    assert mismatch.function_name == "handler_m1"
+
+
+def test_collect_spec_warnings_no_mismatch_for_subset_method() -> None:
+    # #362: documenting a subset of a multi-method binding is legitimate and must
+    # NOT warn.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="subset", route="things", method="get")
+    def handler_m2(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_m2", _func=handler_m2, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    codes = [w.code for w in collect_spec_warnings(spec)]
+    assert WarningCode.METHOD_BINDING_MISMATCH not in codes
+
+
+def test_collect_spec_warnings_no_mismatch_for_unspecified_binding() -> None:
+    # #362: an unspecified-methods binding serves every verb, so no explicit
+    # method can contradict it.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="unspecified", route="things", method="put")
+    def handler_m3(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="handler_m3", _func=handler_m3, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    codes = [w.code for w in collect_spec_warnings(spec)]
+    assert WarningCode.METHOD_BINDING_MISMATCH not in codes
+
+
+def test_collect_spec_warnings_no_mismatch_for_inferred_method() -> None:
+    # #362: a method inferred from the binding (plain @openapi, method=None) is
+    # never a mismatch, even though the resulting entry carries a method.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="inferred")
+    def handler_m4(req: Any) -> Any:
+        return req
+
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_m4", _func=handler_m4, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    codes = [w.code for w in collect_spec_warnings(spec)]
+    assert WarningCode.METHOD_BINDING_MISMATCH not in codes
 
 def test_scan_merges_explicit_function_name_entry() -> None:
     with _registry_lock:

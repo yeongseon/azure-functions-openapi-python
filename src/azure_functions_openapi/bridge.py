@@ -110,38 +110,78 @@ def _extract_methods(binding: Any) -> tuple[list[str], bool]:
     return ["get"], False
 
 
-def _reconcile_all_methods_expansion(function: Any, handler: Any) -> None:
-    """Set ``_expand_all_methods`` on an already-registered ``@openapi`` entry
-    when the SDK scan finds binding evidence the decorator lacked (#354).
+def _reconcile_openapi_binding(
+    function: Any, handler: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX
+) -> None:
+    """Reconcile a plain ``@openapi`` entry with the HTTP binding the decorator
+    could not see (#354/#358/#360/#361).
 
-    Whichever decorator order is used, ``@openapi`` decorates the function
-    before the HTTP-trigger binding is observable, so the entry is registered
-    with ``method=None`` and without the all-method expansion flag (emitting
-    only a single ``get``). This is easiest to hit in the README-recommended
-    order (``@openapi`` above ``@app.route``), where ``@openapi`` wraps the
-    ``@app.route`` result but still cannot read the binding's ``methods=``. The
-    scan, however, sees the fully wrapped builder: when it carries an
-    ``httptrigger`` binding that omits ``methods=`` we set the flag on the
-    matching entry here, restoring parity with the entry the decorator would
-    have recorded had the binding been visible (#347/#350). Matching is by
-    collision-free canonical function id, and an explicit ``method=`` is never
-    overridden.
+    A plain ``@openapi`` handler (no endpoint/validation metadata) is skipped by
+    the main scan loop, so any binding evidence must be reconciled here.
+    Whichever decorator order is used, ``@openapi`` decorates the function before
+    the HTTP-trigger binding is observable, so the entry is registered with
+    ``method=None`` and ``route=None``. This is easiest to hit in the
+    README-recommended order (``@openapi`` above ``@app.route``), where
+    ``@openapi`` wraps the ``@app.route`` result but still cannot read the
+    binding. The scan, however, sees the fully wrapped builder.
+
+    For a ``method=None`` entry we therefore explode it into one operation per
+    bound method and set the raw binding route (prefix NOT applied; spec.py
+    re-applies the prefix), mirroring the metadata-carrying scan path so the
+    ``@openapi``-only user gets the correct route and method(s) instead of a lone
+    ``get`` at the function name (#361). Matching is by collision-free canonical
+    function id.
+
+    An explicit ``@openapi(method=...)`` is authoritative and never overridden;
+    in that case we only stamp the binding's method set on the entry so spec.py
+    can flag a method/binding mismatch (#362). An explicit ``@openapi(route=...)``
+    is likewise preserved.
     """
     binding = _extract_http_binding(function)
     if binding is None:
         return
-    _methods, methods_expanded = _extract_methods(binding)
-    if not methods_expanded:
-        return
     canonical_id = canonical_function_id(handler)
+    methods, methods_expanded = _extract_methods(binding)
+    raw_route = getattr(binding, "route", None)
+    # Unspecified binding methods (expanded to every verb) are not stamped:
+    # the runtime answers every method, so no explicit method can contradict it.
+    binding_methods = None if methods_expanded else list(methods)
     with registry.lock:
         target = registry.find_by_function_id(canonical_id)
-        if (
-            target is not None
-            and target.get("method") is None
-            and not target.get("_expand_all_methods")
-        ):
-            target["_expand_all_methods"] = True
+        if target is None:
+            return
+        if target.get("method") is not None:
+            # Explicit @openapi(method=...) wins; do not explode. Stamp the
+            # binding method set so spec.py can surface a mismatch (#362).
+            if binding_methods is not None:
+                target["_binding_methods"] = binding_methods
+            return
+        # method=None @openapi entry: infer route + method(s) from the binding.
+        route_for_key = target.get("route") or raw_route
+        function_name = target.get("function_name") or adapters.get_function_name(function)
+        path = _normalize_path(route_for_key, function_name, route_prefix)
+        # Locate the original method=None entry by identity (find_by_function_id
+        # returns the live entry but not its registry key) so it can be dropped
+        # after exploding, avoiding a stray bare-GET duplicate.
+        original_key = None
+        for key, entry in registry.entries.items():
+            if entry is target:
+                original_key = key
+                break
+        for method in methods:
+            clone = copy.deepcopy(target)
+            clone["method"] = method
+            # Preserve the binding route when @openapi registered route=None; an
+            # explicit @openapi(route=...) stays truthy and is never overwritten.
+            if clone.get("route") is None and raw_route:
+                clone["route"] = raw_route
+            # Drop the body from GET/HEAD/DELETE when methods= was unspecified
+            # (auto-expanded): OpenAPI leaves such a body semantically undefined.
+            if methods_expanded and method in BODYLESS_HTTP_METHODS:
+                clone["request_body"] = None
+            registry.set(f"{method}::{path}", clone)
+        if original_key is not None and registry.entries.get(original_key) is target:
+            del registry.entries[original_key]
 
 
 def _merge_parameters(
@@ -513,9 +553,9 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         metadata = None if endpoint_hints is not None else _read_validation_hints(handler)
         if endpoint_hints is None and metadata is None:
             # Plain @openapi route (no endpoint/validation metadata): the main
-            # scan below does not revisit it, so reconcile all-method expansion
-            # from binding evidence the decorator could not see (#354).
-            _reconcile_all_methods_expansion(function, handler)
+            # scan below does not revisit it, so reconcile route + method(s)
+            # from binding evidence the decorator could not see (#354/#361).
+            _reconcile_openapi_binding(function, handler, route_prefix)
             continue
 
         handler_skew: set[WarningCode] = set()
