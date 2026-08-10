@@ -473,6 +473,15 @@ def register_openapi_metadata(
         the process-wide global registry (``None``); pass an isolated registry
         to scope the metadata to a single application (see #381).
 
+    Notes
+    -----
+    A ``method`` + ``path`` pair is a single OpenAPI operation by definition, so
+    calling this again for the same pair replaces the prior entry
+    (last-writer-wins) rather than raising. This intentionally powers the
+    scan-then-enrich pattern: :func:`scan_endpoint_metadata` seeds a minimal
+    entry from bridge/validation metadata, and a subsequent call here overrides
+    it with richer, human-authored metadata.
+
     Raises
     ------
     ValueError
@@ -520,6 +529,19 @@ def register_openapi_metadata(
 
     reg = registry if registry is not None else _registry
     with reg.lock:
+        # Same method+path is a single OpenAPI operation by definition, so
+        # registering it again is an intentional last-writer-wins replace, not a
+        # collision between two logical operations. This is what powers the
+        # scan-then-enrich pattern: the bridge seeds a minimal entry via
+        # ``scan_endpoint_metadata`` and the caller then overrides it here with
+        # richer, human-authored metadata. Log the replace at debug level so it
+        # stays traceable without being noisy.
+        if reg.get(registry_key) is not None:
+            logger.debug(
+                "Replacing existing OpenAPI metadata for '%s %s' (last-writer-wins)",
+                validated_method.upper(),
+                path,
+            )
         reg.set(registry_key, {
             "summary": summary,
             "description": description,
