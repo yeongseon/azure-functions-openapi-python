@@ -683,8 +683,8 @@ def get_openapi_json(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
-    hoist_flat_schemas: bool = False,
     registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
 ) -> str:
     """Return the spec as pretty-printed JSON (UTF-8).
 
@@ -699,6 +699,8 @@ def get_openapi_json(
             ``""`` for hosts that disable the prefix or a custom value such
             as ``"/v1"``.
         strict: When ``True``, raise on any registry entry processing failure.
+        registry: Inject a custom :class:`OpenAPIRegistry` instead of the shared
+            global one. Defaults to ``None`` (the process-wide registry).
         hoist_flat_schemas: When ``True`` (opt-in, #375), structured flat
             schemas are promoted into ``components.schemas``. Defaults to
             ``False`` to preserve the existing generated spec shape.
@@ -734,9 +736,9 @@ def get_openapi_yaml(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
-    hoist_flat_schemas: bool = False,
     registry: OpenAPIRegistry | None = None,
-) -> str:
+    hoist_flat_schemas: bool = False,
+    ) -> str:
     """Return the spec as YAML.
 
     Parameters:
@@ -750,6 +752,8 @@ def get_openapi_yaml(
             ``""`` for hosts that disable the prefix or a custom value such
             as ``"/v1"``.
         strict: When ``True``, raise on any registry entry processing failure.
+        registry: Inject a custom :class:`OpenAPIRegistry` instead of the shared
+            global one. Defaults to ``None`` (the process-wide registry).
         hoist_flat_schemas: When ``True`` (opt-in, #375), structured flat
             schemas are promoted into ``components.schemas``. Defaults to
             ``False`` to preserve the existing generated spec shape.
@@ -917,9 +921,9 @@ def generate_openapi_report(
     security_schemes: dict[str, dict[str, Any]] | None = None,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
-    hoist_flat_schemas: bool = False,
     registry: OpenAPIRegistry | None = None,
-) -> SpecReport:
+    hoist_flat_schemas: bool = False,
+    ) -> SpecReport:
     """Generate the spec together with structured, machine-readable warnings.
 
     Mirrors :func:`generate_openapi_spec` and returns the identical spec mapping
