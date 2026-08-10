@@ -107,12 +107,20 @@ class OpenAPIRegistry:
     def clear_diagnostics(self) -> None:
         """Clear all discovery/empty/duplicate diagnostics, leaving entries intact.
 
-        Diagnostics are *run-scoped*: they describe what happened during the
-        current scan/generation cycle, not the lifetime of the registry. The
-        one-shot report entry point (:func:`generate_openapi_report`) calls this
-        at the start of each cycle so a warning fixed between two runs (for
-        example a resolved ``DUPLICATE_OPERATION``) does not linger on the
-        process-wide singleton and resurface on the next generation (#393).
+        Diagnostic channels have *different lifetimes*, and this method is the
+        blanket reset that empties all of them:
+
+        * ``DUPLICATE_OPERATION`` is *run-scoped*. :func:`generate_openapi_spec`
+          recomputes it on every pass and clears only that channel at entry (via
+          :meth:`clear_duplicate_operations`), so a collision resolved between two
+          runs does not linger on the process-wide singleton (#393).
+        * ``DISCOVERY_SKIPPED`` / ``EMPTY_DISCOVERY`` are *scan-lifetime*. They are
+          recorded during app discovery and are **not** auto-reset by spec
+          generation (neither :func:`generate_openapi_spec` nor
+          :func:`generate_openapi_report` calls this method). On a long-lived,
+          reused registry these entries persist across generations; a caller that
+          wants a clean slate must invoke this method (or :meth:`clear`) or use a
+          fresh registry.
         """
         with self._lock:
             self._discovery_warnings.clear()
