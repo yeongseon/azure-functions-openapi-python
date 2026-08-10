@@ -716,14 +716,15 @@ class TestIsolatedRegistry:
 
 
 class TestCliIsolateApp:
-    def test_isolate_app_ignored_without_variable(
+    def test_isolate_app_fails_closed_without_variable(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # --isolate-app requires 'module:variable'. With a bare module it is a
-        # no-op that warns and falls back to the global registry.
+        # #391: --isolate-app requires 'module:variable'. With a bare module it
+        # cannot be honored, so the CLI fails closed (rc==1) rather than
+        # silently falling back to the shared global registry.
         rc = handle_generate(_args(app="os", isolate_app=True))
-        assert rc == 0
-        assert "--isolate-app ignored" in capsys.readouterr().err
+        assert rc == 1
+        assert "--isolate-app cannot be honored" in capsys.readouterr().err
 
     def test_isolate_app_scopes_spec_to_selected_app(
         self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
