@@ -463,6 +463,39 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     # ever gains a ``registry`` parameter, route ``on_skip`` to that registry as
     # well — otherwise discovery warnings would leak to / be read from the wrong
     # registry, the exact mirror of the bug #344 fixed for skew warnings.
+    #
+    # ``skipped`` tracks whether any builder failed to build: ``iter_functions``
+    # returns an empty list both when no builders exist AND when every builder
+    # fails (each firing ``on_skip`` without appending). Only the former is a
+    # true empty discovery -- see the ``EMPTY_DISCOVERY`` guard below.
+    skipped = False
+
+    def _on_skip(name: str | None, reason: str) -> None:
+        nonlocal skipped
+        skipped = True
+        registry.add_discovery_warning(name, reason)
+
+    functions = adapters.iter_functions(app, on_skip=_on_skip)
+    if not functions:
+        logger.debug("No function builders found on app; skipping validation scan")
+        # #373/#380: an app that exposes no discoverable functions is recorded on
+        # the dedicated empty-discovery channel (not the builder-failure channel)
+        # so ``--fail-on-warnings`` catches it as a distinct ``empty-discovery``
+        # signal. Guard on ``not skipped``: when builders existed but all failed
+        # to build, ``on_skip`` already recorded per-builder DISCOVERY_SKIPPED
+        # warnings, so emitting EMPTY_DISCOVERY too would be semantically wrong
+        # (builders were present) and would double-trip ``--fail-on-warnings``.
+        # Whether the *final* spec paths are empty is decided by the CLI's
+        # post-generation check, since the process-wide registry may already
+        # hold paths from other decorated apps.
+        if not skipped:
+            registry.add_empty_discovery(type(app).__name__)
+        return
+    # registers entries there too (see ``register_openapi_metadata`` below), so
+    # the skips and entries stay in the same registry. NOTE: if this function
+    # ever gains a ``registry`` parameter, route ``on_skip`` to that registry as
+    # well — otherwise discovery warnings would leak to / be read from the wrong
+    # registry, the exact mirror of the bug #344 fixed for skew warnings.
     functions = adapters.iter_functions(
         app, on_skip=lambda name, reason: registry.add_discovery_warning(name, reason)
     )
