@@ -129,8 +129,10 @@ def _reconcile_openapi_binding(
     bound method and set the raw binding route (prefix NOT applied; spec.py
     re-applies the prefix), mirroring the metadata-carrying scan path so the
     ``@openapi``-only user gets the correct route and method(s) instead of a lone
-    ``get`` at the function name (#361). Matching is by collision-free canonical
-    function id.
+    ``get`` at the function name (#361). The entry is located by canonical
+    function id; note that after #359 explosion multiple entries can share one
+    ``_function_id``, so this path resolves the ``method=None`` canonical entry
+    (the pre-explosion original) rather than assuming a unique id.
 
     An explicit ``@openapi(method=...)`` is authoritative and never overridden;
     in that case we only stamp the binding's method set on the entry so spec.py
@@ -641,15 +643,25 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     registry.set(endpoint_key, clone)
                     continue
                 # Resolve the target entry by, in order of trust:
-                #   1. canonical callable identity (collision-free),
-                #   2. the OpenAPI endpoint key (method::path),
+                #   1. the exact OpenAPI endpoint key (method::path),
+                #   2. canonical callable identity, method-aware,
                 #   3. the short function name (backward-compatible fallback).
-                target = registry.find_by_function_id(canonical_id)
-                match_kind = "canonical @openapi id"
+                #
+                # The endpoint key is tried FIRST because #359 made
+                # ``_function_id`` one-to-many: an exploded multi-method handler
+                # has several entries sharing one ``_function_id``. Resolving by
+                # id alone would let every method iteration merge into whichever
+                # sibling comes first, corrupting per-method operations on a
+                # re-scan. The exact ``method::path`` key pins each method to its
+                # own entry; the id lookup is then method-aware as a backstop
+                # (e.g. an explicit @openapi(method=) registered under a short
+                # name whose binding route differs from the entry key).
+                target = registry.get(endpoint_key)
+                match_kind = "OpenAPI endpoint"
 
                 if target is None:
-                    target = registry.get(endpoint_key)
-                    match_kind = "OpenAPI endpoint"
+                    target = registry.find_by_function_id(canonical_id, method=method)
+                    match_kind = "canonical @openapi id"
 
                 if target is None:
                     # Short-name fallback: refuse to merge when the name is
