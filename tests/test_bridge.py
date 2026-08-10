@@ -769,6 +769,78 @@ def test_collect_spec_warnings_no_mismatch_for_inferred_method() -> None:
     codes = [w.code for w in collect_spec_warnings(spec)]
     assert WarningCode.METHOD_BINDING_MISMATCH not in codes
 
+def test_mismatch_flagged_for_validation_carrying_handler() -> None:
+    # #368: METHOD_BINDING_MISMATCH must also fire when the explicit
+    # @openapi(method=...) handler carries validation/endpoint metadata. Such a
+    # handler takes the metadata-merge path (not _reconcile_openapi_binding), so
+    # the binding method set has to be stamped there too.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="mismatch", route="things", method="put")
+    def handler_v1(req: Any) -> Any:
+        return req
+
+    setattr(handler_v1, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_v1", _func=handler_v1, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    warnings = collect_spec_warnings(spec)
+
+    codes = [w.code for w in warnings]
+    assert WarningCode.METHOD_BINDING_MISMATCH in codes
+    mismatch = next(w for w in warnings if w.code == WarningCode.METHOD_BINDING_MISMATCH)
+    assert mismatch.function_name == "handler_v1"
+
+
+def test_no_mismatch_for_validation_handler_with_subset_method() -> None:
+    # #368: a validation-carrying handler documenting a subset of a multi-method
+    # binding is legitimate and must NOT warn.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="subset", route="things", method="post")
+    def handler_v2(req: Any) -> Any:
+        return req
+
+    setattr(handler_v2, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
+    fn = MockFunction(_name="handler_v2", _func=handler_v2, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    codes = [w.code for w in collect_spec_warnings(spec)]
+    assert WarningCode.METHOD_BINDING_MISMATCH not in codes
+
+
+def test_no_mismatch_for_validation_handler_with_unspecified_binding() -> None:
+    # #368: an unspecified-methods binding serves every verb, so a validation-
+    # carrying explicit-method handler still cannot be a mismatch.
+    from azure_functions_openapi._warnings import WarningCode
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
+
+    @openapi(summary="unspecified", route="things", method="put")
+    def handler_v3(req: Any) -> Any:
+        return req
+
+    setattr(handler_v3, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="handler_v3", _func=handler_v3, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec("T", "1.0.0")
+    codes = [w.code for w in collect_spec_warnings(spec)]
+    assert WarningCode.METHOD_BINDING_MISMATCH not in codes
+
+
 def test_scan_merges_explicit_function_name_entry() -> None:
     with _registry_lock:
         _openapi_registry["create_user"] = {
