@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 import pytest
 
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import (
     _HANDLER_METADATA_ATTR,
     _discovered_operation_from_endpoint,
@@ -18,7 +19,7 @@ from azure_functions_openapi.decorator import (
     register_openapi_metadata,
 )
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
-from azure_functions_openapi.spec import generate_openapi_spec
+from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -282,18 +283,57 @@ def test_scan_endpoint_request_body_not_required() -> None:
     assert entry["request_body_required"] is False
 
 
-def test_scan_empty_app_records_discovery_warning() -> None:
-    # Regression (#373): an app exposing no discoverable functions must record a
-    # structured discovery-skipped warning (not just a debug log) so
-    # ``--fail-on-warnings`` can catch a silently-empty spec.
+def test_scan_empty_app_records_empty_discovery() -> None:
+    # Regression (#373/#380): an app exposing no discoverable functions must
+    # record a structured EMPTY_DISCOVERY warning (not just a debug log) so
+    # ``--fail-on-warnings`` can catch a silently-empty scan -- and it must NOT
+    # be mislabelled as a builder-build failure, nor predict empty final paths.
     from azure_functions_openapi.registry import registry
 
     app = MockApp([])
     scan_endpoint_metadata(app)
 
-    warnings = registry.discovery_warnings
-    assert warnings, "expected a discovery-skipped warning for an empty app"
-    assert any(name is None and "empty paths" in reason for name, reason in warnings)
+    assert registry.empty_discoveries == ["MockApp"]
+    # No builder-failure record was created for the empty app.
+    assert registry.discovery_warnings == []
+
+    warnings = collect_spec_warnings(generate_openapi_spec("t", "1"))
+    empty = [w for w in warnings if w.code == WarningCode.EMPTY_DISCOVERY]
+    assert len(empty) == 1
+    assert "MockApp" in empty[0].message
+    # The false builder-failure and empty-paths clauses must be gone.
+    assert "could not be built" not in empty[0].message
+    assert "empty paths" not in empty[0].message
+
+
+class _UnbuildableBuilder:
+    """A builder whose build() always raises, so the adapter skips it."""
+
+    def __init__(self, name: str) -> None:
+        self._function = MockFunction(name=name, func=lambda req: req, bindings=[])
+
+    def build(self, auth_level: Any = None) -> Any:
+        name = self._function.get_function_name()
+        raise ValueError(f"Function {name} does not have a trigger")
+
+def test_scan_all_builders_fail_records_skip_not_empty_discovery() -> None:
+    # Regression (#380 review): iter_functions returns [] both when no builders
+    # exist AND when every builder fails to build. The latter is NOT an empty
+    # discovery -- builders were present and each fired a DISCOVERY_SKIPPED
+    # warning, so recording EMPTY_DISCOVERY too would be semantically wrong and
+    # would double-trip --fail-on-warnings.
+    from azure_functions_openapi.registry import registry
+
+    app = MockApp([cast(MockBuilder, _UnbuildableBuilder("orphan"))])
+    scan_endpoint_metadata(app)
+
+    # The build failure was recorded, but no empty-discovery signal was emitted.
+    assert registry.empty_discoveries == []
+    assert len(registry.discovery_warnings) == 1
+
+    warnings = collect_spec_warnings(generate_openapi_spec("t", "1"))
+    assert not [w for w in warnings if w.code == WarningCode.EMPTY_DISCOVERY]
+    assert [w for w in warnings if w.code == WarningCode.DISCOVERY_SKIPPED]
 
 
 # ---------------------------------------------------------------------------

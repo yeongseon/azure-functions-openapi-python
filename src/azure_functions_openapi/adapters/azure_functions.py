@@ -122,8 +122,9 @@ def iter_functions(
     Skips any builder whose :meth:`FunctionBuilder.build` raises ``ValueError``
     (e.g. a function with no trigger, or a trigger not present in its bindings).
     Such a function is a *user app state*, not an SDK incompatibility, so it is
-    empty list when *app* exposes no builders (e.g. an app with no registered
-    functions). When the app itself carries no builders but wraps a real
+    skipped rather than raising. Returns an empty list when *app* exposes
+    no builders (e.g. an app with no registered functions). When the app
+    itself carries no builders but wraps a real
     ``FunctionApp`` via a property (e.g. ``LangGraphApp.function_app``), the
     inner app is unwrapped and enumerated (#374); a truly empty app still
     returns an empty list, matching the previous "skip quietly" behaviour.
