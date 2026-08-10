@@ -21,7 +21,13 @@ from azure_functions_openapi._validation_contract import (
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
-from azure_functions_openapi.registry import canonical_function_id, registry
+from azure_functions_openapi.registry import (
+    OpenAPIRegistry,
+    canonical_function_id,
+)
+from azure_functions_openapi.registry import (
+    registry as _global_registry,
+)
 from azure_functions_openapi.routes import (
     ALL_HTTP_METHODS,
     BODYLESS_HTTP_METHODS,
@@ -445,7 +451,45 @@ def _has_endpoint_namespace(handler: Any) -> bool:
     return False
 
 
-def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
+def _seed_canonical_entry(reg: OpenAPIRegistry, function_id: str) -> None:
+    """Copy a handler's canonical ``@openapi`` entries into an isolated registry.
+
+    In isolated mode (#381) the target ``reg`` starts empty, but a handler's
+    ``@openapi`` metadata was recorded into the *global* registry at import time.
+    This copies every global entry whose ``_function_id`` matches *function_id*
+    (deep-copied so later reconciliation cannot mutate the global) into ``reg``
+    under its original key, so the reconciliation logic resolves it exactly as it
+    would against the global registry.
+
+    Programmatic ``register_openapi_metadata`` entries carry a
+    ``"programmatic.*"`` ``_function_id`` and are not tied to any scanned app
+    object, so they are never seeded into an isolated app-scoped spec. Entries
+    already present in ``reg`` are left untouched (idempotent re-scan).
+    """
+    if function_id.startswith("programmatic."):
+        return
+    # Acquire the two registry locks sequentially, never nested. Snapshot the
+    # matching global entries (deep-copied eagerly) under the global lock only,
+    # then release it before writing into ``reg`` under its own lock. Holding
+    # both locks at once risked deadlock for future call paths and lengthened
+    # contention across the deepcopy/iteration; splitting the phases avoids both.
+    with _global_registry.lock:
+        seeds = {
+            key: copy.deepcopy(entry)
+            for key, entry in _global_registry.entries.items()
+            if entry.get("_function_id") == function_id
+        }
+    with reg.lock:
+        for key, entry in seeds.items():
+            if reg.get(key) is None:
+                reg.set(key, entry)
+
+
+def scan_endpoint_metadata(
+    app: Any,
+    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    registry: OpenAPIRegistry | None = None,
+) -> None:
     """Scan function builders for toolkit metadata and register OpenAPI operations.
 
     Reads the convention-based ``_azure_functions_metadata`` attribute from each
@@ -456,13 +500,21 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     ``route_prefix`` mirrors ``host.json`` ``extensions.http.routePrefix``
     (default ``"/api"``). Pass ``""`` for hosts that disable the prefix or
     a custom value such as ``"/v1"`` to match a non-default deployment.
+
+    ``registry`` selects the target :class:`OpenAPIRegistry`. When ``None``
+    (the default) the process-wide global registry is used, preserving the
+    common single-app ``function_app.py`` layout. When an isolated registry is
+    injected (the CLI ``--isolate-app`` path, #381), each discovered handler's
+    canonical ``@openapi`` entry is seeded from the global registry into the
+    isolated one before reconciliation, so the generated spec contains only the
+    selected app's operations rather than every ``@openapi`` imported from the
+    module. Programmatic ``register_openapi_metadata`` entries (which are not
+    tied to any app object) are never seeded into an isolated registry.
     """
-    # Discovery skips are recorded on the *global* ``registry`` because this scan
-    # registers entries there too (see ``register_openapi_metadata`` below), so
-    # the skips and entries stay in the same registry. NOTE: if this function
-    # ever gains a ``registry`` parameter, route ``on_skip`` to that registry as
-    # well — otherwise discovery warnings would leak to / be read from the wrong
-    # registry, the exact mirror of the bug #344 fixed for skew warnings.
+    reg = registry if registry is not None else _global_registry
+    isolated = reg is not _global_registry
+    # Discovery skips are recorded on the *selected* registry so the skips and
+    # entries stay together (mirroring the #344 skew-warning isolation fix).
     #
     # ``skipped`` tracks whether any builder failed to build: ``iter_functions``
     # returns an empty list both when no builders exist AND when every builder
@@ -473,7 +525,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
     def _on_skip(name: str | None, reason: str) -> None:
         nonlocal skipped
         skipped = True
-        registry.add_discovery_warning(name, reason)
+        reg.add_discovery_warning(name, reason)
 
     functions = adapters.iter_functions(app, on_skip=_on_skip)
     if not functions:
@@ -489,26 +541,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         # post-generation check, since the process-wide registry may already
         # hold paths from other decorated apps.
         if not skipped:
-            registry.add_empty_discovery(type(app).__name__)
-        return
-    # registers entries there too (see ``register_openapi_metadata`` below), so
-    # the skips and entries stay in the same registry. NOTE: if this function
-    # ever gains a ``registry`` parameter, route ``on_skip`` to that registry as
-    # well — otherwise discovery warnings would leak to / be read from the wrong
-    # registry, the exact mirror of the bug #344 fixed for skew warnings.
-    functions = adapters.iter_functions(
-        app, on_skip=lambda name, reason: registry.add_discovery_warning(name, reason)
-    )
-    if not functions:
-        logger.debug("No function builders found on app; skipping validation scan")
-        # #373/#380: an app that exposes no discoverable functions is recorded on
-        # the dedicated empty-discovery channel (not the builder-failure channel)
-        # so ``--fail-on-warnings`` catches it as a distinct ``empty-discovery``
-        # signal. No individual builder failed here -- the app simply had nothing
-        # to enumerate -- and whether the *final* spec paths are empty is decided
-        # by the CLI's post-generation check, since the process-wide registry may
-        # already hold paths from other decorated apps.
-        registry.add_empty_discovery(type(app).__name__)
+            reg.add_empty_discovery(type(app).__name__)
         return
 
     for function in functions:
@@ -556,14 +589,22 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
 
         canonical_id = canonical_function_id(handler)
 
+        # Seed-on-scan (#381): in isolated mode the target registry starts empty,
+        # so the handler's canonical @openapi entry (registered globally at import
+        # time) must be copied in before reconciliation — otherwise a plain
+        # @openapi handler would resolve to nothing and be dropped. Only this
+        # app's handlers are seeded, which is exactly what scopes the spec.
+        if isolated:
+            _seed_canonical_entry(reg, canonical_id)
+
         # Resolve the canonical @openapi entry once (it does not vary per
         # method). When @openapi decorates the handler BELOW @app.route, the
         # decorator cannot see the HTTP binding and registers the entry with
         # method=None; we then explode that entry into one operation per bound
         # method instead of merging every method into it, which would otherwise
         # collapse the generated spec to a single GET (#358).
-        with registry.lock:
-            canonical_target = registry.find_by_function_id(canonical_id)
+        with reg.lock:
+            canonical_target = reg.find_by_function_id(canonical_id)
             explode_canonical = (
                 canonical_target is not None and canonical_target.get("method") is None
             )
@@ -615,7 +656,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
             if discovered is not None and methods_expanded and method in BODYLESS_HTTP_METHODS:
                 discovered["request_body"] = None
 
-            with registry.lock:
+            with reg.lock:
                 if explode_canonical:
                     # Seed one per-method entry from the method=None @openapi
                     # entry, then merge any enrichment into it. Collapsing every
@@ -635,7 +676,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     if methods_expanded and method in BODYLESS_HTTP_METHODS:
                         clone["request_body"] = None
                     _tag_skew(clone, entry_skew)
-                    registry.set(endpoint_key, clone)
+                    reg.set(endpoint_key, clone)
                     continue
 
                 if discovered is None:
@@ -668,18 +709,18 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                 # sibling comes first, corrupting per-method operations on a
                 # re-scan. The exact ``method::path`` key pins each method to its
                 # own entry; the id lookup is then method-aware as a backstop.
-                target = registry.get(endpoint_key)
+                target = reg.get(endpoint_key)
                 match_kind = "OpenAPI endpoint"
 
                 if target is None:
-                    target = registry.find_by_function_id(canonical_id, method=method)
+                    target = reg.find_by_function_id(canonical_id, method=method)
                     match_kind = "canonical @openapi id"
 
                 if target is None:
                     # Short-name fallback: refuse to merge when the name is
                     # ambiguous (shared across modules) to avoid silently
                     # attaching metadata to the wrong handler.
-                    if registry.count_by_function_name(function_name) > 1:
+                    if reg.count_by_function_name(function_name) > 1:
                         logger.warning(
                             "Refusing to merge validation metadata by ambiguous "
                             "short name '%s': multiple @openapi entries share this "
@@ -689,7 +730,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                         )
                         entry_skew.add(WarningCode.AMBIGUOUS_NAMESPACE)
                     else:
-                        target = registry.get(function_name)
+                        target = reg.get(function_name)
                         match_kind = "short-name fallback"
 
                 if target is not None:
@@ -710,6 +751,7 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     request_body_required=discovered.get("request_body_required", True),
                     response=discovered.get("response") or None,
                     parameters=discovered.get("parameters") or None,
+                    registry=reg,
                 )
             else:
                 register_openapi_metadata(
@@ -720,13 +762,14 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
                     if _is_base_model_type(discovered.get("response_model"))
                     else None,
                     parameters=discovered.get("parameters") or None,
+                    registry=reg,
                 )
             logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
             # Hold the registry lock across the get+mutate so tagging honours the
             # registry's documented thread-safety contract (the entry must not be
             # mutated after the lock protecting it has been released).
-            with registry.lock:
-                registered = registry.get(endpoint_key)
+            with reg.lock:
+                registered = reg.get(endpoint_key)
                 if registered is not None:
                     _tag_skew(registered, entry_skew)
 
@@ -735,14 +778,18 @@ def scan_endpoint_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -
         # GET duplicate (#358). Match by identity: find_by_function_id returns
         # the live entry but not its registry key.
         if explode_canonical:
-            with registry.lock:
-                for key, entry in list(registry.entries.items()):
+            with reg.lock:
+                for key, entry in list(reg.entries.items()):
                     if entry is canonical_target:
-                        del registry.entries[key]
+                        del reg.entries[key]
                         break
 
 
-def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX) -> None:
+def scan_validation_metadata(
+    app: Any,
+    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    registry: OpenAPIRegistry | None = None,
+) -> None:
     """Deprecated alias for :func:`scan_endpoint_metadata`.
 
     The scanner now primarily consumes the namespace-neutral ``"endpoint"``
@@ -757,4 +804,4 @@ def scan_validation_metadata(app: Any, route_prefix: str = DEFAULT_ROUTE_PREFIX)
         DeprecationWarning,
         stacklevel=2,
     )
-    scan_endpoint_metadata(app, route_prefix)
+    scan_endpoint_metadata(app, route_prefix, registry=registry)

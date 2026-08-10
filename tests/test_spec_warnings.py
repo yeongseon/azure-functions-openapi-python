@@ -18,7 +18,11 @@ import pytest
 from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.cli import handle_generate
-from azure_functions_openapi.decorator import clear_openapi_registry
+from azure_functions_openapi.decorator import (
+    clear_openapi_registry,
+    openapi,
+    register_openapi_metadata,
+)
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.registry import registry as default_registry
@@ -339,6 +343,7 @@ def _args(**overrides: Any) -> argparse.Namespace:
         "pretty": False,
         "output": None,
         "app": None,
+        "isolate_app": False,
     }
     base.update(overrides)
     return argparse.Namespace(**base)
@@ -491,3 +496,156 @@ class TestDuplicateOperationWarnings:
         default_registry.set("first", _dup_entry("first"))
         default_registry.set("second", _dup_entry("second"))
         assert handle_generate(_args(fail_on_warnings=True)) == 2
+
+
+# ---------------------------------------------------------------------------
+# #381: app-scoped (isolated) registry
+# ---------------------------------------------------------------------------
+
+
+def _decorated_app(
+    *,
+    fn_name: str,
+    route: str,
+    method: str = "POST",
+    summary: str = "",
+) -> MockApp:
+    """Build a MockApp whose single handler carries a plain ``@openapi`` entry.
+
+    Decorating registers a canonical entry in the *global* registry at call
+    time (mirroring import-time registration), while the returned app exposes
+    an HTTP binding so the scanner can reconcile it. A distinct ``__qualname__``
+    keeps each handler's ``_function_id`` unique across apps.
+    """
+
+    def handler(req: Any) -> Any:
+        return req
+
+    # Rename BEFORE decorating: @openapi keys the global entry by ``__name__``
+    # and derives ``_function_id`` from ``__qualname__`` at decoration time, so
+    # distinct names are required to avoid two apps colliding on one entry.
+    handler.__name__ = fn_name
+    handler.__qualname__ = f"_decorated_app.<locals>.{fn_name}"
+    decorated = openapi(summary=summary, method=method, route=route)(handler)
+    binding = MockBinding(route=route, methods=[method.upper()])
+    fn = MockFunction(name=fn_name, func=decorated, bindings=[binding])
+    return MockApp([MockBuilder(fn)])
+
+
+class TestIsolatedRegistry:
+    def test_isolated_scan_excludes_other_apps_openapi(self) -> None:
+        # Two apps register @openapi entries globally at decoration time. An
+        # isolated scan of app_a must document ONLY app_a's route, never leaking
+        # app_b's globally-registered entry into app_a's spec (#381).
+        app_a = _decorated_app(fn_name="a_handler", route="a/one", summary="A")
+        _decorated_app(fn_name="b_handler", route="b/one", summary="B")
+
+        iso = OpenAPIRegistry()
+        scan_endpoint_metadata(app_a, registry=iso)
+        spec = generate_openapi_spec(registry=iso)
+
+        assert "/api/a/one" in spec["paths"]
+        assert "/api/b/one" not in spec["paths"]
+
+    def test_global_default_scan_still_sees_all_entries(self) -> None:
+        # Baseline: without an injected registry, the shared global registry is
+        # used, so a global generate still reflects every registered route.
+        _decorated_app(fn_name="a_handler", route="a/one")
+        app_b = _decorated_app(fn_name="b_handler", route="b/one")
+
+        scan_endpoint_metadata(app_b)
+        spec = generate_openapi_spec()
+
+        # Both @openapi entries were registered globally at decoration time.
+        assert "/api/a/one" in spec["paths"]
+        assert "/api/b/one" in spec["paths"]
+
+    def test_isolated_scan_leaves_global_registry_untouched(self) -> None:
+        app_a = _decorated_app(fn_name="a_handler", route="a/one")
+        iso = OpenAPIRegistry()
+        scan_endpoint_metadata(app_a, registry=iso)
+
+        # Seeding deep-copies the global entry into the isolated registry; the
+        # global one must remain intact for a subsequent global generate.
+        global_spec = generate_openapi_spec()
+        assert "/api/a/one" in global_spec["paths"]
+
+    def test_discovery_warnings_isolated_to_target_registry(self) -> None:
+        # An unbuildable builder scanned into an isolated registry records its
+        # discovery-skipped warning on that registry, not the global one.
+        app = _decorated_app(fn_name="a_handler", route="a/one")
+        app._function_builders.append(_UnbuildableBuilder("orphan"))
+
+        iso = OpenAPIRegistry()
+        scan_endpoint_metadata(app, registry=iso)
+
+        iso_spec = generate_openapi_spec(registry=iso)
+        iso_warnings = collect_spec_warnings(iso_spec, registry=iso)
+        global_warnings = collect_spec_warnings(generate_openapi_spec())
+
+        assert any(w.code == WarningCode.DISCOVERY_SKIPPED for w in iso_warnings)
+        assert not any(
+            w.code == WarningCode.DISCOVERY_SKIPPED for w in global_warnings
+        )
+
+    def test_programmatic_entries_not_seeded_into_isolated_registry(self) -> None:
+        # Programmatic register_openapi_metadata entries are not tied to any
+        # scanned app object and must never leak into an isolated app spec.
+        register_openapi_metadata(path="/api/prog", method="GET", summary="prog")
+        app_a = _decorated_app(fn_name="a_handler", route="a/one")
+
+        iso = OpenAPIRegistry()
+        scan_endpoint_metadata(app_a, registry=iso)
+        spec = generate_openapi_spec(registry=iso)
+
+        assert "/api/a/one" in spec["paths"]
+        assert "/api/prog" not in spec["paths"]
+
+
+class TestCliIsolateApp:
+    def test_isolate_app_ignored_without_variable(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # --isolate-app requires 'module:variable'. With a bare module it is a
+        # no-op that warns and falls back to the global registry.
+        rc = handle_generate(_args(app="os", isolate_app=True))
+        assert rc == 0
+        assert "--isolate-app ignored" in capsys.readouterr().err
+
+    def test_isolate_app_scopes_spec_to_selected_app(
+        self, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # End-to-end: a module exposing two apps generates a spec for only the
+        # selected app when --isolate-app is set.
+        module_src = (
+            "from typing import Any\n"
+            "from azure_functions_openapi.decorator import openapi\n"
+            "from tests.test_spec_warnings import (\n"
+            "    MockApp, MockBinding, MockBuilder, MockFunction,\n"
+            ")\n"
+            "\n"
+            "def _mk(fn_name, route):\n"
+            "    def handler(req: Any) -> Any:\n"
+            "        return req\n"
+            "    handler.__name__ = fn_name\n"
+            "    handler.__qualname__ = 'twoapp_' + fn_name\n"
+            "    decorated = openapi(summary=fn_name, method='POST', route=route)(handler)\n"
+            "    b = MockBinding(route=route, methods=['POST'])\n"
+            "    f = MockFunction(name=fn_name, func=decorated, bindings=[b])\n"
+            "    return MockApp([MockBuilder(f)])\n"
+            "\n"
+            "app_a = _mk('twoapp_a', 'a/one')\n"
+            "app_b = _mk('twoapp_b', 'b/one')\n"
+        )
+        mod_path = tmp_path / "twoapp_iso.py"
+        mod_path.write_text(module_src, encoding="utf-8")
+        monkeypatch.syspath_prepend(str(tmp_path))
+
+        out = tmp_path / "a.json"
+        rc = handle_generate(
+            _args(app="twoapp_iso:app_a", isolate_app=True, output=str(out))
+        )
+        assert rc == 0
+        spec = json.loads(out.read_text(encoding="utf-8"))
+        assert "/api/a/one" in spec["paths"]
+        assert "/api/b/one" not in spec["paths"]
