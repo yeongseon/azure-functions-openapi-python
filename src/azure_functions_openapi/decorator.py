@@ -426,6 +426,7 @@ def register_openapi_metadata(
     parameters: list[dict[str, Any]] | None = None,
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
+    registry: OpenAPIRegistry | None = None,
 ) -> None:
     """Register OpenAPI metadata for an endpoint programmatically.
 
@@ -463,6 +464,10 @@ def register_openapi_metadata(
         List of OpenAPI Security Requirement Objects.
     security_scheme:
         Security scheme definitions for components.securitySchemes.
+    registry:
+        Target :class:`OpenAPIRegistry` to record the operation in. Defaults to
+        the process-wide global registry (``None``); pass an isolated registry
+        to scope the metadata to a single application (see #381).
 
     Raises
     ------
@@ -509,8 +514,9 @@ def register_openapi_metadata(
     if request_model is not None or response_model is not None:
         _validate_models(request_model, response_model, registry_key)
 
-    with _registry_lock:
-        registry.set(registry_key, {
+    reg = registry if registry is not None else _registry
+    with reg.lock:
+        reg.set(registry_key, {
             "summary": summary,
             "description": description,
             "tags": validated_tags,

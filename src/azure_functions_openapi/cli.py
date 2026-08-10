@@ -8,6 +8,7 @@ import sys
 
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
@@ -165,6 +166,17 @@ Examples:
             "Use in CI to stop a wrong-but-plausible spec from being published."
         ),
     )
+    generate_parser.add_argument(
+        "--isolate-app",
+        action="store_true",
+        default=False,
+        help=(
+            "Scan the --app FunctionApp into a fresh, app-scoped registry "
+            "instead of the shared global one. Requires --app 'module:variable'. "
+            "Use when several apps are imported in one process to keep each "
+            "spec limited to its own routes and avoid cross-app leakage."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -186,6 +198,11 @@ Examples:
 def handle_generate(args: argparse.Namespace) -> int:
     """Handle generate command."""
     try:
+        # An app-scoped registry keeps a --isolate-app run limited to the routes
+        # of the given FunctionApp, avoiding cross-app leakage when several apps
+        # are imported in one process. Left None for the default shared-global flow.
+        active_registry: OpenAPIRegistry | None = None
+        isolate = getattr(args, "isolate_app", False) is True
         # Import user module first so @openapi decorators populate the registry.
         # When an explicit ``module:variable`` is given, resolve the FunctionApp
         # object and run endpoint-metadata discovery so producers that register
@@ -201,12 +218,23 @@ def handle_generate(args: argparse.Namespace) -> int:
                 return 1
 
             if variable_given and resolved_app is not None:
+                if isolate:
+                    active_registry = OpenAPIRegistry()
                 # One-shot discovery through the #325 adapter. `build()` is
                 # idempotent; we never call the non-idempotent `get_functions()`.
                 scan_endpoint_metadata(
-                    resolved_app, route_prefix=getattr(args, "route_prefix", "/api")
+                    resolved_app,
+                    route_prefix=getattr(args, "route_prefix", "/api"),
+                    registry=active_registry,
                 )
             else:
+                if isolate:
+                    print(
+                        "Note: --isolate-app ignored — it requires --app "
+                        f"'module:variable', but {args.app!r} has no ':variable'. "
+                        "Falling back to the shared global registry.",
+                        file=sys.stderr,
+                    )
                 print(
                     "Note: metadata discovery skipped — no ':variable' given in "
                     f"--app {args.app!r}. Only @openapi-decorated routes were "
@@ -230,8 +258,9 @@ def handle_generate(args: argparse.Namespace) -> int:
             description=description,
             route_prefix=getattr(args, "route_prefix", "/api"),
             strict=getattr(args, "strict", False),
+            registry=active_registry,
         )
-        warnings = collect_spec_warnings(spec)
+        warnings = collect_spec_warnings(spec, registry=active_registry)
         # Surface structured warnings (version skew / namespace fallback /
         # spec-validation) as JSON lines on stderr so CI can parse them, and
         # gate the exit code on them when --fail-on-warnings is set.
