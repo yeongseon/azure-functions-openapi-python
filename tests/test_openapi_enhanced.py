@@ -190,6 +190,7 @@ class TestGetOpenAPIJSONEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                hoist_flat_schemas=False,
                 registry=None,
             )
 
@@ -219,6 +220,7 @@ class TestGetOpenAPIJSONEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                hoist_flat_schemas=False,
                 registry=None,
             )
 
@@ -257,6 +259,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                hoist_flat_schemas=False,
                 registry=None,
             )
 
@@ -286,6 +289,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 security_schemes=None,
                 route_prefix="/api",
                 strict=False,
+                hoist_flat_schemas=False,
                 registry=None,
             )
 

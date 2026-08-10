@@ -16,7 +16,12 @@ import pytest
 
 from azure_functions_openapi.bridge import _HANDLER_METADATA_ATTR, scan_endpoint_metadata
 from azure_functions_openapi.decorator import clear_openapi_registry, get_openapi_registry
-from azure_functions_openapi.spec import generate_openapi_spec
+from azure_functions_openapi.spec import (
+    generate_openapi_report,
+    generate_openapi_spec,
+    get_openapi_json,
+    get_openapi_yaml,
+)
 from azure_functions_openapi.utils import hoist_inline_defs
 
 
@@ -260,3 +265,41 @@ def test_spec_hoists_flat_body_when_opted_in(_clean_registry: Any) -> None:
 
     assert _request_schema(spec) == {"$ref": "#/components/schemas/CreateUser"}
     assert spec["components"]["schemas"]["CreateUser"]["properties"] == {"name": {"type": "string"}}
+
+
+# ---------------------------------------------------------------------------
+# Output-API propagation (issue #378): the option must reach every public
+# spec-output wrapper, not only generate_openapi_spec.
+# ---------------------------------------------------------------------------
+
+
+def test_get_openapi_json_forwards_hoist_flag(_clean_registry: Any) -> None:
+    scan_endpoint_metadata(_make_flat_app())
+
+    default_json = get_openapi_json()
+    hoisted_json = get_openapi_json(hoist_flat_schemas=True)
+
+    assert "#/components/schemas/CreateUser" not in default_json
+    assert '#/components/schemas/CreateUser' in hoisted_json
+
+
+def test_get_openapi_yaml_forwards_hoist_flag(_clean_registry: Any) -> None:
+    scan_endpoint_metadata(_make_flat_app())
+
+    default_yaml = get_openapi_yaml()
+    hoisted_yaml = get_openapi_yaml(hoist_flat_schemas=True)
+
+    assert "CreateUser:" not in default_yaml
+    assert "#/components/schemas/CreateUser" in hoisted_yaml
+
+
+def test_generate_openapi_report_forwards_hoist_flag(_clean_registry: Any) -> None:
+    scan_endpoint_metadata(_make_flat_app())
+
+    default_report = generate_openapi_report()
+    hoisted_report = generate_openapi_report(hoist_flat_schemas=True)
+
+    assert _request_schema(default_report.spec) == _FLAT_BODY
+    assert _request_schema(hoisted_report.spec) == {
+        "$ref": "#/components/schemas/CreateUser"
+    }
