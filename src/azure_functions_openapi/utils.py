@@ -1,6 +1,8 @@
 # src/azure_functions_openapi/utils.py
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from typing import Any, cast, get_origin
@@ -134,7 +136,62 @@ def _needs_hoisting(obj: Any) -> bool:
     return False
 
 
-def hoist_inline_defs(schema: Any, components: dict[str, Any]) -> Any:
+_FLAT_COMPOSITION_KEYS = ("properties", "items", "anyOf", "oneOf", "allOf")
+
+
+def _schema_short_hash(schema: dict[str, Any]) -> str:
+    """Return a stable 8-char hash of a schema's canonical JSON form."""
+    canonical = json.dumps(schema, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:8]
+
+
+def _is_hoistable_flat_schema(schema: Any) -> bool:
+    """Return ``True`` for a flat schema worth promoting to ``components``.
+
+    Only structured schemas (objects with ``properties`` or a schema using a
+    composition keyword such as ``items``/``anyOf``) are hoisted; trivial
+    scalars like ``{"type": "string"}`` are left inline to avoid noisy,
+    single-use component entries.
+    """
+    if not isinstance(schema, dict):
+        return False
+    if _needs_hoisting(schema):  # nested $defs are handled by the main path
+        return False
+    if "$ref" in schema:
+        return False
+    return any(key in schema for key in _FLAT_COMPOSITION_KEYS)
+
+
+def _flat_schema_name(schema: dict[str, Any]) -> str:
+    """Derive a component name for a flat schema.
+
+    Prefers the schema's ``title`` (the natural name Pydantic emits); falls back
+    to a deterministic ``InlineSchema_<hash>`` for anonymous schemas so identical
+    schemas dedupe to the same component.
+    """
+    title = schema.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return f"InlineSchema_{_schema_short_hash(schema)}"
+
+
+def _hoist_flat_schema(schema: dict[str, Any], components: dict[str, Any]) -> dict[str, Any]:
+    """Promote a flat schema into ``components.schemas`` and return a ``$ref``.
+
+    Reuses :func:`_resolve_name_collision` so a name reused with differing
+    content gets a deterministic alias, exactly like the ``$defs`` and model
+    paths. Identical schemas registered under the same name dedupe to one entry.
+    """
+    schemas = components.setdefault("schemas", {})
+    normalized = cast(dict[str, Any], _rewrite_refs(schema))
+    name = _flat_schema_name(normalized)
+    resolved = _resolve_name_collision(name, normalized, schemas)
+    if resolved not in schemas:
+        schemas[resolved] = normalized
+    return {"$ref": f"#/components/schemas/{resolved}"}
+
+
+def hoist_inline_defs(schema: Any, components: dict[str, Any], *, hoist_flat: bool = False) -> Any:
     """Hoist inline ``$defs`` from a raw JSON Schema into ``components['schemas']``.
 
     Producer-authored ``endpoint`` schemas embed nested-model definitions inline
@@ -146,12 +203,19 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any]) -> Any:
     point at renamed definitions are rewritten.
 
     Flat schemas -- those with no ``$defs`` and no local ``#/$defs/`` refs -- are
-    returned unchanged, preserving the verbatim behaviour from #311.
+    returned unchanged by default, preserving the verbatim behaviour from #311.
+    When *hoist_flat* is ``True`` (opt-in, #375), a structured flat schema is also
+    promoted into ``components.schemas`` under its ``title`` (or a deterministic
+    ``InlineSchema_<hash>`` when anonymous) and replaced with a ``$ref``, so the
+    same flat schema reused across endpoints is deduplicated the way model-class
+    schemas already are. Trivial scalar schemas are always left inline.
 
     The input *schema* is never mutated; :func:`_collect_schemas` rebuilds every
     nested structure via :func:`_rewrite_refs` before any in-place ``pop``.
     """
     if not isinstance(schema, dict) or not _needs_hoisting(schema):
+        if hoist_flat and _is_hoistable_flat_schema(schema):
+            return _hoist_flat_schema(cast(dict[str, Any], schema), components)
         return schema
 
     normalized_root, definitions = _collect_schemas(schema)
@@ -173,9 +237,7 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any]) -> Any:
             )
             for name, definition in definitions.items()
         }
-        normalized_root = cast(
-            dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map)
-        )
+        normalized_root = cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
 
     for name, definition in definitions.items():
         if name not in schemas or schemas[name] != definition:

@@ -70,6 +70,7 @@ def _ensure_default_response(
         "content": {"application/json": {"schema": resolved_schema}},
     }
 
+
 def _operation_id_for(
     provided_id: str | None,
     method: str,
@@ -257,6 +258,7 @@ def generate_openapi_spec(
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
 ) -> dict[str, Any]:
     """
     Compile an OpenAPI specification from the registry.
@@ -276,6 +278,11 @@ def generate_openapi_spec(
         strict: When ``True``, raise on any registry entry processing failure
             instead of logging and skipping. Useful for CI/build-time
             validation where a missing path should fail the build.
+        hoist_flat_schemas: When ``True`` (opt-in, #375), structured flat
+            schemas (objects/arrays with no inline ``$defs``) are promoted into
+            ``components.schemas`` under their ``title`` and replaced with a
+            ``$ref``, deduplicating schemas reused across endpoints. Defaults to
+            ``False`` to preserve the verbatim inline-schema behaviour.
 
     Returns:
         OpenAPI specification dictionary
@@ -333,7 +340,11 @@ def generate_openapi_spec(
                             if isinstance(media_obj, dict) and "schema" in media_obj:
                                 media_obj = {
                                     **media_obj,
-                                    "schema": hoist_inline_defs(media_obj["schema"], components),
+                                    "schema": hoist_inline_defs(
+                                        media_obj["schema"],
+                                        components,
+                                        hoist_flat=hoist_flat_schemas,
+                                    ),
                                 }
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
@@ -382,7 +393,14 @@ def generate_openapi_spec(
                 op_parameters: list[dict[str, Any]] | None = None
                 if parameters:
                     op_parameters = [
-                        {**param, "schema": hoist_inline_defs(param["schema"], components)}
+                        {
+                            **param,
+                            "schema": hoist_inline_defs(
+                                param["schema"],
+                                components,
+                                hoist_flat=hoist_flat_schemas,
+                            ),
+                        }
                         if isinstance(param, dict) and "schema" in param
                         else param
                         for param in parameters
@@ -400,7 +418,9 @@ def generate_openapi_spec(
                         "content": {
                             "application/json": {
                                 "schema": hoist_inline_defs(
-                                    meta["request_body"], components
+                                    meta["request_body"],
+                                    components,
+                                    hoist_flat=hoist_flat_schemas,
                                 )
                             }
                         },
@@ -768,8 +788,7 @@ _SKEW_MESSAGES: dict[WarningCode, str] = {
 # ``_SKEW_MESSAGES``. The recorded SDK ``reason`` (which itself names the
 # function) is appended by :func:`_collect_discovery_warnings` for attribution.
 _DISCOVERY_SKIPPED_MESSAGE = (
-    "A function builder could not be built during discovery and was omitted "
-    "from the spec"
+    "A function builder could not be built during discovery and was omitted from the spec"
 )
 
 # Method/binding mismatch is authored disagreement, not a skew signal: an
@@ -878,6 +897,7 @@ def _collect_binding_mismatch_warnings(
             )
         )
     return collected
+
 
 def generate_openapi_report(
     title: str = "API",
