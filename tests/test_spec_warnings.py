@@ -19,7 +19,9 @@ from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.cli import handle_generate
 from azure_functions_openapi.decorator import clear_openapi_registry
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.registry import registry as default_registry
 from azure_functions_openapi.spec import (
     collect_spec_warnings,
     generate_openapi_report,
@@ -419,3 +421,73 @@ class TestCliFailOnWarnings:
         err = capsys.readouterr().err
         assert "Hint: use --app" not in err
         assert "no" in err and "@openapi-decorated routes" in err
+
+
+# ---------------------------------------------------------------------------
+# #386: duplicate-operation warnings for METHOD path collisions
+# ---------------------------------------------------------------------------
+
+
+def _dup_entry(function_name: str) -> dict[str, Any]:
+    return {
+        "function_name": function_name,
+        "route": "dup",
+        "method": "post",
+        "response": {"200": {"description": "OK"}},
+    }
+
+
+class TestDuplicateOperationWarnings:
+    """Two registrations colliding on the same METHOD path must surface a
+    structured duplicate-operation warning; only the last operation wins, and
+    ``--fail-on-warnings`` must observe the silently dropped operation (#386)."""
+
+    @staticmethod
+    def _colliding_registry() -> OpenAPIRegistry:
+        reg = OpenAPIRegistry()
+        # Distinct registry keys that both resolve to POST /api/dup, so the
+        # spec merge (not the registry) is what collapses them.
+        reg.set("first", _dup_entry("first"))
+        reg.set("second", _dup_entry("second"))
+        return reg
+
+    def test_duplicate_yields_single_structured_warning(self) -> None:
+        reg = self._colliding_registry()
+        spec = generate_openapi_spec(registry=reg)
+        dups = [
+            w
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.DUPLICATE_OPERATION
+        ]
+        assert len(dups) == 1
+        assert "POST /api/dup" in dups[0].message
+
+    def test_last_operation_wins_in_spec(self) -> None:
+        reg = self._colliding_registry()
+        spec = generate_openapi_spec(registry=reg)
+        # The merge keeps exactly one POST operation for the shared path.
+        path_item = spec["paths"]["/api/dup"]
+        assert list(path_item.keys()) == ["post"]
+        # "Last wins" must be verified, not just "one survives": the surviving
+        # operation must be the second registration, so its operationId reflects
+        # ``second`` rather than the overwritten ``first``.
+        assert path_item["post"]["operationId"] == "post_second"
+
+    def test_strict_mode_still_raises(self) -> None:
+        reg = self._colliding_registry()
+        with pytest.raises(OpenAPISpecConfigError):
+            generate_openapi_spec(registry=reg, strict=True)
+
+    def test_no_duplicate_warning_without_collision(self) -> None:
+        reg = OpenAPIRegistry()
+        reg.set("only", _dup_entry("only"))
+        spec = generate_openapi_spec(registry=reg)
+        codes = {w.code for w in collect_spec_warnings(spec, registry=reg)}
+        assert WarningCode.DUPLICATE_OPERATION not in codes
+
+    def test_fail_on_warnings_catches_dropped_operation(self) -> None:
+        # The global CLI path must exit non-zero: a silently dropped operation
+        # is exactly what --fail-on-warnings exists to catch.
+        default_registry.set("first", _dup_entry("first"))
+        default_registry.set("second", _dup_entry("second"))
+        assert handle_generate(_args(fail_on_warnings=True)) == 2
