@@ -497,6 +497,21 @@ class TestDuplicateOperationWarnings:
         default_registry.set("second", _dup_entry("second"))
         assert handle_generate(_args(fail_on_warnings=True)) == 2
 
+    def test_resolved_collision_not_carried_to_next_generation(self) -> None:
+        # #393: diagnostics are run-scoped. A DUPLICATE_OPERATION observed in one
+        # generation must not linger on the registry and resurface after the
+        # collision is resolved, even when the same (long-lived) registry is
+        # reused for a second generation.
+        reg = self._colliding_registry()
+        first = collect_spec_warnings(generate_openapi_spec(registry=reg), registry=reg)
+        assert any(w.code == WarningCode.DUPLICATE_OPERATION for w in first)
+
+        # Resolve the collision by moving one operation to a distinct path, then
+        # regenerate against the SAME registry.
+        reg.set("second", {**_dup_entry("second"), "route": "dup-fixed"})
+        second = collect_spec_warnings(generate_openapi_spec(registry=reg), registry=reg)
+        assert not any(w.code == WarningCode.DUPLICATE_OPERATION for w in second)
+
 
 # ---------------------------------------------------------------------------
 # #381: app-scoped (isolated) registry
