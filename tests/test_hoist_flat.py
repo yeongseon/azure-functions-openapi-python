@@ -303,3 +303,91 @@ def test_generate_openapi_report_forwards_hoist_flag(_clean_registry: Any) -> No
     assert _request_schema(hoisted_report.spec) == {
         "$ref": "#/components/schemas/CreateUser"
     }
+# ---------------------------------------------------------------------------
+# JSON-Pointer-safe component names + strict hashing (issue #379)
+# ---------------------------------------------------------------------------
+
+
+def test_title_with_slash_is_sanitized_to_resolvable_ref() -> None:
+    schema = {"title": "Order/Item", "type": "object", "properties": {"id": {"type": "integer"}}}
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components, hoist_flat=True)
+
+    # ``/`` would otherwise be read as a JSON Pointer path separator.
+    assert result == {"$ref": "#/components/schemas/Order_Item"}
+    assert "Order_Item" in components["schemas"]
+    assert "Order/Item" not in components["schemas"]
+
+
+def test_title_with_tilde_is_sanitized_to_resolvable_ref() -> None:
+    schema = {"title": "Order~Item", "type": "object", "properties": {"id": {"type": "integer"}}}
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components, hoist_flat=True)
+
+    # ``~`` is the JSON Pointer escape character and must not survive verbatim.
+    assert result == {"$ref": "#/components/schemas/Order_Item"}
+    assert "Order_Item" in components["schemas"]
+
+
+def test_sanitized_names_collide_and_alias_deterministically() -> None:
+    # Two distinct titles sanitize to the same identifier with differing content.
+    schema_a = {"title": "Order/Item", "type": "object", "properties": {"id": {"type": "integer"}}}
+    schema_b = {"title": "Order~Item", "type": "object", "properties": {"id": {"type": "string"}}}
+    components = _make_components()
+
+    ref_a = hoist_inline_defs(schema_a, components, hoist_flat=True)
+    ref_b = hoist_inline_defs(schema_b, components, hoist_flat=True)
+
+    assert ref_a == {"$ref": "#/components/schemas/Order_Item"}
+    assert ref_b != ref_a
+    assert ref_b["$ref"].startswith("#/components/schemas/Order_Item")
+    assert len(components["schemas"]) == 2
+
+
+def test_anonymous_hash_rejects_non_json_schema() -> None:
+    # Strict serialization (no ``default=str``) surfaces non-JSON metadata as a
+    # loud failure instead of a non-deterministic, memory-address-tainted name.
+    schema = {"type": "object", "properties": {"id": {"type": "integer"}}, "x": object()}
+    components = _make_components()
+
+    with pytest.raises(TypeError):
+        hoist_inline_defs(schema, components, hoist_flat=True)
+
+
+def test_defs_path_sanitizes_names_without_opt_in() -> None:
+    # Regression (#379): the JSON-Pointer-safety bug is NOT opt-in-only. The
+    # default ``$defs`` hoisting path (``hoist_flat=False``) flows through the
+    # same ``_resolve_name_collision`` entry, so a ``$defs`` key containing ``/``
+    # must also be sanitized and its ref rewritten to resolve.
+    schema = {
+        "$defs": {"Order/Item": {"type": "object", "properties": {"id": {"type": "integer"}}}},
+        "type": "object",
+        "properties": {"item": {"$ref": "#/$defs/Order/Item"}},
+    }
+    components = _make_components()
+
+    result = hoist_inline_defs(schema, components)  # default: hoist_flat=False
+
+    assert "Order_Item" in components["schemas"]
+    assert "Order/Item" not in components["schemas"]
+    assert result["properties"]["item"] == {"$ref": "#/components/schemas/Order_Item"}
+
+
+def test_model_path_sanitizes_name_and_rewrites_ref() -> None:
+    # Regression (#379): the model hoisting path (``model_to_schema``) also flows
+    # through ``_resolve_name_collision``, so a model whose name contains ``/``
+    # must be sanitized and its root ``$ref`` rewritten to the resolvable key.
+    from pydantic import create_model
+
+    from azure_functions_openapi.utils import model_to_schema
+
+    weird_model = create_model("Order/Item", id=(int, ...))
+    components = _make_components()
+
+    result = model_to_schema(weird_model, components)
+
+    assert result == {"$ref": "#/components/schemas/Order_Item"}
+    assert "Order_Item" in components["schemas"]
+    assert "Order/Item" not in components["schemas"]
