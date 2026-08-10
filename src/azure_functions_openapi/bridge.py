@@ -463,8 +463,13 @@ def _seed_canonical_entry(reg: OpenAPIRegistry, function_id: str) -> None:
 
     Programmatic ``register_openapi_metadata`` entries carry a
     ``"programmatic.*"`` ``_function_id`` and are not tied to any scanned app
-    object, so they are never seeded into an isolated app-scoped spec. Entries
-    already present in ``reg`` are left untouched (idempotent re-scan).
+    object, so they are never seeded into an isolated app-scoped spec. A handler
+    already reconciled into ``reg`` is left untouched: idempotency is judged by
+    ``_function_id`` identity, not registry-key presence, because reconciliation
+    rewrites the seeded ``method=None`` canonical into per-method ``method::path``
+    keys and deletes the original key (#358). Re-seeding on a later scan solely
+    because that original key vanished would resurrect a stale ``route=None``
+    ghost entry that spec.py then documents as a phantom endpoint (#388 regression).
     """
     if function_id.startswith("programmatic."):
         return
@@ -480,9 +485,15 @@ def _seed_canonical_entry(reg: OpenAPIRegistry, function_id: str) -> None:
             if entry.get("_function_id") == function_id
         }
     with reg.lock:
+        # Idempotency guard keyed on identity, not key presence: if ANY entry for
+        # this handler already lives in ``reg`` (including an exploded
+        # ``method::path`` entry whose original ``method=None`` key was deleted
+        # during reconciliation) the handler is already seeded. Re-seeding would
+        # reintroduce the stale canonical as a phantom endpoint on re-scan (#388).
+        if reg.find_by_function_id(function_id) is not None:
+            return
         for key, entry in seeds.items():
-            if reg.get(key) is None:
-                reg.set(key, entry)
+            reg.set(key, entry)
 
 
 def scan_endpoint_metadata(
