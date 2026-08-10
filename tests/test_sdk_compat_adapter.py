@@ -244,6 +244,42 @@ def test_iter_functions_returns_empty_for_app_without_builders() -> None:
     assert adapters.iter_functions(_EmptyApp()) == []
 
 
+def test_iter_functions_unwraps_wrapping_container_app() -> None:
+    """Regression (#374): a container that wraps a FunctionApp is unwrapped.
+
+    ``LangGraphApp`` does not subclass ``FunctionApp``; it holds the real app
+    lazily and exposes it via a ``.function_app`` property. The outer object has
+    no ``_function_builders`` of its own, so discovery must unwrap to the inner
+    app and enumerate its builders.
+    """
+
+    class _WrapperApp:
+        def __init__(self) -> None:
+            self._inner = _FakeApp()
+
+        @property
+        def function_app(self) -> _FakeApp:
+            return self._inner
+
+    functions = adapters.iter_functions(_WrapperApp())
+
+    assert len(functions) == 1
+    assert adapters.get_function_name(functions[0]) == "ping"
+
+
+def test_iter_functions_returns_empty_when_wrapped_app_also_empty() -> None:
+    """A wrapper whose inner app has no builders still enumerates to empty."""
+
+    class _EmptyInner:
+        _function_builders: list[Any] = []
+        auth_level = None
+
+    class _WrapperApp:
+        function_app = _EmptyInner()
+
+    assert adapters.iter_functions(_WrapperApp()) == []
+
+
 def test_iter_functions_skips_builder_that_fails_to_build() -> None:
     """Regression (#337): a trigger-less builder is skipped, not fatal.
 

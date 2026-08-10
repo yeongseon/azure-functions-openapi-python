@@ -84,6 +84,29 @@ def build_function(builder: Any, auth_level: Any = None) -> Function:
         ) from exc
 
 
+_WRAPPED_APP_ATTRS = ("function_app", "_function_app", "app", "_app")
+
+
+def _unwrap_function_app(app: Any) -> Any | None:
+    """Return an inner ``FunctionApp``-like object wrapped by *app*, or ``None``.
+
+    Some container apps do **not** subclass ``FunctionApp``; they hold the real
+    app and expose it through a property (e.g. ``LangGraphApp.function_app``).
+    When the outer object exposes no builders of its own, look for a wrapped
+    inner app that does — without importing the wrapper type. Only an inner
+    object that actually carries a non-empty ``_function_builders`` list is
+    accepted, and the outer object itself is never returned, so this can never
+    loop or mistake an unrelated attribute for the app.
+    """
+    for attr in _WRAPPED_APP_ATTRS:
+        inner = getattr(app, attr, None)
+        if inner is None or inner is app:
+            continue
+        if getattr(inner, "_function_builders", None):
+            return inner
+    return None
+
+
 def iter_functions(
     app: Any, on_skip: Callable[[str | None, str], None] | None = None
 ) -> list[Function]:
@@ -99,9 +122,11 @@ def iter_functions(
     Skips any builder whose :meth:`FunctionBuilder.build` raises ``ValueError``
     (e.g. a function with no trigger, or a trigger not present in its bindings).
     Such a function is a *user app state*, not an SDK incompatibility, so it is
-    logged at debug and omitted rather than aborting the whole scan. Returns an
     empty list when *app* exposes no builders (e.g. an app with no registered
-    functions), matching the previous "skip quietly" behaviour.
+    functions). When the app itself carries no builders but wraps a real
+    ``FunctionApp`` via a property (e.g. ``LangGraphApp.function_app``), the
+    inner app is unwrapped and enumerated (#374); a truly empty app still
+    returns an empty list, matching the previous "skip quietly" behaviour.
 
     When *on_skip* is provided it is invoked as ``on_skip(function_name, reason)``
     for each skipped builder (name is best-effort and may be ``None`` when the
@@ -109,6 +134,14 @@ def iter_functions(
     structured warning instead of losing it to a debug log.
     """
     builders = getattr(app, "_function_builders", None)
+    if not builders:
+        # #374: the object may be a container that wraps a real FunctionApp
+        # (e.g. LangGraphApp exposes it via a ``.function_app`` property) rather
+        # than subclassing it. Unwrap to the inner app before giving up.
+        inner = _unwrap_function_app(app)
+        if inner is not None:
+            app = inner
+            builders = getattr(app, "_function_builders", None)
     if not builders:
         return []
     auth_level = getattr(app, "auth_level", None)
