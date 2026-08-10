@@ -93,11 +93,35 @@ class OpenAPIRegistry:
             return copy.deepcopy(self._entries)
 
     def clear(self) -> None:
-        """Remove all entries, under :attr:`lock`."""
+        """Remove all entries and diagnostics, under :attr:`lock`."""
         with self._lock:
             self._entries.clear()
+            self.clear_diagnostics()
+
+    def clear_diagnostics(self) -> None:
+        """Clear all discovery/empty/duplicate diagnostics, leaving entries intact.
+
+        Diagnostics are *run-scoped*: they describe what happened during the
+        current scan/generation cycle, not the lifetime of the registry. The
+        one-shot report entry point (:func:`generate_openapi_report`) calls this
+        at the start of each cycle so a warning fixed between two runs (for
+        example a resolved ``DUPLICATE_OPERATION``) does not linger on the
+        process-wide singleton and resurface on the next generation (#393).
+        """
+        with self._lock:
             self._discovery_warnings.clear()
             self._empty_discoveries.clear()
+            self._duplicate_operations.clear()
+
+    def clear_duplicate_operations(self) -> None:
+        """Clear only the duplicate-operation channel, under :attr:`lock`.
+
+        Duplicate operations are fully recomputed on every
+        :func:`generate_openapi_spec` pass, so that generator clears this channel
+        at entry to avoid reporting a collision that a prior generation observed
+        but the current registry state no longer produces (#393).
+        """
+        with self._lock:
             self._duplicate_operations.clear()
 
     def find_by_function_id(

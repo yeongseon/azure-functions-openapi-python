@@ -300,6 +300,12 @@ def generate_openapi_spec(
             registry_entries = registry.snapshot()
         else:
             registry_entries = get_openapi_registry()
+        # Duplicate operations are fully recomputed by the loop below, so clear
+        # the channel first: a collision resolved since a prior generation must
+        # not linger on the (process-wide or injected) registry and resurface
+        # here (#393).
+        _diag_registry = registry if registry is not None else _default_registry
+        _diag_registry.clear_duplicate_operations()
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
