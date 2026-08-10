@@ -203,6 +203,15 @@ def handle_generate(args: argparse.Namespace) -> int:
         # are imported in one process. Left None for the default shared-global flow.
         active_registry: OpenAPIRegistry | None = None
         isolate = getattr(args, "isolate_app", False) is True
+        # Fail closed: an explicit --isolate-app that cannot be honored must not
+        # silently produce a non-isolated spec with a success exit code (#391).
+        if isolate and not getattr(args, "app", None):
+            print(
+                "Error: --isolate-app requires --app 'module:variable' to scope "
+                "the spec to a single FunctionApp, but no --app was given.",
+                file=sys.stderr,
+            )
+            return 1
         # Import user module first so @openapi decorators populate the registry.
         # When an explicit ``module:variable`` is given, resolve the FunctionApp
         # object and run endpoint-metadata discovery so producers that register
@@ -229,12 +238,18 @@ def handle_generate(args: argparse.Namespace) -> int:
                 )
             else:
                 if isolate:
+                    # Fail closed: honoring --isolate-app is impossible without a
+                    # resolvable FunctionApp variable, and silently falling back
+                    # to the shared global registry would emit a non-isolated
+                    # spec with a success exit code (#391).
                     print(
-                        "Note: --isolate-app ignored — it requires --app "
-                        f"'module:variable', but {args.app!r} has no ':variable'. "
-                        "Falling back to the shared global registry.",
+                        "Error: --isolate-app cannot be honored — it requires "
+                        f"--app 'module:variable', but {args.app!r} has no "
+                        "':variable'. Refusing to fall back to the shared global "
+                        "registry (pass e.g. 'function_app:app').",
                         file=sys.stderr,
                     )
+                    return 1
                 print(
                     "Note: metadata discovery skipped — no ':variable' given in "
                     f"--app {args.app!r}. Only @openapi-decorated routes were "

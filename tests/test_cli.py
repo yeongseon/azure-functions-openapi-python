@@ -835,3 +835,39 @@ class TestDescription:
         assert rc == 0
         joined = "\n".join(captured)
         assert "Spec for the Users API" in joined
+
+
+class TestIsolateAppFailClosed:
+    """#391: --isolate-app must fail closed when it cannot be honored, rather
+    than silently falling back to the shared global registry with rc==0."""
+
+    @staticmethod
+    def _isolate_args(app: str | None) -> mock.Mock:
+        args = mock.Mock()
+        args.isolate_app = True
+        args.app = app
+        return args
+
+    def test_isolate_without_app_exits_non_zero(self) -> None:
+        args = self._isolate_args(None)
+        with mock.patch("builtins.print") as mock_print:
+            result = handle_generate(args)
+        assert result == 1
+        message = " ".join(str(c.args[0]) for c in mock_print.call_args_list)
+        assert "--isolate-app" in message
+        assert "--app" in message
+
+    def test_isolate_with_module_without_variable_exits_non_zero(self) -> None:
+        args = self._isolate_args("function_app")
+        # A bare module resolves an app object but reports no ':variable', so
+        # isolation cannot be scoped to a single FunctionApp.
+        with mock.patch(
+            "azure_functions_openapi.cli._import_app_module",
+            return_value=(mock.Mock(), False),
+        ):
+            with mock.patch("builtins.print") as mock_print:
+                result = handle_generate(args)
+        assert result == 1
+        message = " ".join(str(c.args[0]) for c in mock_print.call_args_list)
+        assert "--isolate-app" in message
+        assert "cannot be honored" in message
