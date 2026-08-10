@@ -9,7 +9,11 @@ from pydantic import BaseModel
 
 from azure_functions_openapi import adapters
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
-from azure_functions_openapi.registry import OpenAPIRegistry, canonical_function_id, registry
+from azure_functions_openapi.registry import (
+    OpenAPIRegistry,
+    ensure_canonical_identity,
+    registry,
+)
 from azure_functions_openapi.utils import sanitize_operation_id, validate_route_path
 
 # Define a generic type variable for functions
@@ -331,7 +335,7 @@ def openapi(
                 metadata_func.__name__,
             )
 
-            function_id = canonical_function_id(metadata_func)
+            function_id = ensure_canonical_identity(metadata_func)
 
             with _registry_lock:
                 registry_key = metadata_func.__name__

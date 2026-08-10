@@ -21,6 +21,7 @@ from azure_functions_openapi.decorator import (
 from azure_functions_openapi.registry import (
     OpenAPIRegistry,
     canonical_function_id,
+    ensure_canonical_identity,
 )
 from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -149,6 +150,55 @@ def test_canonical_function_id_unwraps_functools_wraps() -> None:
         return inner(req)
 
     assert canonical_function_id(outer) == canonical_function_id(inner)
+
+# ── #392: dynamically-created (factory/closure) handler identity ────────────
+def _module_level_handler(req: Any) -> Any:  # top-level: no ``<locals>``
+    return req
+
+
+def _openapi_factory(tag: str) -> Any:
+    """Return a fresh @openapi-decorated closure handler per call.
+
+    Every invocation builds a new ``handler`` object whose ``__qualname__`` is
+    identical (``_openapi_factory.<locals>.handler``), reproducing the #392
+    collision that used to collapse distinct handlers onto one registry entry.
+    """
+
+    @openapi(summary=tag, route=f"items/{tag}", method="get")
+    def handler(req: Any) -> Any:
+        return req
+
+    return handler
+
+
+def test_factory_handlers_get_distinct_canonical_ids() -> None:
+    a = _openapi_factory("a")
+    b = _openapi_factory("b")
+    # Same qualname, but decoration stamped a per-object token, so identities
+    # diverge instead of colliding.
+    assert a.__qualname__ == b.__qualname__
+    assert canonical_function_id(a) != canonical_function_id(b)
+
+
+def test_two_factory_handlers_register_as_two_entries() -> None:
+    a = _openapi_factory("a")
+    b = _openapi_factory("b")
+    reg = get_openapi_registry()
+    ids = {entry.get("_function_id") for entry in reg.values()}
+    # Both handlers survive as distinct entries — no silent data loss.
+    assert canonical_function_id(a) in ids
+    assert canonical_function_id(b) in ids
+    assert canonical_function_id(a) != canonical_function_id(b)
+
+
+def test_module_level_identity_is_unchanged() -> None:
+    cid = canonical_function_id(_module_level_handler)
+    # Module-level functions carry no disambiguation token.
+    assert "#" not in cid
+    assert cid == f"{_module_level_handler.__module__}.{_module_level_handler.__qualname__}"
+    # ensure_canonical_identity is a no-op for them (idempotent, unchanged id).
+    assert ensure_canonical_identity(_module_level_handler) == cid
+    assert canonical_function_id(_module_level_handler) == cid
 
 
 # ── #279: bridge merges into the correct entry despite short-name collision ──

@@ -16,6 +16,12 @@ import copy
 import inspect
 import threading
 from typing import Any
+import uuid
+
+# Attribute stamped by :func:`ensure_canonical_identity` on dynamically-created
+# handlers so :func:`canonical_function_id` can keep same-qualname closures
+# distinct (#392).
+_OPENAPI_UID_ATTR = "_openapi_uid"
 
 
 class OpenAPIRegistry:
@@ -266,4 +272,42 @@ def canonical_function_id(handler: Any) -> str:
     target = inspect.unwrap(handler) if callable(handler) else handler
     module = getattr(target, "__module__", "") or ""
     qualname = getattr(target, "__qualname__", None) or getattr(target, "__name__", "") or ""
-    return f"{module}.{qualname}"
+    base = f"{module}.{qualname}"
+    # Dynamically-created handlers (factory/closure) share a qualname such as
+    # ``factory.<locals>.handler`` across every factory call, so the qualified
+    # name alone collapses distinct handlers onto one registry entry (#392).
+    # When :func:`ensure_canonical_identity` has stamped a per-object token on
+    # the handler, fold it in to keep those handlers distinct. Module-level
+    # functions carry no token and keep their plain ``module.qualname`` identity.
+    token = getattr(target, _OPENAPI_UID_ATTR, None)
+    if token is not None:
+        return f"{base}#{token}"
+    return base
+
+
+def ensure_canonical_identity(handler: Any) -> str:
+    """Stamp a stable per-object identity token, then return the canonical id.
+
+    Factory/closure handlers share their ``__qualname__`` (for example
+    ``factory.<locals>.handler``) across every factory invocation, so
+    :func:`canonical_function_id` alone maps two distinct handlers to one
+    registry entry and silently drops one (#392). The ``@openapi`` decorator
+    calls this at decoration time for such handlers: it attaches a
+    process-local ``uuid4`` token to the unwrapped callable, which
+    :func:`canonical_function_id` (used by both the decorator and the SDK
+    bridge on the *same* handler object) then folds into the identity so the
+    two handlers stay distinct.
+
+    Module-level functions (no ``<locals>`` in their qualname) are left
+    untouched so their identity is unchanged. Handlers that reject attribute
+    assignment (an unusual immutable callable) simply keep the plain qualified
+    identity — a best-effort fallback rather than a hard failure.
+    """
+    target = inspect.unwrap(handler) if callable(handler) else handler
+    qualname = getattr(target, "__qualname__", "") or ""
+    if "<locals>" in qualname and getattr(target, _OPENAPI_UID_ATTR, None) is None:
+        try:
+            setattr(target, _OPENAPI_UID_ATTR, uuid.uuid4().hex)
+        except (AttributeError, TypeError):  # pragma: no cover - immutable callables
+            pass
+    return canonical_function_id(handler)
