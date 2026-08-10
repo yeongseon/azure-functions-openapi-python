@@ -438,6 +438,62 @@ def test_scan_below_route_is_idempotent_across_repeated_scans() -> None:
     assert set(spec["paths"]["/api/things"].keys()) == {"post"}
 
 
+def test_rescan_expanded_handler_preserves_per_method_bodies() -> None:
+    # #363: after #359 made _function_id one-to-many (one entry per exploded
+    # method), resolving by function id alone would let every method iteration
+    # merge into whichever sibling comes first. On a re-scan of an unspecified-
+    # methods handler the POST body would leak into the bodyless GET/HEAD/DELETE
+    # entries. Pinning resolution to the exact method::path key keeps each
+    # method's operation intact across repeated scans.
+    from azure_functions_openapi.decorator import openapi
+
+    @openapi(summary="any thing", route="things")
+    def any_thing(req: Any) -> Any:
+        return req
+
+    setattr(any_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=None, type="httpTrigger")
+    fn = MockFunction(_name="any_thing", _func=any_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    scan_endpoint_metadata(app)  # re-scan must not corrupt per-method bodies
+
+    registry = get_openapi_registry()
+    for method in ("get", "head", "delete"):
+        assert registry[f"{method}::/api/things"]["request_body"] is None
+    for method in ("post", "put", "patch"):
+        assert registry[f"{method}::/api/things"]["request_body"] is not None
+
+
+def test_rescan_multi_method_resolves_each_method_to_own_entry() -> None:
+    # #363: an explicit multi-method handler explodes into distinct entries that
+    # share one _function_id. A re-scan must resolve each method iteration to
+    # its own method::path entry, not the first id match.
+    from azure_functions_openapi.decorator import openapi
+    from azure_functions_openapi.registry import canonical_function_id, registry
+
+    @openapi(summary="rw thing", route="things")
+    def rw_thing(req: Any) -> Any:
+        return req
+
+    setattr(rw_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
+    fn = MockFunction(_name="rw_thing", _func=rw_thing, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
+
+    scan_endpoint_metadata(app)
+    scan_endpoint_metadata(app)
+
+    fid = canonical_function_id(rw_thing)
+    # Each method resolves to its own live entry (method-aware id lookup).
+    for method in ("get", "post"):
+        entry = registry.find_by_function_id(fid, method=method)
+        assert entry is not None
+        assert entry is registry.get(f"{method}::/api/things")
+        assert entry["method"] == method
+
+
 def test_scan_below_route_does_not_override_explicit_openapi_method() -> None:
     # #358 guard: an explicit method= on @openapi must never be exploded or
     # overridden by the binding — the entry keeps its declared method.

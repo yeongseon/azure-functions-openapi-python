@@ -768,8 +768,8 @@ _SKEW_MESSAGES: dict[WarningCode, str] = {
 # ``_SKEW_MESSAGES``. The recorded SDK ``reason`` (which itself names the
 # function) is appended by :func:`_collect_discovery_warnings` for attribution.
 _DISCOVERY_SKIPPED_MESSAGE = (
-"A function builder could not be built during discovery and was omitted "
-"from the spec"
+    "A function builder could not be built during discovery and was omitted "
+    "from the spec"
 )
 
 # Method/binding mismatch is authored disagreement, not a skew signal: an

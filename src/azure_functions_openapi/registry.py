@@ -96,21 +96,42 @@ class OpenAPIRegistry:
             self._entries.clear()
             self._discovery_warnings.clear()
 
-    def find_by_function_id(self, function_id: str) -> dict[str, Any] | None:
-        """Return the entry whose ``_function_id`` equals *function_id*.
+    def find_by_function_id(
+        self, function_id: str, method: str | None = None
+    ) -> dict[str, Any] | None:
+        """Return an entry whose ``_function_id`` equals *function_id*.
 
-        This is the collision-free lookup path: ``@openapi`` records a
-        canonical ``_function_id`` (see :func:`canonical_function_id`) for every
-        entry, so a handler can be resolved by identity regardless of how its
-        short name collides with other modules. Returns ``None`` if no entry
-        matches. Caller should hold :attr:`lock` when the result is used for a
-        read-modify-write transaction.
+        ``@openapi`` records a canonical ``_function_id`` (see
+        :func:`canonical_function_id`) for every entry, so a handler can be
+        resolved by identity regardless of how its short name collides with
+        other modules.
+
+        Historically this was a *collision-free* one-to-one lookup, but the
+        per-method explode introduced in #359 makes ``_function_id`` **one to
+        many**: a single handler bound to several HTTP methods produces one
+        ``{method}::{path}`` entry per method, all sharing the same
+        ``_function_id``. Passing *method* disambiguates that case: an entry
+        whose ``method`` equals *method* is preferred, falling back to a
+        ``method=None`` (un-exploded canonical) entry when no exact match
+        exists. With *method* left ``None`` the first matching entry is returned
+        (used only to detect the un-exploded canonical before exploding).
+
+        Returns ``None`` if no entry matches. Caller should hold :attr:`lock`
+        when the result is used for a read-modify-write transaction.
         """
         with self._lock:
+            method_none_fallback: dict[str, Any] | None = None
             for entry in self._entries.values():
-                if entry.get("_function_id") == function_id:
+                if entry.get("_function_id") != function_id:
+                    continue
+                if method is None:
                     return entry
-        return None
+                entry_method = entry.get("method")
+                if entry_method is not None and str(entry_method).lower() == method.lower():
+                    return entry
+                if entry_method is None and method_none_fallback is None:
+                    method_none_fallback = entry
+            return method_none_fallback
 
     def count_by_function_name(self, function_name: str) -> int:
         """Return how many entries carry ``function_name`` as their name.
