@@ -101,3 +101,10 @@ When splitting a large piece of work into focused issues, keep the umbrella open
    - Treat any new `RuntimeWarning`/`DeprecationWarning` surfaced by this library during the cookbook run as a release-blocking signal — decorator-order and API-drift problems are reported as warnings, so a clean run (zero warnings from this package) is part of the release gate.
    - If the cookbook pins a lower bound (`azure-functions-openapi>=X.Y,<1`), bump it to the new minor in the same verification PR so examples are tested against the version they advertise.
    - A release is **not** considered done until the cookbook passes on the published version.
+
+## Branch Hygiene
+
+- Merged PR branches are deleted automatically ("Automatically delete head branches" is enabled on this repository); keep that setting on.
+- When merging from the CLI, always pass `--delete-branch` (e.g. `gh pr merge --squash --delete-branch`) so the head branch is removed.
+- Never delete `main` or `gh-pages`, and never delete a branch that still has an open PR.
+- Run `git fetch -p` periodically to prune stale local tracking refs.
