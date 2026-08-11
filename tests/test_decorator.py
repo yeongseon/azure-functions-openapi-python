@@ -3,6 +3,7 @@
 import azure.functions as func
 from azure.functions.decorators.function_app import FunctionBuilder
 from pydantic import BaseModel
+import pytest
 
 import azure_functions_openapi.decorator as decorator_module
 from azure_functions_openapi.decorator import get_openapi_registry, openapi
@@ -442,3 +443,106 @@ def test_openapi_explicit_method_wins_over_multiple_binding_methods() -> None:
 
     registry = get_openapi_registry()
     assert registry["list_items"]["method"] == "get"
+
+
+def test_openapi_below_route_with_non_trigger_binding_imports_cleanly() -> None:
+    """Regression (#347 follow-up / v0.21.1): ``@openapi`` applied BELOW
+    ``@app.route`` on top of a non-trigger binding (e.g. Durable Functions
+    ``durable_client_input``) must not raise at import time.
+
+    Decorators apply bottom-up, so when ``@openapi`` runs the FunctionBuilder
+    has the input binding but NOT the HTTP trigger yet. On 0.21.0 the eager
+    ``FunctionBuilder.build()`` raised ``ValueError: ... does not have a
+    trigger`` and killed the user's ``function_app.py`` import. The decorator
+    must instead tolerate the not-yet-built builder (mirroring
+    ``iter_functions``), recover the handler, and still register metadata.
+    """
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="pipeline/start", methods=["POST"])
+    @openapi(summary="Start", tags=["ai"])
+    @app.generic_input_binding(arg_name="client", type="durableClient")
+    def start_pipeline(req: func.HttpRequest, client: object) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=202)
+
+    assert isinstance(start_pipeline, FunctionBuilder)
+
+    registry = get_openapi_registry()
+    assert "start_pipeline" in registry
+    assert registry["start_pipeline"]["summary"] == "Start"
+    assert registry["start_pipeline"]["tags"] == ["ai"]
+    # Route/method could not be auto-detected at decoration time (no trigger
+    # yet); they stay unresolved until discovery/spec generation reconciles them.
+    assert registry["start_pipeline"]["route"] is None
+    assert registry["start_pipeline"]["method"] is None
+
+
+def test_openapi_below_route_resolves_final_route_via_discovery() -> None:
+    """After decoration completes, ``scan_endpoint_metadata`` reconciles the
+    unresolved route/method from the now-built HTTP trigger binding, so the
+    generated spec renders the real path -- no endpoint is lost (v0.21.1)."""
+    _clear_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="pipeline/start", methods=["POST"])
+    @openapi(summary="Start", tags=["ai"])
+    @app.generic_input_binding(arg_name="client", type="durableClient")
+    def start_pipeline(req: func.HttpRequest, client: object) -> func.HttpResponse:
+        return func.HttpResponse("OK", status_code=202)
+
+    from azure_functions_openapi.bridge import scan_endpoint_metadata
+
+    scan_endpoint_metadata(app, route_prefix="")
+    spec = generate_openapi_spec(route_prefix="")
+    assert "/pipeline/start" in spec["paths"]
+    assert "post" in spec["paths"]["/pipeline/start"]
+
+
+def test_resolve_metadata_target_recovers_handler_from_unbuilt_builder() -> None:
+    """``_resolve_metadata_target`` returns the underlying handler off a builder
+    that cannot build yet (no trigger), without a successful build (v0.21.1)."""
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.generic_input_binding(arg_name="client", type="durableClient")
+    def orphan(req: func.HttpRequest, client: object) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    builder = app._function_builders[0]
+    original, handler = decorator_module._resolve_metadata_target(builder)
+    assert original is builder
+    assert callable(handler)
+    assert handler.__name__ == "orphan"
+
+
+def test_extract_binding_hints_returns_none_for_unbuildable_builder() -> None:
+    """``_extract_binding_hints`` yields all-unresolved hints for a builder that
+    cannot build yet, instead of propagating the no-trigger ``ValueError``."""
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.generic_input_binding(arg_name="client", type="durableClient")
+    def orphan(req: func.HttpRequest, client: object) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    builder = app._function_builders[0]
+    assert decorator_module._extract_binding_hints(builder) == (None, None, False, False)
+
+
+def test_resolve_metadata_target_reraises_when_handler_unrecoverable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If a builder cannot build (no trigger) AND no handler can be recovered,
+    the original ``ValueError`` must propagate -- the fallback never silently
+    swallows a genuinely broken builder (v0.21.1)."""
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.generic_input_binding(arg_name="client", type="durableClient")
+    def orphan(req: func.HttpRequest, client: object) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    from azure_functions_openapi import adapters
+
+    monkeypatch.setattr(adapters, "get_unbuilt_user_handler", lambda _builder: None)
+    builder = app._function_builders[0]
+    with pytest.raises(ValueError):
+        decorator_module._resolve_metadata_target(builder)

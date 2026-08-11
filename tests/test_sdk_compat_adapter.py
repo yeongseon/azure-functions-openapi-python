@@ -350,3 +350,40 @@ def test_extract_http_binding_ignores_non_http_triggers(bad_type: str) -> None:
             return [_Binding()]
 
     assert adapters.extract_http_binding(_Fn()) is None
+
+
+# ---------------------------------------------------------------------------
+# Unbuilt-builder handler recovery (v0.21.1 regression: @openapi below @app.route)
+# ---------------------------------------------------------------------------
+
+
+def test_get_unbuilt_user_handler_reads_handler_without_building() -> None:
+    """A trigger-less builder cannot ``build()``, but its user handler is still
+    reachable via the wrapped ``_function.get_user_function()`` accessor. This
+    powers the ``@openapi``-below-``@app.route`` fallback so metadata registers
+    even before the outer route decorator applies the HTTP trigger."""
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.function_name(name="orphan")  # builder with no trigger
+    def orphan(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    builder = app._function_builders[0]
+    # Sanity: building really does fail with the no-trigger ValueError.
+    with pytest.raises(ValueError):
+        adapters.build_function(builder)
+
+    handler = adapters.get_unbuilt_user_handler(builder)
+    assert callable(handler)
+    assert handler.__name__ == "orphan"
+
+
+def test_get_unbuilt_user_handler_returns_none_when_unavailable() -> None:
+    """When no handler can be recovered from the builder, the helper returns
+    ``None`` (guarded, defensive) rather than raising."""
+
+    class _NoFunctionBuilder:
+        _function = None
+
+    assert adapters.get_unbuilt_user_handler(_NoFunctionBuilder()) is None
+    assert adapters.get_unbuilt_user_handler(object()) is None

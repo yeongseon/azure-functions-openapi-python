@@ -180,6 +180,32 @@ def _best_effort_builder_name(builder: Any) -> str | None:
     return str(name) if name is not None else None
 
 
+def get_unbuilt_user_handler(builder: Any) -> Callable[..., Any] | None:
+    """Return a builder's user handler *without* building it, or ``None``.
+
+    When ``@openapi`` is applied below ``@app.route`` (a valid ordering that
+    0.20.0 accepted), the builder has no trigger yet and
+    :meth:`FunctionBuilder.build` raises ``ValueError``. The underlying user
+    handler still lives on the builder's ``_function`` and is reachable via the
+    public :meth:`Function.get_user_function` accessor on that wrapped object.
+    This mirrors the defensive, guarded read in :func:`_best_effort_builder_name`
+    so a shape change never breaks decoration; it simply falls back to ``None``.
+
+    Inspecting the builder here has no side effects, so a later
+    :meth:`FunctionBuilder.build` (once the outer ``@app.route`` applies the
+    trigger) remains valid and idempotent.
+    """
+    function = getattr(builder, "_function", None)
+    get_user_function = getattr(function, "get_user_function", None)
+    if not callable(get_user_function):
+        return None
+    try:
+        handler = get_user_function()
+    except Exception:  # pragma: no cover - defensive; handler is best-effort
+        return None
+    return handler if callable(handler) else None
+
+
 def get_function_name(function: Any) -> str:
     """Return the function's registered name via the public accessor."""
     return str(function.get_function_name())
