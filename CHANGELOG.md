@@ -1,6 +1,19 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.21.1] - 2026-08-11
+
+### Bug Fixes
+
+- *(decorator)* Tolerate @openapi below @app.route with non-trigger bindings 
+
+### Documentation
+
+- Add Branch Hygiene section to AGENTS.md 
+
+### Other
+
+- Bump version to 0.21.1 
 ## [0.21.0] - 2026-08-11
 
 ### Bug Fixes
@@ -33,6 +46,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - *(release)* Require cookbook dogfood verification after publish 
 - *(decorator)* Document last-writer-wins for register_openapi_metadata (#402) 
 - *(extending)* Add endpoint metadata producer guide (#342) 
