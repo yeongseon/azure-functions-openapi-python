@@ -1,6 +1,66 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.21.0] - 2026-08-11
+
+### Bug Fixes
+
+- *(warnings)* Correct clear_diagnostics docstring on diagnostic lifecycle (#405) 
+- *(cli)* Fail closed when --isolate-app cannot be honored (#403) 
+- *(registry)* Distinguish dynamically-created handlers with identical qualnames (#401) 
+- *(warnings)* Scope registry diagnostics to the current generation (#400) 
+- *(schema)* Make component names OpenAPI-name-safe (#399) 
+- *(api)* Export OpenAPIRegistry and correct _validate_method docstring (#398) 
+- *(bridge)* Make isolated re-scan idempotent by seeding on function id (#390) 
+- *(warnings)* Emit DUPLICATE_OPERATION as a structured warning (#387) 
+- *(warnings)* Scope empty-discovery reason to the selected application object (#384) 
+- *(schema)* Make hoisted component names JSON-Pointer safe and hash strictly (#383) 
+- *(api)* Propagate flat-schema hoisting option across spec output APIs (#382) 
+- *(discovery)* Unwrap FunctionApp-wrapping containers and warn on empty scans (#376) 
+- *(bridge)* Flag method/binding mismatch for validation-carrying handlers (#370) 
+- *(bridge)* Resolve one-to-many _function_id per method on re-scan (#369) 
+- *(bridge)* Infer route+method for plain @openapi and flag binding mismatch (#366) 
+- *(bridge)* Preserve binding route when exploding @openapi below @app.route (#365) 
+- *(discovery)* Reconcile HTTP method for @openapi below @app.route (#359) 
+- *(spec)* Expand all-methods for @openapi below @app.route in recommended order (#357) 
+- *(cli)* Move --fail-on-warnings gate after empty-paths hint (#356) 
+- *(warnings)* Carry reason, dedupe, and harden discovery-skipped warning (#355) 
+- *(spec)* Scope all-method expansion to routes with binding evidence (#350) 
+- *(cli)* Fail --fail-on-warnings before writing output (#349) 
+- *(spec)* Isolate report warnings to injected registry (#348) 
+- *(discovery)* Preserve all-method semantics when HTTP methods are unspecified (#339) 
+- *(adapter)* Skip unbuildable functions during discovery (#338) 
+
+### Documentation
+
+- *(release)* Require cookbook dogfood verification after publish 
+- *(decorator)* Document last-writer-wins for register_openapi_metadata (#402) 
+- *(extending)* Add endpoint metadata producer guide (#342) 
+- *(readme)* Translate CLI --app discovery and SDK Compatibility sections (#341) 
+- *(bridge)* Drop canonical/shared-contract framing in endpoint terminology (#340) 
+
+### Features
+
+- *(spec)* Opt-in hoisting of flat schemas into components (#375) (#377) 
+- *(warnings)* Surface skipped unbuildable functions as a discovery warning (#351) 
+- *(spec)* Surface structured spec warnings + --fail-on-warnings exit code (#343) 
+- *(cli)* Discover endpoint-metadata routes via module:variable (#331) 
+
+### Other
+
+- Bump version to 0.21.0 
+
+### Refactor
+
+- Add opt-in app-scoped registry isolation (#381) (#388) 
+- *(bridge)* Binding-first invariant resolution model for discovery (#372) 
+- *(discovery)* Funnel Azure Functions SDK access through an adapter (#330) 
+- *(spec)* Decouple spec generation from the Azure Functions SDK (#329) 
+
+### Testing
+
+- *(bridge)* Cover additive endpoint 422 response independently of producers (#333) 
+- *(sdk)* Pin adapter-boundary SDK compatibility contract and guards (#332) 
 ## [0.20.0] - 2026-08-09
 
 ### Bug Fixes
@@ -9,6 +69,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Sync translated READMEs with Pydantic-first Quick Start (#303) 
 - Require translation sync in the same PR as English changes (Closes #301) (#302) 
 - Merge redundant Features list into What it does (#295) 
