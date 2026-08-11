@@ -1,0 +1,25 @@
+# Azure Functions OpenAPI
+
+> OpenAPI (Swagger) documentation and Swagger UI for the Azure Functions Python v2 programming model.
+
+Part of the **Azure Functions Python DX Toolkit**. Decorate HTTP-triggered functions to auto-generate an OpenAPI 3 specification and serve Swagger UI, bringing a FastAPI-like developer experience to Azure Functions. Install from PyPI with `pip install azure-functions-openapi`.
+
+## Getting Started
+- [Installation](https://yeongseon.github.io/azure-functions-openapi-python/installation/): Install the package and prerequisites.
+- [Quickstart](https://yeongseon.github.io/azure-functions-openapi-python/getting-started/): Minimal end-to-end example.
+- [Configuration](https://yeongseon.github.io/azure-functions-openapi-python/configuration/): Customize spec metadata, servers, and routes.
+
+## User Guide
+- [Usage](https://yeongseon.github.io/azure-functions-openapi-python/usage/): Decorator reference, request/response models.
+- [CLI](https://yeongseon.github.io/azure-functions-openapi-python/cli/): Generate specs from the command line.
+- [Route Prefix](https://yeongseon.github.io/azure-functions-openapi-python/route-prefix/): Handle custom route prefixes.
+- [Architecture](https://yeongseon.github.io/azure-functions-openapi-python/architecture/): How spec generation and the handler bridge work.
+
+## Reference
+- [API Reference](https://yeongseon.github.io/azure-functions-openapi-python/api/): Public API surface.
+- [FAQ](https://yeongseon.github.io/azure-functions-openapi-python/faq/): Frequently asked questions.
+- [Troubleshooting](https://yeongseon.github.io/azure-functions-openapi-python/troubleshooting/): Common issues and fixes.
+
+## Optional
+- [Deploy to Azure](https://yeongseon.github.io/azure-functions-openapi-python/deployment/): Deployment guide.
+- [Changelog](https://yeongseon.github.io/azure-functions-openapi-python/changelog/): Release history.
