@@ -34,3 +34,7 @@ site/
 # Review
 .venv-review/
 .venv-review-cli/
+
+# Agent orchestration state
+.sisyphus/
+.omc/
