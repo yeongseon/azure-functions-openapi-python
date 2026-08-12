@@ -1,10 +1,20 @@
 name: e2e-azure
 
+# Azure Release Certification. Dispatch-only: deploys to real Azure, runs live
+# e2e, and records an azure-cert artifact for the exact release commit + version.
+# The publish-pypi.yml verify-azure-certification gate requires a fresh, matching
+# certification before it will publish.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Release commit SHA (or ref) to certify
+        required: false
+        type: string
+      version:
+        description: Expected package version (must match source __version__)
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -23,6 +33,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Compute resource names
         id: names
@@ -89,6 +101,39 @@ jobs:
         run: pytest tests/e2e -v --no-cov --html=e2e-report/report.html --self-contained-html
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
+
+      - name: Record certification
+        run: |
+          SHA=$(git rev-parse HEAD)
+          FILE_VERSION=$(grep -Po '(?<=__version__ = ")[^"]*' src/azure_functions_openapi/__init__.py)
+          REQ_VERSION="${{ inputs.version }}"
+          if [ -n "$REQ_VERSION" ] && [ "$REQ_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error ::Requested certification version ($REQ_VERSION) != source version ($FILE_VERSION)"
+            exit 1
+          fi
+          VERSION="${REQ_VERSION:-$FILE_VERSION}"
+          mkdir -p cert
+          cat > cert/certification.json <<EOF
+          {
+            "package": "azure-functions-openapi",
+            "version": "$VERSION",
+            "commit": "$SHA",
+            "ref": "${{ inputs.ref || github.ref }}",
+            "workflow": "e2e-azure.yml",
+            "run_id": "${{ github.run_id }}",
+            "result": "success",
+            "certified_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cat cert/certification.json
+
+      - name: Upload certification record
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: azure-cert
+          path: cert/
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload e2e report
         if: always()

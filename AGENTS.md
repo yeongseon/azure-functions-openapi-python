@@ -94,8 +94,25 @@ When splitting a large piece of work into focused issues, keep the umbrella open
 ### Flow
 1. `make release-patch` (or `-minor` / `-major`) on `main`
 2. This runs: `hatch version` → `git commit` → `make changelog` → `git commit` → `git tag` → `git push`
-3. Tag push triggers **Publish to PyPI** GitHub Actions workflow automatically.
+3. Tag push triggers the **Publish to PyPI** GitHub Actions workflow. **Verification is a pre-publish gate, not a post-publish check.** The `publish` job runs only after `build → lib-tests → cookbook-smoke → cookbook-host-smoke → verify-azure-certification` all pass, and it uploads the exact artifact that was tested (it never rebuilds).
 4. Update `docs/changelog.md` separately if needed (different format from `CHANGELOG.md`).
+
+### Tiered runtime verification (what gates a release)
+
+Release verification is layered; each tier catches a different failure class, and **every tier is a pre-publish gate**:
+
+| Tier | Runs where | Catches |
+| --- | --- | --- |
+| `lib-tests` | publish-pypi.yml (per publish) | library unit regressions |
+| `cookbook-smoke` | publish-pypi.yml (per publish) | downstream import/registration drift |
+| `cookbook-host-smoke` | publish-pypi.yml (per publish) | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
+| `verify-azure-certification` | publish-pypi.yml (per publish) | requires a fresh, SHA+version-matched **real-Azure** certification for the exact release commit |
+| Azure Release Certification (`e2e-azure.yml`) | `workflow_dispatch`, per release | cloud-only drift — deploys to real Azure, runs live e2e, records a certification artifact. **Certified per release, not per publish.** |
+
+**Real-Azure certification (required once per release, before the final tag).** Before pushing the release tag, dispatch the **e2e-azure** workflow on the exact release commit and version:
+- `gh workflow run e2e-azure.yml --ref main -f ref=<release-sha> -f version=<x.y.z>`
+- The run deploys to real Azure, executes the live e2e suite, and uploads the `azure-cert` artifact (keyed by commit SHA + version).
+- `verify-azure-certification` in `publish-pypi.yml` later requires a successful, SHA+version-matched, non-stale (<14 day) certification for the release commit; without it the publish gate fails and the version stays unpublished.
 5. **Verify the release against the dogfood cookbook.** Once **Publish to PyPI** succeeds, confirm the downstream consumer still passes on the freshly published version:
    - In [`azure-functions-cookbook-python`](https://github.com/yeongseon/azure-functions-cookbook-python), upgrade to the new release (`hatch run pip install -U "azure-functions-openapi>=X.Y,<1"`) and run `make test`.
    - Treat any new `RuntimeWarning`/`DeprecationWarning` surfaced by this library during the cookbook run as a release-blocking signal — decorator-order and API-drift problems are reported as warnings, so a clean run (zero warnings from this package) is part of the release gate.
