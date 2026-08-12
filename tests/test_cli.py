@@ -474,6 +474,7 @@ class TestImportAppModule:
             with pytest.raises(ValueError, match="resolved to None"):
                 _import_app_module("fake_mod:app")
 
+
 class TestHandleGenerateWithApp:
     """Tests for --app option in handle_generate."""
 

@@ -280,7 +280,7 @@ def test_get_openapi_json_forwards_hoist_flag(_clean_registry: Any) -> None:
     hoisted_json = get_openapi_json(hoist_flat_schemas=True)
 
     assert "#/components/schemas/CreateUser" not in default_json
-    assert '#/components/schemas/CreateUser' in hoisted_json
+    assert "#/components/schemas/CreateUser" in hoisted_json
 
 
 def test_get_openapi_yaml_forwards_hoist_flag(_clean_registry: Any) -> None:
@@ -300,9 +300,9 @@ def test_generate_openapi_report_forwards_hoist_flag(_clean_registry: Any) -> No
     hoisted_report = generate_openapi_report(hoist_flat_schemas=True)
 
     assert _request_schema(default_report.spec) == _FLAT_BODY
-    assert _request_schema(hoisted_report.spec) == {
-        "$ref": "#/components/schemas/CreateUser"
-    }
+    assert _request_schema(hoisted_report.spec) == {"$ref": "#/components/schemas/CreateUser"}
+
+
 # ---------------------------------------------------------------------------
 # JSON-Pointer-safe component names + strict hashing (issue #379)
 # ---------------------------------------------------------------------------

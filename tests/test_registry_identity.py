@@ -151,6 +151,7 @@ def test_canonical_function_id_unwraps_functools_wraps() -> None:
 
     assert canonical_function_id(outer) == canonical_function_id(inner)
 
+
 # ── #392: dynamically-created (factory/closure) handler identity ────────────
 def _module_level_handler(req: Any) -> Any:  # top-level: no ``<locals>``
     return req

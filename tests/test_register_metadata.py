@@ -290,9 +290,7 @@ def test_register_invalid_operation_id_raises() -> None:
 
 def test_register_sanitizable_operation_id_accepted() -> None:
     """An operation_id that sanitizes to a non-empty string should be accepted."""
-    register_openapi_metadata(
-        path="/api/sanitize", method="POST", operation_id="my-op_id.v2"
-    )
+    register_openapi_metadata(path="/api/sanitize", method="POST", operation_id="my-op_id.v2")
     registry = get_openapi_registry()
     entry = registry["post::/api/sanitize"]
     # sanitize_operation_id strips non-alphanumeric except underscore

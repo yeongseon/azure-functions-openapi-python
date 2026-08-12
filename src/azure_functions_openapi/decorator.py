@@ -363,32 +363,35 @@ def openapi(
                         # Preserve displaced entry under its fully-qualified id
                         registry.setdefault(existing_id, existing)
 
-                registry.set(registry_key, {
-                    # ── basic metadata ────────────────────────────────────────
-                    "summary": summary,
-                    "description": description,
-                    "tags": validated_tags,
-                    "operation_id": sanitized_operation_id,
-                    # ── routing info ─────────────────────────────────────────
-                    "route": validated_route,
-                    "method": validated_method,
-                    # Evidence that the runtime answers every HTTP method
-                    # (binding present, ``methods=`` omitted). Gates all-method
-                    # expansion in the spec generator; a bare @openapi stays
-                    # single-operation (#347).
-                    "_expand_all_methods": expand_all_methods,
-                    "parameters": validated_parameters,
-                    "security": validated_security,
-                    "security_scheme": validated_security_scheme,
-                    # ── request / response schema ────────────────────────
-                    "request_model": resolved_request_model,
-                    "request_body": resolved_request_body,
-                    "request_body_required": request_body_required,
-                    "response_model": resolved_response_model,
-                    "response": resolved_response or {},
-                    "function_name": metadata_func.__name__,
-                    "_function_id": function_id,
-                })
+                registry.set(
+                    registry_key,
+                    {
+                        # ── basic metadata ────────────────────────────────────────
+                        "summary": summary,
+                        "description": description,
+                        "tags": validated_tags,
+                        "operation_id": sanitized_operation_id,
+                        # ── routing info ─────────────────────────────────────────
+                        "route": validated_route,
+                        "method": validated_method,
+                        # Evidence that the runtime answers every HTTP method
+                        # (binding present, ``methods=`` omitted). Gates all-method
+                        # expansion in the spec generator; a bare @openapi stays
+                        # single-operation (#347).
+                        "_expand_all_methods": expand_all_methods,
+                        "parameters": validated_parameters,
+                        "security": validated_security,
+                        "security_scheme": validated_security_scheme,
+                        # ── request / response schema ────────────────────────
+                        "request_model": resolved_request_model,
+                        "request_body": resolved_request_body,
+                        "request_body_required": request_body_required,
+                        "response_model": resolved_response_model,
+                        "response": resolved_response or {},
+                        "function_name": metadata_func.__name__,
+                        "_function_id": function_id,
+                    },
+                )
 
             logger.debug(f"Registered OpenAPI metadata for function '{metadata_func.__name__}'")
             return cast(F, original_func)
@@ -529,9 +532,7 @@ def register_openapi_metadata(
         sanitized_op_id = _validate_and_sanitize_operation_id(operation_id, registry_key)
     else:
         clean_path = path.strip("/").replace("/", "_").replace("{", "").replace("}", "")
-        fallback_op_id = (
-            f"{validated_method}_{clean_path}" if clean_path else validated_method
-        )
+        fallback_op_id = f"{validated_method}_{clean_path}" if clean_path else validated_method
         sanitized_op_id = sanitize_operation_id(fallback_op_id)
 
     validated_parameters = _validate_parameters(parameters, registry_key) if parameters else []
@@ -559,24 +560,27 @@ def register_openapi_metadata(
                 validated_method.upper(),
                 path,
             )
-        reg.set(registry_key, {
-            "summary": summary,
-            "description": description,
-            "tags": validated_tags,
-            "operation_id": sanitized_op_id,
-            "route": path,
-            "method": validated_method,
-            "parameters": validated_parameters,
-            "security": validated_security,
-            "security_scheme": validated_security_scheme,
-            "request_model": request_model,
-            "request_body": request_body,
-            "request_body_required": request_body_required,
-            "response_model": response_model,
-            "response": response or {},
-            "function_name": registry_key,
-            "_function_id": f"programmatic.{registry_key}",
-        })
+        reg.set(
+            registry_key,
+            {
+                "summary": summary,
+                "description": description,
+                "tags": validated_tags,
+                "operation_id": sanitized_op_id,
+                "route": path,
+                "method": validated_method,
+                "parameters": validated_parameters,
+                "security": validated_security,
+                "security_scheme": validated_security_scheme,
+                "request_model": request_model,
+                "request_body": request_body,
+                "request_body_required": request_body_required,
+                "response_model": response_model,
+                "response": response or {},
+                "function_name": registry_key,
+                "_function_id": f"programmatic.{registry_key}",
+            },
+        )
 
     logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
 
@@ -731,9 +735,7 @@ def _validate_security_scheme(
             raise ValueError("Security scheme name must be a non-empty string")
 
         if not isinstance(scheme_def, dict):
-            raise ValueError(
-                f"Security scheme '{scheme_name}' definition must be a dictionary"
-            )
+            raise ValueError(f"Security scheme '{scheme_name}' definition must be a dictionary")
 
         scheme_type = scheme_def.get("type")
         if not scheme_type or scheme_type not in valid_types:

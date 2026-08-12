@@ -183,9 +183,7 @@ class OpenAPIRegistry:
         """
         with self._lock:
             return sum(
-                1
-                for entry in self._entries.values()
-                if entry.get("function_name") == function_name
+                1 for entry in self._entries.values() if entry.get("function_name") == function_name
             )
 
     def add_discovery_warning(self, function_name: str | None, reason: str) -> None:
@@ -240,6 +238,7 @@ class OpenAPIRegistry:
         """Return the recorded empty-app type names, deduplicated and sorted."""
         with self._lock:
             return sorted(self._empty_discoveries)
+
     def add_duplicate_operation(self, method: str, path: str) -> None:
         """Record that two registrations collided on the same ``METHOD path``.
 
@@ -261,6 +260,7 @@ class OpenAPIRegistry:
         """Return the recorded ``METHOD path`` collisions, deduplicated and sorted."""
         with self._lock:
             return sorted(self._duplicate_operations)
+
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import
 # time — before any application object exists — so a shared instance is required.

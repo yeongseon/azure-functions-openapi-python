@@ -80,7 +80,7 @@ _notifications: dict[str, dict[str, str]] = {}
         202: {"description": "Notification queued for delivery"},
         422: {"description": "Validation error"},
     },
-    )
+)
 @app.route(route="notifications/email", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 @validate_http(body=EmailNotificationRequest, response_model=NotificationAcceptedResponse)
 def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> func.HttpResponse:
@@ -123,7 +123,7 @@ def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> 
         200: {"description": "Notification status"},
         404: {"description": "Notification not found"},
     },
-    )
+)
 @app.route(route="notifications/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 @validate_http(query=NotificationStatusQuery, response_model=NotificationStatusResponse)
 def get_notification_status(

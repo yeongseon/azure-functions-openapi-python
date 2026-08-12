@@ -1,6 +1,9 @@
+default_language_version:
+  python: python3.12
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.6
+    rev: v0.16.2
     hooks:
       - id: ruff-format
       - id: ruff
@@ -24,6 +27,7 @@ repos:
     rev: 1.9.4
     hooks:
       - id: bandit
+        language_version: python3.12
         args: ["-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
         files: "^src/"
@@ -32,7 +36,7 @@ repos:
     hooks:
       - id: forbid-korean
         name: Forbid Korean Characters
-        entry: bash -c 'if grep -RIl --exclude-dir=.venv --exclude-dir=.git -n "[가-힣]" docs src README.md CONTRIBUTING.md AGENTS.md DESIGN.md PRD.md CHANGELOG.md 2>/dev/null; then echo "Korean characters detected. Please use English only."; exit 1; fi'
+        entry: bash -c 'if grep -RIn --exclude-dir=.venv --exclude-dir=.git "[가-힣]" docs src README.md CONTRIBUTING.md AGENTS.md DESIGN.md PRD.md CHANGELOG.md 2>/dev/null | grep -vE "README\.(ko|ja|zh-CN)\.md"; then echo "Korean characters detected. Please use English only."; exit 1; fi'
         language: system
         pass_filenames: false
         stages: [pre-commit]

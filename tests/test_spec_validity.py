@@ -367,15 +367,12 @@ class TestInlineSchemaConversion31:
         def create_item() -> None:
             pass
 
-        spec = generate_openapi_spec(
-            title="Test", version="1.0.0", route_prefix=""
-        )
+        spec = generate_openapi_spec(title="Test", version="1.0.0", route_prefix="")
 
         # In 3.1, nullable should be converted to type array
-        schema = (
-            spec["paths"]["/items"]["post"]["requestBody"]
-            ["content"]["application/json"]["schema"]
-        )
+        schema = spec["paths"]["/items"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
         name_prop = schema["properties"]["name"]
         assert "nullable" not in name_prop
         assert name_prop["type"] == ["string", "null"]
@@ -398,9 +395,7 @@ class TestInlineSchemaConversion31:
         def list_items() -> None:
             pass
 
-        spec = generate_openapi_spec(
-            title="Test", version="1.0.0", route_prefix=""
-        )
+        spec = generate_openapi_spec(title="Test", version="1.0.0", route_prefix="")
 
         param_schema = spec["paths"]["/items"]["get"]["parameters"][0]["schema"]
         assert "nullable" not in param_schema
