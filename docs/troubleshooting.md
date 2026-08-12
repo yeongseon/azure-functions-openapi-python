@@ -83,13 +83,13 @@ collisions occur.
 
 ### Common mistakes
 
-- passing a dict to `request_model` or `response_model`
+- passing a dict where a Pydantic model is expected (or vice versa) to `requests` / `responses`
 - mixing incompatible Pydantic usage patterns in your own function code
 
 ### Fixes
 
-- pass Pydantic classes to `request_model` and `response_model`
-- if you need raw schema dicts, use `request_body` and `response`
+- pass Pydantic model classes to `requests` / `responses` for model-derived schemas
+- if you need raw schema dicts, pass a `dict` to `requests` / `responses`
 - keep a single Pydantic major version in your environment
 
 ## 4) Route mismatch between function and OpenAPI output

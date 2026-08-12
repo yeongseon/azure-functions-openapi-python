@@ -45,7 +45,7 @@ class HelloResponse(BaseModel):
             "schema": {"type": "string"},
         }
     ],
-    response_model=HelloResponse,
+    responses=HelloResponse,
     )
 @app.route(route="http_trigger", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
@@ -101,8 +101,8 @@ Open:
 
 - `summary`, `description`, `tags`, `operation_id`
 - `parameters` (query/path/header/cookie)
-- `request_model` or `request_body`
-- `response_model` or `response`
+- `requests` (Pydantic model or raw schema dict) and `request_body_required`
+- `responses` (Pydantic model or status-code map)
 - `security` and `security_scheme`
 
 ### OpenAPI generation

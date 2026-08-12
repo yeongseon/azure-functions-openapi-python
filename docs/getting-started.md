@@ -84,6 +84,14 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
+!!! note "Response parameters here"
+    This example pairs a model-derived `200` schema with a manual `400`
+    response, so it uses the discrete `response_model=` + `response=`
+    parameters. That combination still emits a `DeprecationWarning` and cannot
+    yet be expressed with the unified `responses=` parameter (tracked in issue
+    #410). For request bodies and single-form responses, prefer the unified
+    `requests=` / `responses=` parameters — see [Usage](usage.md#migrating-to-requests-responses).
+
 ## Add spec endpoints
 
 Add JSON and YAML routes to publish the generated spec:

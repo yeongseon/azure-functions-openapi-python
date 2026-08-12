@@ -42,7 +42,7 @@ class EchoResponse(BaseModel):
     operation_id="echoMessage",
     route="/api/echo",
     method="post",
-    request_model=EchoRequest,
+    requests=EchoRequest,
     response_model=EchoResponse,
     response={200: {"description": "Echoed message"}, 400: {"description": "Invalid body"}},
     )
@@ -112,11 +112,21 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 
 ## Request and response schema styles
 
-Use one of two schema styles depending on your app architecture.
+`@openapi` exposes two **unified** schema parameters — `requests` and
+`responses` — each of which accepts *either* a Pydantic model class *or* a raw
+schema dict. Prefer these over the older discrete parameters.
+
+!!! warning "Discrete parameters are deprecated (issue #285)"
+    The discrete parameters `request_model` / `request_body` and
+    `response_model` / `response` still work but now emit a
+    `DeprecationWarning`. New code should use `requests` and `responses`. See
+    the [migration note](#migrating-to-requests-responses) below for the one
+    response-side case that cannot migrate yet.
 
 ### Style A: Pydantic models
 
-Best when you already validate payloads with Pydantic.
+Best when you already validate payloads with Pydantic. Pass the model class
+directly to `requests` / `responses`.
 
 ```python
 class CreateOrderRequest(BaseModel):
@@ -133,21 +143,23 @@ class OrderResponse(BaseModel):
 @openapi(
     summary="Create order",
     method="post",
-    request_model=CreateOrderRequest,
-    response_model=OrderResponse,
-    response={201: {"description": "Created"}},
+    requests=CreateOrderRequest,
+    responses=OrderResponse,
 )
 ```
 
+`responses=OrderResponse` derives the `200` response schema from the model.
+
 ### Style B: Raw schema dictionaries
 
-Best when you do not use Pydantic.
+Best when you do not use Pydantic. Pass a raw requestBody schema dict to
+`requests` and a manual responses map (keyed by status code) to `responses`.
 
 ```python
 @openapi(
     summary="Create order",
     method="post",
-    request_body={
+    requests={
         "type": "object",
         "properties": {
             "sku": {"type": "string"},
@@ -155,7 +167,7 @@ Best when you do not use Pydantic.
         },
         "required": ["sku", "quantity"],
     },
-    response={
+    responses={
         201: {
             "description": "Created",
             "content": {
@@ -171,8 +183,43 @@ Best when you do not use Pydantic.
 )
 ```
 
-!!! warning
-    Do not pass dict schemas to `request_model` or `response_model`. Those parameters require Pydantic `BaseModel` classes.
+!!! note
+    `requests` decides its meaning by type: a `BaseModel` subclass is treated
+    like the old `request_model`, and a `dict` is treated like the old
+    `request_body`. `responses` behaves the same way. You cannot pass both
+    `requests` and `request_model`/`request_body` (or both `responses` and
+    `response_model`/`response`) — doing so raises `ValueError`.
+
+### Optional request bodies
+
+Set `request_body_required=False` when the request body is optional (it
+defaults to `True`):
+
+```python
+@openapi(
+    summary="Partial update",
+    method="patch",
+    requests=PatchOrderRequest,
+    request_body_required=False,
+)
+```
+
+### Migrating to `requests` / `responses`
+
+| Old (deprecated) | New |
+| --- | --- |
+| `request_model=Model` | `requests=Model` |
+| `request_body={...}` | `requests={...}` |
+| `response_model=Model` | `responses=Model` |
+| `response={201: {...}}` | `responses={201: {...}}` |
+
+!!! warning "One response case cannot migrate yet (issue #410)"
+    `responses=` accepts **either** a model (typed `200` schema) **or** a manual
+    status-code map — not both at once. If an operation needs a model-derived
+    success schema *and* additional status codes (e.g. `response_model=Model`
+    combined with `response={400: {...}}`), keep using the discrete
+    `response_model=` + `response=` pair for now. Those calls still emit a
+    `DeprecationWarning`; closing the gap is tracked in issue #410.
 
 ## Parameters (query/path/header/cookie)
 

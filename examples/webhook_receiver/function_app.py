@@ -1,7 +1,7 @@
 """Webhook receiver example — representative use of @openapi.
 
 Demonstrates:
-- @openapi() with summary, description, tags, request_model, response_model, response
+- @openapi() with summary, description, tags, requests, response_model, response
 - get_openapi_json(), get_openapi_yaml()
 - render_swagger_ui()
 - Practical pattern: accept inbound webhook events and return 202 Accepted
@@ -83,7 +83,7 @@ def _verify_signature(payload: bytes, timestamp: str, signature: str, secret: st
         "Duplicate deliveries are rejected via the `X-Delivery-Id` header."
     ),
     tags=["webhooks"],
-    request_model=WebhookEvent,
+    requests=WebhookEvent,
     response_model=WebhookAcceptedResponse,
     response={
         202: {"description": "Webhook accepted for processing"},
@@ -91,7 +91,7 @@ def _verify_signature(payload: bytes, timestamp: str, signature: str, secret: st
         401: {"description": "Invalid webhook signature or expired timestamp"},
         409: {"description": "Duplicate delivery (replay)"},
     },
-    )
+)
 @app.route(route="webhooks/orders", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
     # --- Replay protection: delivery ID deduplication ---

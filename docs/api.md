@@ -10,8 +10,14 @@ from azure_functions_openapi import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
     OpenAPIOperationMetadata,
+    OpenAPIRegistry,
     OpenAPISpecConfigError,
+    SDKIncompatibleError,
+    SpecReport,
+    SpecWarning,
+    WarningCode,
     clear_openapi_registry,
+    generate_openapi_report,
     generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
@@ -30,12 +36,19 @@ from azure_functions_openapi import (
 | `register_openapi_metadata` | function | Register metadata for dynamically-created endpoints |
 | `clear_openapi_registry` | function | Remove all entries from the registry |
 | `scan_endpoint_metadata` | function | Auto-discover validation metadata from `@validate_http` handlers |
+| `scan_validation_metadata` | function | **Deprecated** alias for `scan_endpoint_metadata` (emits `DeprecationWarning`; removed in a future minor release) |
 | `generate_openapi_spec` | function | Build OpenAPI dictionary from decorator registry |
+| `generate_openapi_report` | function | Build the spec plus a deterministic tuple of structured warnings (returns `SpecReport`) |
 | `get_openapi_json` | function | Build OpenAPI and serialize to JSON string |
 | `get_openapi_yaml` | function | Build OpenAPI and serialize to YAML string |
 | `render_swagger_ui` | function | Return Swagger UI `HttpResponse` |
 | `OpenAPIOperationMetadata` | dataclass | Frozen dataclass for operation metadata |
+| `OpenAPIRegistry` | class | Thread-safe registry backing the decorator; pass an instance for isolated (test-friendly) registration |
+| `SpecReport` | dataclass | Result of `generate_openapi_report`: the `spec` dict plus a `warnings` tuple |
+| `SpecWarning` | dataclass | A single structured warning (`code`, `message`, `function_name`) emitted during generation |
+| `WarningCode` | enum | Stable string identifiers for warning categories (e.g. `version-skew`, `namespace-fallback`) |
 | `OpenAPISpecConfigError` | exception | Raised for configuration errors |
+| `SDKIncompatibleError` | exception | Subclass of `OpenAPISpecConfigError`; raised when the installed Functions SDK is incompatible |
 | `OPENAPI_VERSION_3_0` | constant | OpenAPI version string `"3.0.0"` |
 | `OPENAPI_VERSION_3_1` | constant | OpenAPI version string `"3.1.0"` |
 ## Decorator behavior model
@@ -77,7 +90,7 @@ class ItemResponse(BaseModel):
     summary="Create item",
     method="post",
     route="/api/items",
-    request_model=CreateItemRequest,
+    requests=CreateItemRequest,
     response_model=ItemResponse,
     response={201: {"description": "Created"}},
     )
@@ -86,18 +99,24 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```
 
+!!! note
+    This operation pairs a model-derived `200` schema (`response_model`) with an
+    extra `201` status, so the response side keeps the discrete parameters — the
+    unified `responses=` cannot express both at once yet (issue #410). The
+    request side uses the preferred `requests=` parameter.
+
 ### With raw schema dictionaries
 
 ```python
 @openapi(
     summary="Raw schema example",
     method="post",
-    request_body={
+    requests={
         "type": "object",
         "properties": {"value": {"type": "string"}},
         "required": ["value"],
     },
-    response={
+    responses={
         200: {
             "description": "OK",
             "content": {
@@ -189,6 +208,36 @@ scan_endpoint_metadata(app)
 | Both with same models | Merges additional OpenAPI fields |
 | Both with different models | Raises `OpenAPISpecConfigError` |
 | Explicit `@openapi` | Always takes precedence |
+
+!!! warning "`scan_validation_metadata` is deprecated"
+    `scan_validation_metadata()` is a deprecated alias for `scan_endpoint_metadata()`.
+    The scanner now consumes the namespace-neutral `"endpoint"` contract (the
+    `"validation"` namespace is only a fallback), so the old name is a misnomer.
+    Calling it forwards unchanged but emits a `DeprecationWarning`, and it will be
+    removed in a future minor release. Switch to `scan_endpoint_metadata()`.
+
+## Structured warnings
+
+`generate_openapi_report()` mirrors `generate_openapi_spec()` but returns a
+`SpecReport` — the identical `spec` mapping plus a deterministic `warnings` tuple.
+This lets CI gate a build on API drift without parsing log output.
+
+```python
+from azure_functions_openapi import generate_openapi_report
+
+report = generate_openapi_report(title="My API", version="1.0.0")
+if report.warnings:
+    for w in report.warnings:
+        print(w.code, w.message, w.function_name)
+    raise SystemExit(1)  # fail the build on any warning
+spec = report.spec
+```
+
+| Symbol | Purpose |
+| --- | --- |
+| `SpecReport` | Dataclass with `spec: dict` and `warnings: tuple[SpecWarning, ...]` |
+| `SpecWarning` | Frozen dataclass: `code: WarningCode`, `message: str`, `function_name: str \| None`; `to_dict()` for JSON |
+| `WarningCode` | `str`-based enum of stable codes: `version-skew`, `namespace-fallback`, `ambiguous-namespace`, `duplicate-operation`, `spec-validation`, `discovery-skipped`, `empty-discovery`, `method-binding-mismatch` |
 
 ## Related internals
 
