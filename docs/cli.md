@@ -139,7 +139,7 @@ Discovery semantics:
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an unhonorable `--isolate-app`) |
+| `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
 | `2` | Either invalid CLI arguments (argparse parse error) **or** structured warnings were emitted while `--fail-on-warnings` is set |
 
 ## Validate generated output

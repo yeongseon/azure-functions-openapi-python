@@ -100,10 +100,11 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
 ```
 
 !!! note
-    This operation pairs a model-derived `200` schema (`response_model`) with an
-    extra `201` status, so the response side keeps the discrete parameters — the
-    unified `responses=` cannot express both at once yet (issue #410). The
-    request side uses the preferred `requests=` parameter.
+    Here `response_model` supplies the schema while `response={201: ...}` sets the
+    status and description; the model schema is attached to the `201` response (the
+    first `2xx` status present), so this pairing keeps the discrete parameters — the
+    unified `responses=` cannot yet put a model schema on a non-`200` success status
+    (issue #410). The request side uses the preferred `requests=` parameter.
 
 ### With raw schema dictionaries
 
