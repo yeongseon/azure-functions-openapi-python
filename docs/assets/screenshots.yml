@@ -1,0 +1,46 @@
+schema_version: 1
+package:
+  name: azure-functions-openapi
+  version: 0.21.1
+screenshots:
+- id: e2e-swagger-ui
+  image: docs/assets/webhook_receiver_swagger_ui.png
+  docs:
+  - docs/usage.md
+  captured:
+    package_version: 0.21.1
+    git_sha: ''
+    date: '2026-08-12'
+    method: playwright
+    environment: azure
+    notes: Swagger UI (/api/docs) of examples/e2e_app deployed to Azure Functions.
+  source:
+    inputs:
+    - examples/e2e_app/**
+    - src/azure_functions_openapi/**
+    hash_algorithm: sha256
+    hash: sha256:ad4dc4f0e35f8afa80e6935aee7b580162daaea8dea5028b1b2b7c12b32de360
+  output:
+    kind: swagger-ui
+    route: /api/docs
+- id: e2e-openapi-json
+  image: docs/assets/deployment_report_jobs_openapi_json.png
+  docs:
+  - docs/usage.md
+  captured:
+    package_version: 0.21.1
+    git_sha: ''
+    date: '2026-08-12'
+    method: playwright
+    environment: azure
+    notes: OpenAPI JSON (/api/openapi.json) of examples/e2e_app deployed to Azure
+      Functions.
+  source:
+    inputs:
+    - examples/e2e_app/**
+    - src/azure_functions_openapi/**
+    hash_algorithm: sha256
+    hash: sha256:ad4dc4f0e35f8afa80e6935aee7b580162daaea8dea5028b1b2b7c12b32de360
+  output:
+    kind: openapi-json
+    route: /api/openapi.json

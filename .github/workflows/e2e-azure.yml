@@ -90,6 +90,22 @@ jobs:
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
 
+      - name: Capture documentation screenshots
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+          python scripts/capture_screenshots.py --out capture-out
+        env:
+          E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
+
+      - name: Upload captured screenshots
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: capture-out/
+          retention-days: 30
+
       - name: Upload e2e report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
