@@ -38,15 +38,38 @@ This guide covers configuration points across:
 
 ### Body and response fields
 
+Prefer the **unified** `requests` / `responses` parameters. Each accepts either
+a Pydantic model class or a raw schema dict.
+
 | Parameter | Type | Purpose |
 | --- | --- | --- |
-| `request_model` | `type[BaseModel] \| None` | Pydantic model for request body schema |
-| `request_body` | `dict \| None` | Raw OpenAPI request body schema |
-| `response_model` | `type[BaseModel] \| None` | Pydantic model for `200` JSON response schema |
-| `response` | `dict[int, dict] \| None` | Response map by status code |
+| `requests` | `type[BaseModel] \| dict \| None` | Unified request body — model (like `request_model`) or raw schema dict (like `request_body`) |
+| `request_body_required` | `bool` | Whether the request body is required; defaults to `True` |
+| `responses` | `type[BaseModel] \| dict[int, dict] \| None` | Unified responses — model (typed `200` schema) or a status-code map (like `response`) |
+
+#### Deprecated (issue #285)
+
+These discrete parameters still work but emit a `DeprecationWarning`. Migrate to
+`requests` / `responses`.
+
+| Deprecated parameter | Type | Replacement |
+| --- | --- | --- |
+| `request_model` | `type[BaseModel] \| None` | `requests=Model` |
+| `request_body` | `dict \| None` | `requests={...}` |
+| `response_model` | `type[BaseModel] \| None` | `responses=Model` |
+| `response` | `dict[int, dict] \| None` | `responses={...}` |
 
 !!! warning
-    `request_model` and `response_model` must be Pydantic `BaseModel` classes. If you want schema dicts, use `request_body` and `response`.
+    A model passed to `requests` / `responses` must be a Pydantic `BaseModel`
+    class; pass a `dict` for raw schemas. You cannot combine `requests` with
+    `request_model`/`request_body`, nor `responses` with
+    `response_model`/`response` — doing so raises `ValueError`.
+
+!!! note "One response case cannot migrate yet (issue #410)"
+    `responses=` accepts a model **or** a status-code map, but not both. An
+    operation that needs a model-derived `200` schema *and* extra status codes
+    must keep the discrete `response_model=` + `response=` pair for now (still
+    emits a `DeprecationWarning`). Tracked in issue #410.
 
 ## Parameter examples
 
@@ -98,10 +121,21 @@ class ProductResponse(BaseModel):
     name: str
 
 
+# Single typed response — fully migratable to the unified parameters:
 @openapi(
     summary="Create product",
     method="post",
-    request_model=ProductCreate,
+    requests=ProductCreate,
+    responses=ProductResponse,
+)
+
+
+# Model-derived 200 plus extra status codes — keep the discrete response
+# parameters until issue #410 lands (still emits a DeprecationWarning):
+@openapi(
+    summary="Create product",
+    method="post",
+    requests=ProductCreate,
     response_model=ProductResponse,
     response={201: {"description": "Created"}, 400: {"description": "Bad request"}},
 )

@@ -130,14 +130,17 @@ Discovery semantics:
 | `--pretty` | `-p` | flag | `false` | Pretty-print JSON output (adds indentation); no effect on YAML |
 | `--route-prefix` | - | any string (or `""`) | `/api` | HTTP route prefix from `host.json` `extensions.http.routePrefix`. See [Route Prefix](route-prefix.md). |
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
+| `--strict` | - | flag | `false` | Fail on any malformed registry entry instead of skipping it. Recommended for CI where a missing path should break the build |
+| `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, or spec-validation issues). Use in CI to stop a wrong-but-plausible spec from being published |
+| `--isolate-app` | - | flag | `false` | Scan the `--app` `FunctionApp` into a fresh, app-scoped registry instead of the shared global one. Requires `--app module:variable`. Use when several apps are imported in one process to avoid cross-app route leakage |
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Runtime or generation error |
-| `2` | Invalid CLI arguments (argparse parse error) |
+| `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
+| `2` | Either invalid CLI arguments (argparse parse error) **or** structured warnings were emitted while `--fail-on-warnings` is set |
 
 ## Validate generated output
 

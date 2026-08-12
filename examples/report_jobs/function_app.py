@@ -121,7 +121,7 @@ def _check_bearer_auth(req: func.HttpRequest) -> func.HttpResponse | None:
     summary="Submit a report job",
     description="Queue a new report generation job. Returns a job ID for status polling.",
     tags=["reports"],
-    request_model=ReportRequest,
+    requests=ReportRequest,
     response_model=ReportJobResponse,
     response={
         202: {"description": "Report job queued"},
@@ -130,7 +130,7 @@ def _check_bearer_auth(req: func.HttpRequest) -> func.HttpResponse | None:
     },
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
-    )
+)
 @app.route(route="reports", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     auth_error = _check_bearer_auth(req)
@@ -186,7 +186,7 @@ def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     },
     security=_BEARER_SECURITY,
     security_scheme=_BEARER_SCHEME,
-    )
+)
 @app.route(route="reports/{job_id}/status", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_report_status(req: func.HttpRequest) -> func.HttpResponse:
     auth_error = _check_bearer_auth(req)
@@ -231,7 +231,7 @@ def get_report_status(req: func.HttpRequest) -> func.HttpResponse:
             "schema": {"type": "string"},
         }
     ],
-    response={
+    responses={
         200: {"description": "Report file contents"},
         401: {"description": "Unauthorized"},
         404: {"description": "Job not found or not completed"},

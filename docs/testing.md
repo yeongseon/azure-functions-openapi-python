@@ -124,7 +124,7 @@ def test_response_model_schema():
         summary="Get item",
         route="/api/items",
         method="get",
-        response_model=ItemResponse,
+        responses=ItemResponse,
     )
     def get_item(req):
         pass

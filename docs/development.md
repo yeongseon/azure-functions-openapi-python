@@ -52,7 +52,7 @@ azure-functions-openapi/
 1. **Clone the repository**:
     ```bash
     git clone https://github.com/yeongseon/azure-functions-openapi-python.git
-    cd azure-functions-openapi
+    cd azure-functions-openapi-python
     ```
 
 2. **Create environment and install dependencies**:

@@ -8,8 +8,8 @@ We welcome contributions to the `azure-functions-openapi` project.
 2. Clone your fork locally:
 
 ```bash
-git clone https://github.com/<your-username>/azure-functions-openapi.git
-cd azure-functions-openapi
+git clone https://github.com/<your-username>/azure-functions-openapi-python.git
+cd azure-functions-openapi-python
 ```
 
 3. Set up the development environment:

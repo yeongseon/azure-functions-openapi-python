@@ -1,7 +1,5 @@
 # Security Guide
 
-# Security Guide
-
 The canonical security policy is maintained in the root [SECURITY.md](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/SECURITY.md).
 
 #### Operation ID Sanitization

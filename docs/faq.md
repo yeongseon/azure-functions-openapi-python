@@ -28,12 +28,12 @@ Use `security` + `security_scheme` in `@openapi`, or pass `security_schemes` to 
 
 ## Can I use this package without Pydantic?
 
-Yes. Use raw schema dictionaries with `request_body` and `response`.
+Yes. Use raw schema dictionaries with the unified `requests` and `responses` parameters.
 
 ```python
 @openapi(
-    request_body={"type": "object", "properties": {"name": {"type": "string"}}},
-    response={200: {"description": "OK"}},
+    requests={"type": "object", "properties": {"name": {"type": "string"}}},
+    responses={200: {"description": "OK"}},
 )
 ```
 
