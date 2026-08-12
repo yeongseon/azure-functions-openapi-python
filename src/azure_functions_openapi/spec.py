@@ -746,7 +746,7 @@ def get_openapi_yaml(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
-    ) -> str:
+) -> str:
     """Return the spec as YAML.
 
     Parameters:
@@ -817,9 +817,7 @@ _DISCOVERY_SKIPPED_MESSAGE = (
 # application object exposed no builders at all, so no per-builder failure
 # occurred. It carries its own message so ``--fail-on-warnings`` users are not
 # told a builder "could not be built" when none was ever present.
-_EMPTY_DISCOVERY_MESSAGE = (
-    "No function builders were discovered on the scanned application object"
-)
+_EMPTY_DISCOVERY_MESSAGE = "No function builders were discovered on the scanned application object"
 
 
 # Duplicate-operation is a merge-time collision, not a skew signal: two
@@ -996,7 +994,7 @@ def generate_openapi_report(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
-    ) -> SpecReport:
+) -> SpecReport:
     """Generate the spec together with structured, machine-readable warnings.
 
     Mirrors :func:`generate_openapi_spec` and returns the identical spec mapping

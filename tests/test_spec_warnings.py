@@ -62,9 +62,7 @@ class MockFunction:
         return self._bindings
 
     def is_http_function(self) -> bool:
-        return any(
-            str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings
-        )
+        return any(str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings)
 
 
 class MockBuilder:
@@ -231,9 +229,7 @@ class TestReportRegistryIsolation:
         assert WarningCode.VERSION_SKEW not in isolated_codes
         assert WarningCode.NAMESPACE_FALLBACK not in isolated_codes
         # Without injection, the same spec still reflects the global skew.
-        assert any(
-            w.code == WarningCode.VERSION_SKEW for w in collect_spec_warnings(spec)
-        )
+        assert any(w.code == WarningCode.VERSION_SKEW for w in collect_spec_warnings(spec))
 
 
 # ---------------------------------------------------------------------------
@@ -251,9 +247,7 @@ class _UnbuildableBuilder:
         self._function = MockFunction(name=name, func=lambda req: req, bindings=[])
 
     def build(self, auth_level: Any = None) -> Any:
-        raise ValueError(
-            f"Function {self._function.get_function_name()} does not have a trigger"
-        )
+        raise ValueError(f"Function {self._function.get_function_name()} does not have a trigger")
 
 
 class TestDiscoverySkippedWarnings:
@@ -268,9 +262,7 @@ class TestDiscoverySkippedWarnings:
         scan_endpoint_metadata(app)
         report = generate_openapi_report()
 
-        skipped = [
-            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
-        ]
+        skipped = [w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED]
         assert len(skipped) == 1
         assert skipped[0].function_name == "orphan"
         # The valid endpoint is still present in the spec (scan not aborted).
@@ -283,15 +275,10 @@ class TestDiscoverySkippedWarnings:
         # An injected clean registry has recorded no skips of its own.
         isolated = OpenAPIRegistry()
         spec = generate_openapi_spec(registry=isolated)
-        isolated_codes = {
-            w.code for w in collect_spec_warnings(spec, registry=isolated)
-        }
+        isolated_codes = {w.code for w in collect_spec_warnings(spec, registry=isolated)}
         assert WarningCode.DISCOVERY_SKIPPED not in isolated_codes
         # The global path still reports the skip.
-        assert any(
-            w.code == WarningCode.DISCOVERY_SKIPPED
-            for w in collect_spec_warnings(spec)
-        )
+        assert any(w.code == WarningCode.DISCOVERY_SKIPPED for w in collect_spec_warnings(spec))
 
     def test_repeated_scans_do_not_duplicate_discovery_warning(self) -> None:
         # Re-scanning the same app (idempotent like entry registration) must
@@ -304,9 +291,7 @@ class TestDiscoverySkippedWarnings:
         scan_endpoint_metadata(app)
         report = generate_openapi_report()
 
-        skipped = [
-            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
-        ]
+        skipped = [w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED]
         assert len(skipped) == 1
 
     def test_discovery_warning_message_carries_sdk_reason(self) -> None:
@@ -317,9 +302,7 @@ class TestDiscoverySkippedWarnings:
         scan_endpoint_metadata(app)
         report = generate_openapi_report()
 
-        skipped = [
-            w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED
-        ]
+        skipped = [w for w in report.warnings if w.code == WarningCode.DISCOVERY_SKIPPED]
         assert len(skipped) == 1
         assert "does not have a trigger" in skipped[0].message
 
@@ -419,9 +402,7 @@ class TestCliFailOnWarnings:
         # Use a real importable module with no ':variable' so the import
         # succeeds (discovery is skipped) and the registry stays empty.
         out = tmp_path / "openapi.json"
-        rc = handle_generate(
-            _args(app="os", fail_on_empty_paths=True, output=str(out))
-        )
+        rc = handle_generate(_args(app="os", fail_on_empty_paths=True, output=str(out)))
         assert rc == 1
         err = capsys.readouterr().err
         assert "Hint: use --app" not in err
@@ -519,12 +500,8 @@ class TestDuplicateOperationWarnings:
         # entry and the caller overrides it with richer metadata. Exactly one
         # entry survives, and it is the last registration.
         reg = OpenAPIRegistry()
-        register_openapi_metadata(
-            path="/api/dup", method="POST", summary="first", registry=reg
-        )
-        register_openapi_metadata(
-            path="/api/dup", method="POST", summary="second", registry=reg
-        )
+        register_openapi_metadata(path="/api/dup", method="POST", summary="first", registry=reg)
+        register_openapi_metadata(path="/api/dup", method="POST", summary="second", registry=reg)
         snapshot = reg.snapshot()
         assert len(snapshot) == 1
         assert snapshot["post::/api/dup"]["summary"] == "second"
@@ -654,9 +631,7 @@ class TestIsolatedRegistry:
         global_warnings = collect_spec_warnings(generate_openapi_spec())
 
         assert any(w.code == WarningCode.DISCOVERY_SKIPPED for w in iso_warnings)
-        assert not any(
-            w.code == WarningCode.DISCOVERY_SKIPPED for w in global_warnings
-        )
+        assert not any(w.code == WarningCode.DISCOVERY_SKIPPED for w in global_warnings)
 
     def test_programmatic_entries_not_seeded_into_isolated_registry(self) -> None:
         # Programmatic register_openapi_metadata entries are not tied to any
@@ -756,9 +731,7 @@ class TestCliIsolateApp:
         monkeypatch.syspath_prepend(str(tmp_path))
 
         out = tmp_path / "a.json"
-        rc = handle_generate(
-            _args(app="twoapp_iso:app_a", isolate_app=True, output=str(out))
-        )
+        rc = handle_generate(_args(app="twoapp_iso:app_a", isolate_app=True, output=str(out)))
         assert rc == 0
         spec = json.loads(out.read_text(encoding="utf-8"))
         assert "/api/a/one" in spec["paths"]

@@ -32,6 +32,7 @@ def test_model_to_schema(model_cls: type[BaseModel]) -> None:
 
 def test_model_to_schema_non_pydantic_raises_type_error() -> None:
     """model_to_schema must raise TypeError for non-Pydantic v2 classes."""
+
     class NotAModel:
         pass
 

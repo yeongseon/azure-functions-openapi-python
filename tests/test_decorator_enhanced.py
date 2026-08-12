@@ -384,9 +384,7 @@ class TestValidateSecurityScheme:
 
     def test_validate_security_scheme_apikey_missing_name(self) -> None:
         with pytest.raises(ValueError, match="non-empty 'name'"):
-            _validate_security_scheme(
-                {"ApiKey": {"type": "apiKey", "in": "header"}}, "test_func"
-            )
+            _validate_security_scheme({"ApiKey": {"type": "apiKey", "in": "header"}}, "test_func")
 
     def test_validate_security_scheme_apikey_invalid_in(self) -> None:
         with pytest.raises(ValueError, match="'in' as one of"):
@@ -396,18 +394,12 @@ class TestValidateSecurityScheme:
 
     def test_validate_security_scheme_http_missing_scheme(self) -> None:
         with pytest.raises(ValueError, match="non-empty 'scheme'"):
-            _validate_security_scheme(
-                {"Bearer": {"type": "http"}}, "test_func"
-            )
+            _validate_security_scheme({"Bearer": {"type": "http"}}, "test_func")
 
     def test_validate_security_scheme_oauth2_missing_flows(self) -> None:
         with pytest.raises(ValueError, match="'flows' as a dict"):
-            _validate_security_scheme(
-                {"OAuth": {"type": "oauth2"}}, "test_func"
-            )
+            _validate_security_scheme({"OAuth": {"type": "oauth2"}}, "test_func")
 
     def test_validate_security_scheme_openidconnect_missing_url(self) -> None:
         with pytest.raises(ValueError, match="non-empty 'openIdConnectUrl'"):
-            _validate_security_scheme(
-                {"OIDC": {"type": "openIdConnect"}}, "test_func"
-            )
+            _validate_security_scheme({"OIDC": {"type": "openIdConnect"}}, "test_func")

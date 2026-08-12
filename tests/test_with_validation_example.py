@@ -11,6 +11,7 @@ import pytest
 try:
     import azure_functions_openapi.decorator as decorator_module
     from examples.notification_request import function_app as notification_function_app
+
     HAS_VALIDATION = True
 except ImportError:
     HAS_VALIDATION = False
@@ -19,6 +20,7 @@ pytestmark = pytest.mark.skipif(
     not HAS_VALIDATION,
     reason="azure-functions-validation not installed",
 )
+
 
 def _load_example_module() -> Any:
     with decorator_module._registry_lock:
@@ -89,11 +91,13 @@ def test_get_notification_status_found() -> None:
     send_req = func.HttpRequest(
         method="POST",
         url="/api/notifications/email",
-        body=json.dumps({
-            "to": ["user@example.com"],
-            "subject": "Test",
-            "body_text": "Hello",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "to": ["user@example.com"],
+                "subject": "Test",
+                "body_text": "Hello",
+            }
+        ).encode("utf-8"),
         params={},
         headers={"Content-Type": "application/json"},
     )

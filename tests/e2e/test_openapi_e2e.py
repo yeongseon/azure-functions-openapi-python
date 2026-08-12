@@ -6,6 +6,7 @@ Usage:
 The E2E_BASE_URL environment variable must point to the deployed Function App.
 Tests are skipped automatically when the variable is not set (local unit test runs).
 """
+
 from __future__ import annotations
 
 import os
@@ -25,6 +26,7 @@ def _get(path: str, **kwargs: object) -> requests.Response:
 
 # ── Fixtures ───────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session", autouse=True)
 def warmup() -> None:
     """Retry /api/health until the Consumption cold-start finishes (max 2 min)."""
@@ -43,6 +45,7 @@ def warmup() -> None:
 
 
 # ── Tests ──────────────────────────────────────────────────────────────────
+
 
 @pytest.mark.skipif(not BASE_URL, reason=SKIP_REASON)
 def test_health_returns_200() -> None:

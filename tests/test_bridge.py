@@ -82,9 +82,7 @@ class MockFunction:
         return self._bindings
 
     def is_http_function(self) -> bool:
-        return any(
-            str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings
-        )
+        return any(str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings)
 
 
 @dataclass
@@ -611,6 +609,7 @@ def test_scan_below_route_preserves_explicit_openapi_route_override() -> None:
     spec = generate_openapi_spec("T", "1.0.0")
     assert set(spec["paths"].keys()) == {"/api/custom/path"}
 
+
 def test_scan_reconciles_plain_openapi_below_route_explicit_method() -> None:
     # #361: a plain @openapi (no validation/endpoint metadata) below @app.route
     # must infer BOTH the binding method and route. The decorator registered
@@ -817,6 +816,7 @@ def test_collect_spec_warnings_no_mismatch_for_inferred_method() -> None:
     spec = generate_openapi_spec("T", "1.0.0")
     codes = [w.code for w in collect_spec_warnings(spec)]
     assert WarningCode.METHOD_BINDING_MISMATCH not in codes
+
 
 def test_mismatch_flagged_for_validation_carrying_handler() -> None:
     # #368: METHOD_BINDING_MISMATCH must also fire when the explicit
@@ -1342,9 +1342,7 @@ def test_scan_skips_builders_without_function_or_handler() -> None:
     another_without_handler = MockBuilder(
         _function=MockFunction(_name="also_no_handler", _func=None, _bindings=[])
     )
-    app = MockApp(
-        _function_builders=cast(Any, [builder_without_handler, another_without_handler])
-    )
+    app = MockApp(_function_builders=cast(Any, [builder_without_handler, another_without_handler]))
 
     scan_endpoint_metadata(app)
     assert get_openapi_registry() == {}

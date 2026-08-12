@@ -10,6 +10,7 @@ import pytest
 try:
     import azure_functions_openapi.decorator as decorator_module
     from examples.partner_import_bridge import function_app as bridge_function_app
+
     HAS_VALIDATION = True
 except ImportError:
     HAS_VALIDATION = False

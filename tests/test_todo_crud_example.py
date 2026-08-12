@@ -65,11 +65,13 @@ def test_submit_report_unauthorized() -> None:
     req = func.HttpRequest(
         method="POST",
         url="/api/reports",
-        body=json.dumps({
-            "report_type": "monthly_sales",
-            "date_from": "2026-01-01",
-            "date_to": "2026-01-31",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "report_type": "monthly_sales",
+                "date_from": "2026-01-01",
+                "date_to": "2026-01-31",
+            }
+        ).encode("utf-8"),
         params={},
         headers={"Content-Type": "application/json"},
     )
@@ -87,11 +89,13 @@ def test_get_report_status_found() -> None:
     submit_req = func.HttpRequest(
         method="POST",
         url="/api/reports",
-        body=json.dumps({
-            "report_type": "monthly_sales",
-            "date_from": "2026-01-01",
-            "date_to": "2026-01-31",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "report_type": "monthly_sales",
+                "date_from": "2026-01-01",
+                "date_to": "2026-01-31",
+            }
+        ).encode("utf-8"),
         params={},
         headers=_AUTH_HEADERS,
     )
@@ -153,11 +157,13 @@ def test_download_report_not_ready() -> None:
     submit_req = func.HttpRequest(
         method="POST",
         url="/api/reports",
-        body=json.dumps({
-            "report_type": "monthly_sales",
-            "date_from": "2026-01-01",
-            "date_to": "2026-01-31",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "report_type": "monthly_sales",
+                "date_from": "2026-01-01",
+                "date_to": "2026-01-31",
+            }
+        ).encode("utf-8"),
         params={},
         headers=_AUTH_HEADERS,
     )
@@ -184,11 +190,13 @@ def test_download_report_completed() -> None:
     submit_req = func.HttpRequest(
         method="POST",
         url="/api/reports",
-        body=json.dumps({
-            "report_type": "monthly_sales",
-            "date_from": "2026-01-01",
-            "date_to": "2026-01-31",
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "report_type": "monthly_sales",
+                "date_from": "2026-01-01",
+                "date_to": "2026-01-31",
+            }
+        ).encode("utf-8"),
         params={},
         headers=_AUTH_HEADERS,
     )

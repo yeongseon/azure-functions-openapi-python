@@ -11,8 +11,8 @@ Exit code 0 when clean, 1 when any violation is found.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+import sys
 
 # Files/globs to scan, relative to the repository root.
 TARGET_GLOBS = ("README*.md", "DESIGN.md", "docs/**/*.md")

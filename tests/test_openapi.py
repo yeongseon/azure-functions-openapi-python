@@ -1232,7 +1232,6 @@ class TestDuplicatePathMethod:
         def list_items_b() -> None:
             pass
 
-
         with patch("azure_functions_openapi.spec.logger") as mock_log:
             generate_openapi_spec(route_prefix="")
         calls = [str(c) for c in mock_log.warning.call_args_list]

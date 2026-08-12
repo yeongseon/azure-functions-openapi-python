@@ -369,7 +369,6 @@ def test_openapi_registers_request_body_required_false() -> None:
     assert rb["required"] is False
 
 
-
 def test_openapi_raises_error_for_invalid_method() -> None:
     """Test that @openapi rejects invalid HTTP methods like typos."""
     import pytest
@@ -425,6 +424,7 @@ def test_openapi_raises_on_multiple_binding_methods_without_explicit_method() ->
     from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
     with pytest.raises(OpenAPISpecConfigError, match="multiple methods"):
+
         @openapi(summary="Ambiguous")
         @app.route(route="items", methods=["GET", "POST"])
         def items(req: func.HttpRequest) -> func.HttpResponse:

@@ -74,9 +74,7 @@ class MockFunction:
         return self._bindings
 
     def is_http_function(self) -> bool:
-        return any(
-            str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings
-        )
+        return any(str(getattr(b, "type", "")).lower() == "httptrigger" for b in self._bindings)
 
 
 class MockBuilder:
@@ -315,6 +313,7 @@ class _UnbuildableBuilder:
     def build(self, auth_level: Any = None) -> Any:
         name = self._function.get_function_name()
         raise ValueError(f"Function {name} does not have a trigger")
+
 
 def test_scan_all_builders_fail_records_skip_not_empty_discovery() -> None:
     # Regression (#380 review): iter_functions returns [] both when no builders

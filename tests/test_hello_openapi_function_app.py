@@ -106,12 +106,14 @@ def test_receive_webhook_non_object_body() -> None:
 def test_receive_webhook_signature_valid() -> None:
     fa = _load_example_module()
 
-    payload = json.dumps({
-        "event_type": "order.completed",
-        "source": "shopify",
-        "occurred_at": "2026-04-12T00:00:00Z",
-        "data": {},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "event_type": "order.completed",
+            "source": "shopify",
+            "occurred_at": "2026-04-12T00:00:00Z",
+            "data": {},
+        }
+    ).encode("utf-8")
     secret = "test-secret"
     timestamp = datetime.now(timezone.utc).isoformat()
     sig = _make_signature(payload, timestamp, secret)
@@ -140,12 +142,14 @@ def test_receive_webhook_signature_invalid() -> None:
     req = func.HttpRequest(
         method="POST",
         url="/api/webhooks/orders",
-        body=json.dumps({
-            "event_type": "order.completed",
-            "source": "shopify",
-            "occurred_at": "2026-04-12T00:00:00Z",
-            "data": {},
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "event_type": "order.completed",
+                "source": "shopify",
+                "occurred_at": "2026-04-12T00:00:00Z",
+                "data": {},
+            }
+        ).encode("utf-8"),
         params={},
         headers={
             "Content-Type": "application/json",
@@ -167,12 +171,14 @@ def test_receive_webhook_missing_timestamp() -> None:
     req = func.HttpRequest(
         method="POST",
         url="/api/webhooks/orders",
-        body=json.dumps({
-            "event_type": "order.completed",
-            "source": "shopify",
-            "occurred_at": "2026-04-12T00:00:00Z",
-            "data": {},
-        }).encode("utf-8"),
+        body=json.dumps(
+            {
+                "event_type": "order.completed",
+                "source": "shopify",
+                "occurred_at": "2026-04-12T00:00:00Z",
+                "data": {},
+            }
+        ).encode("utf-8"),
         params={},
         headers={"Content-Type": "application/json", "X-Signature": "sha256=abc"},
     )
@@ -189,12 +195,14 @@ def test_receive_webhook_stale_timestamp() -> None:
     fa = _load_example_module()
     secret = "test-secret"
     old_timestamp = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-    payload = json.dumps({
-        "event_type": "order.completed",
-        "source": "shopify",
-        "occurred_at": "2026-04-12T00:00:00Z",
-        "data": {},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "event_type": "order.completed",
+            "source": "shopify",
+            "occurred_at": "2026-04-12T00:00:00Z",
+            "data": {},
+        }
+    ).encode("utf-8")
     sig = _make_signature(payload, old_timestamp, secret)
 
     req = func.HttpRequest(
@@ -221,12 +229,14 @@ def test_receive_webhook_naive_timestamp_rejected() -> None:
     fa = _load_example_module()
     secret = "test-secret"
     naive_timestamp = "2026-04-12T00:00:00"  # No timezone
-    payload = json.dumps({
-        "event_type": "order.completed",
-        "source": "shopify",
-        "occurred_at": "2026-04-12T00:00:00Z",
-        "data": {},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "event_type": "order.completed",
+            "source": "shopify",
+            "occurred_at": "2026-04-12T00:00:00Z",
+            "data": {},
+        }
+    ).encode("utf-8")
     sig = _make_signature(payload, naive_timestamp, secret)
 
     req = func.HttpRequest(
@@ -247,16 +257,19 @@ def test_receive_webhook_naive_timestamp_rejected() -> None:
     assert resp.status_code == 401
     assert "timezone" in json.loads(resp.get_body())["error"].lower()
 
+
 def test_receive_webhook_duplicate_delivery_id() -> None:
     """Duplicate X-Delivery-Id headers are rejected with 409."""
     fa = _load_example_module()
     delivery_id = "dlv-unique-123"
-    payload = json.dumps({
-        "event_type": "order.completed",
-        "source": "shopify",
-        "occurred_at": "2026-04-12T00:00:00Z",
-        "data": {},
-    }).encode("utf-8")
+    payload = json.dumps(
+        {
+            "event_type": "order.completed",
+            "source": "shopify",
+            "occurred_at": "2026-04-12T00:00:00Z",
+            "data": {},
+        }
+    ).encode("utf-8")
 
     def make_req() -> func.HttpRequest:
         return func.HttpRequest(
