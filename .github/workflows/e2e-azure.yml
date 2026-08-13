@@ -92,6 +92,38 @@ jobs:
           pip install -e ".[dev]"
           pip install requests pyyaml pytest pytest-html
 
+      - name: Build candidate wheel and bundle into e2e app
+        run: |
+          python -m pip install --upgrade pip build
+          FILE_VERSION=$(grep -Po '(?<=__version__ = ")[^"]*' src/azure_functions_openapi/__init__.py)
+          REQ_VERSION="${{ inputs.version }}"
+          if [ -n "$REQ_VERSION" ] && [ "$REQ_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error ::Requested version ($REQ_VERSION) != source version ($FILE_VERSION)"
+            exit 1
+          fi
+          RESOLVED_VERSION="${REQ_VERSION:-$FILE_VERSION}"
+          echo "RESOLVED_VERSION=${RESOLVED_VERSION}" >> "$GITHUB_ENV"
+          python -m build --wheel --outdir dist
+          shopt -s nullglob
+          wheels=(dist/azure_functions_openapi-${RESOLVED_VERSION}-*.whl)
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error ::No candidate wheel matching version ${RESOLVED_VERSION} produced by python -m build"
+            exit 1
+          fi
+          if [ ${#wheels[@]} -gt 1 ]; then
+            echo "::error ::Expected exactly one candidate wheel for ${RESOLVED_VERSION}, found ${#wheels[@]}: ${wheels[*]}"
+            exit 1
+          fi
+          WHEEL="${wheels[0]}"
+          mkdir -p examples/e2e_app/wheels
+          cp "$WHEEL" examples/e2e_app/wheels/
+          BASENAME=$(basename "$WHEEL")
+          # Append the locally-built candidate so the remote Oryx build installs it
+          # instead of resolving azure-functions-openapi from PyPI.
+          echo "./wheels/${BASENAME}" >> examples/e2e_app/requirements.txt
+          echo "Bundled candidate wheel: ${BASENAME} (version ${RESOLVED_VERSION})"
+          cat examples/e2e_app/requirements.txt
+
       - name: Publish function app
         working-directory: examples/e2e_app
         run: |
@@ -101,6 +133,7 @@ jobs:
         run: pytest tests/e2e -v --no-cov --html=e2e-report/report.html --self-contained-html
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
+          E2E_EXPECTED_VERSION: ${{ env.RESOLVED_VERSION }}
 
       - name: Record certification
         run: |

@@ -1,3 +1,5 @@
 azure-functions
-azure-functions-openapi
+# azure-functions-openapi is injected as a locally-built candidate wheel by
+# .github/workflows/e2e-azure.yml (see the "Build candidate wheel" step) so the
+# remote Oryx build certifies the release candidate, not the published PyPI build.
 pydantic>=2.0,<3.0

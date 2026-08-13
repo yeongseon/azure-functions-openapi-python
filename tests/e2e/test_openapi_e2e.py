@@ -17,6 +17,7 @@ import requests
 import yaml  # PyYAML
 
 BASE_URL = os.environ.get("E2E_BASE_URL", "").rstrip("/")
+EXPECTED_VERSION = os.environ.get("E2E_EXPECTED_VERSION", "").strip()
 SKIP_REASON = "E2E_BASE_URL not set — skipping real-Azure e2e tests"
 
 
@@ -96,3 +97,23 @@ def test_list_items_endpoint() -> None:
     assert len(items) > 0
     assert "id" in items[0]
     assert "name" in items[0]
+
+
+@pytest.mark.skipif(not BASE_URL, reason=SKIP_REASON)
+def test_deployed_version_matches_candidate() -> None:
+    """Certify the deployed host runs the candidate wheel, not the PyPI build."""
+    r = _get("/api/version")
+    assert r.status_code == 200
+    deployed = r.json()["version"]
+    # Fail closed: when this test runs at all (BASE_URL is set), a missing/blank
+    # E2E_EXPECTED_VERSION means the workflow wiring regressed and the
+    # certification can no longer prove the deployed host ran the candidate wheel.
+    assert EXPECTED_VERSION, (
+        "E2E_EXPECTED_VERSION is not set — cannot certify that the deployed "
+        "host runs the candidate wheel. Check the e2e-azure workflow wiring."
+    )
+    assert deployed == EXPECTED_VERSION, (
+        f"Deployed version {deployed!r} != expected candidate "
+        f"{EXPECTED_VERSION!r} — remote build did not install the "
+        "bundled wheel"
+    )
