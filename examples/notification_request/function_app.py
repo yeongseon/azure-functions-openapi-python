@@ -75,9 +75,11 @@ _notifications: dict[str, dict[str, str]] = {}
     description="Validate and queue an email notification for delivery.",
     tags=["notifications"],
     requests=EmailNotificationRequest,
-    response_model=NotificationAcceptedResponse,
-    response={
-        202: {"description": "Notification queued for delivery"},
+    responses={
+        202: {
+            "description": "Notification queued for delivery",
+            "content": {"application/json": {"schema": NotificationAcceptedResponse}},
+        },
         422: {"description": "Validation error"},
     },
 )
@@ -118,9 +120,11 @@ def send_notification(req: func.HttpRequest, body: EmailNotificationRequest) -> 
             "schema": {"type": "string"},
         }
     ],
-    response_model=NotificationStatusResponse,
-    response={
-        200: {"description": "Notification status"},
+    responses={
+        200: {
+            "description": "Notification status",
+            "content": {"application/json": {"schema": NotificationStatusResponse}},
+        },
         404: {"description": "Notification not found"},
     },
 )
