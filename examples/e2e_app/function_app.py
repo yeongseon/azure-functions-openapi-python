@@ -6,6 +6,7 @@ against a real Azure Functions Consumption host.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
 import logging
 
@@ -28,6 +29,19 @@ class ItemResponse(BaseModel):
 def health(req: func.HttpRequest) -> func.HttpResponse:
     """Liveness probe used by e2e warmup loop."""
     return func.HttpResponse(json.dumps({"status": "ok"}), mimetype="application/json")
+
+
+@app.route(route="version", auth_level=func.AuthLevel.ANONYMOUS)
+def version(req: func.HttpRequest) -> func.HttpResponse:
+    """Report the installed package version so e2e can certify the candidate.
+
+    Proves the deployed host is running the exact wheel bundled by CI rather
+    than whatever is currently published on PyPI.
+    """
+    installed = importlib.metadata.version("azure-functions-openapi")
+    return func.HttpResponse(
+        json.dumps({"version": installed}), mimetype="application/json"
+    )
 
 
 @openapi(
