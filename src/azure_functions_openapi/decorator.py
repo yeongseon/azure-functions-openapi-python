@@ -119,9 +119,9 @@ def _default_response_description(status: int) -> str:
 
 
 def _normalize_unified_responses(
-    responses: dict[int, Any], func_name: str
+    responses: Mapping[int, Any], func_name: str
 ) -> dict[int, dict[str, Any]]:
-    """Normalize a unified ``responses=`` dict into OpenAPI Response Objects.
+    """Normalize a unified ``responses=`` mapping into OpenAPI Response Objects.
 
     Each value may be either:
 
@@ -368,7 +368,7 @@ def openapi(
                     raise ValueError(
                         "Cannot provide both 'responses' and 'response_model'/'response'."
                     )
-                if isinstance(responses, dict):
+                if isinstance(responses, Mapping):
                     resolved_response = _normalize_unified_responses(
                         responses, metadata_func.__name__
                     )

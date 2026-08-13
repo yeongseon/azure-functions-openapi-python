@@ -658,3 +658,31 @@ def test_openapi_responses_dict_rejects_invalid_value() -> None:
             pass
 
     assert "Invalid 'responses' entry for status 200" in str(exc_info.value)
+
+
+def test_openapi_responses_accepts_non_dict_mapping() -> None:
+    """A non-dict Mapping (e.g. MappingProxyType) is accepted, matching the
+    advertised Mapping[...] type contract rather than requiring a concrete dict."""
+    from types import MappingProxyType
+
+    _clear_registry()
+
+    @openapi(
+        summary="Non-dict mapping responses",
+        route="/api/items",
+        method="post",
+        responses=MappingProxyType(
+            {
+                202: _UnifiedResponseModel,
+                400: {"description": "Bad request"},
+            }
+        ),
+    )
+    def non_dict_mapping_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["post"]["responses"]
+    schema = responses["202"]["content"]["application/json"]["schema"]
+    assert schema["$ref"].endswith("/_UnifiedResponseModel")
+    assert responses["400"]["description"] == "Bad request"
