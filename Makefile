@@ -73,8 +73,13 @@ check: ensure-hatch
 	@$(MAKE) typecheck
 	@echo "Lint and type check passed."
 
+.PHONY: lint-workflows
+lint-workflows: ensure-hatch
+	@$(HATCH) run python tools/lint_release_workflows.py
+
 .PHONY: check-all
 check-all: ensure-hatch
+	@$(MAKE) lint-workflows
 	@$(MAKE) check
 	@$(MAKE) test
 	@$(MAKE) security
