@@ -1,7 +1,7 @@
 site_name: Azure Functions OpenAPI
 site_description: OpenAPI (Swagger) integration for Python-based Azure Functions
 site_author: Yeongseon Choe
-site_url: https://yeongseon.github.io/azure-functions-openapi-python/
+site_url: https://yeongseon.dev/azure-functions-python/openapi/
 repo_url: https://github.com/yeongseon/azure-functions-openapi-python
 edit_uri: edit/main/docs/
 

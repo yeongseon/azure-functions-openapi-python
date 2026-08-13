@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://yeongseon.github.io/azure-functions-openapi-python/
+    url: https://yeongseon.dev/azure-functions-python/openapi/
     about: Check our documentation for usage guides and examples
   - name: Security Advisories
     url: /security/advisories/new

@@ -29,8 +29,8 @@ dependencies = [
 ]
 
     [project.urls]
-    Homepage = "https://yeongseon.github.io/azure-functions-openapi-python/"
-    Documentation = "https://yeongseon.github.io/azure-functions-openapi-python/"
+    Homepage = "https://yeongseon.dev/azure-functions-python/openapi/"
+    Documentation = "https://yeongseon.dev/azure-functions-python/openapi/"
     Repository = "https://github.com/yeongseon/azure-functions-openapi-python"
 Issues = "https://github.com/yeongseon/azure-functions-openapi-python/issues"
 
