@@ -348,13 +348,8 @@ class _Resp(BaseModel):
     id: int
 
 
-def test_scan_prefers_endpoint_over_validation_when_both_present() -> None:
-    app = _make_app(
-        {
-            "endpoint": FLAT_ENDPOINT,
-            "validation": {"body": _Body, "response_model": _Resp},
-        }
-    )
+def test_scan_registers_from_endpoint_and_ignores_validation_sibling() -> None:
+    app = _make_app({"endpoint": FLAT_ENDPOINT})
     scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
@@ -365,42 +360,39 @@ def test_scan_prefers_endpoint_over_validation_when_both_present() -> None:
     }
 
 
-def test_scan_falls_back_to_validation_when_only_validation_present(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    app = _make_app({"validation": {"body": _Body, "response_model": _Resp}})
-    with caplog.at_level("WARNING", logger="azure_functions_openapi.bridge"):
-        scan_endpoint_metadata(app)
-
-    entry = get_openapi_registry()["post::/api/users"]
-    assert entry["response_model"] is _Resp
-    # No endpoint namespace at all -> plain validation path, no fallback warning.
-    assert not any("falling back to the validation namespace" in m for m in caplog.messages)
+def test_scan_ignores_validation_only_namespace() -> None:
+    # Post-#313: the bridge reads ONLY the endpoint namespace. A handler that
+    # carries just the legacy validation namespace registers nothing.
     app = _make_app({"validation": {"body": _Body, "response_model": _Resp}})
     scan_endpoint_metadata(app)
 
-    entry = get_openapi_registry()["post::/api/users"]
-    assert entry["response_model"] is _Resp
+    assert get_openapi_registry() == {}
 
 
-def test_scan_falls_back_to_validation_when_endpoint_version_unsupported(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_scan_registers_bare_skew_op_when_endpoint_version_unsupported() -> None:
+    # A present-but-rejected endpoint namespace (unsupported version) with no
+    # canonical @openapi entry registers a BARE binding-derived operation and
+    # flags it VERSION_SKEW. The sibling validation namespace is NOT read.
     app = _make_app(
         {
             "endpoint": {"version": 999, "request_body": {"type": "object"}},
             "validation": {"body": _Body, "response_model": _Resp},
         }
     )
-    with caplog.at_level("WARNING", logger="azure_functions_openapi.bridge"):
-        scan_endpoint_metadata(app)
+    scan_endpoint_metadata(app)
 
     entry = get_openapi_registry()["post::/api/users"]
-    assert entry["response_model"] is _Resp
-    # A present-but-rejected endpoint namespace that silently downgrades to the
-    # validation namespace must surface an explicit, actionable warning (#318).
-    assert any("falling back to the validation namespace" in m for m in caplog.messages)
-    assert any("create_user" in m for m in caplog.messages)
+    # validation namespace ignored: the bare op carries no derived body/response.
+    assert entry.get("response_model") is None
+    assert entry.get("request_body") is None
+    assert entry.get("response") == {}
+    assert entry.get("_skew_flags") == ["version-skew"]
+
+    # The degraded op is flagged VERSION_SKEW (no NAMESPACE_FALLBACK anymore).
+    warnings = collect_spec_warnings(generate_openapi_spec())
+    skew = [w for w in warnings if w.code is WarningCode.VERSION_SKEW]
+    assert skew
+    assert any(w.function_name == "post::/api/users" for w in skew)
 
 
 # ---------------------------------------------------------------------------

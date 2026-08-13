@@ -79,8 +79,16 @@ def _make_app(name: str, route: str, handler: Any, method: str = "post") -> Mock
     return MockApp(_function_builders=[MockBuilder(_function=fn)])
 
 
-def _set_validation(handler: Any, metadata: dict[str, Any]) -> None:
-    setattr(handler, "_azure_functions_metadata", {"validation": metadata})
+def _set_endpoint(handler: Any, metadata: dict[str, Any]) -> None:
+    # Post-#313 the bridge reads ONLY the endpoint namespace. Translate the
+    # legacy {"body": Model} shorthand these tests use into the equivalent
+    # endpoint payload a conforming producer would emit.
+    endpoint: dict[str, Any] = {"version": 1}
+    body = metadata.get("body")
+    if body is not None:
+        endpoint["request_body"] = body.model_json_schema()
+        endpoint["request_body_required"] = True
+    setattr(handler, "_azure_functions_metadata", {"endpoint": endpoint})
 
 
 class Body(BaseModel):
@@ -213,7 +221,7 @@ def test_bridge_merges_into_correct_handler_on_name_collision(register_a_first: 
         handler_a = _make_handler_a()
 
     # Attach validation metadata only to handler A and scan it.
-    _set_validation(handler_a, {"body": Body})
+    _set_endpoint(handler_a, {"body": Body})
     app = _make_app(name="create_user", route="users", handler=handler_a)
     scan_endpoint_metadata(app)
 
@@ -232,7 +240,7 @@ def test_bridge_merges_into_correct_handler_on_name_collision(register_a_first: 
 
 def test_bridge_double_scan_does_not_duplicate(caplog: pytest.LogCaptureFixture) -> None:
     handler_a = _make_handler_a()
-    _set_validation(handler_a, {"body": Body})
+    _set_endpoint(handler_a, {"body": Body})
     app = _make_app(name="create_user", route="users", handler=handler_a)
 
     scan_endpoint_metadata(app)
@@ -253,7 +261,7 @@ def test_bridge_refuses_ambiguous_short_name_fallback(caplog: pytest.LogCaptureF
     def create_user(req: Any) -> Any:  # not @openapi-registered
         return req
 
-    _set_validation(create_user, {"body": Body})
+    _set_endpoint(create_user, {"body": Body})
     app = _make_app(name="create_user", route="unrelated", handler=create_user)
 
     with caplog.at_level("WARNING"):

@@ -16,7 +16,6 @@ from azure_functions_openapi.bridge import (
     _models_conflict,
     _normalize_method,
     _normalize_path,
-    _read_validation_hints,
     scan_endpoint_metadata,
 )
 from azure_functions_openapi.decorator import (
@@ -26,7 +25,6 @@ from azure_functions_openapi.decorator import (
     get_openapi_registry,
     register_openapi_metadata,
 )
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.utils import model_to_schema, type_to_schema
 
 
@@ -100,11 +98,15 @@ class MockApp:
     _function_builders: list[MockBuilder]
 
 
-def _make_validated_handler(metadata: dict[str, Any]) -> Any:
+def _endpoint_namespace() -> dict[str, Any]:
+    return {"endpoint": {"version": 1, "request_body": {"type": "object"}}}
+
+
+def _make_endpoint_handler() -> Any:
     def handler(req: Any) -> Any:
         return req
 
-    setattr(handler, _HANDLER_METADATA_ATTR, {"validation": metadata})
+    setattr(handler, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     return handler
 
 
@@ -115,7 +117,7 @@ def _make_app(
     methods: list[str] | None = None,
     metadata: Any = None,
 ) -> MockApp:
-    handler = _make_validated_handler(metadata) if metadata is not None else (lambda req: req)
+    handler = _make_endpoint_handler() if metadata is not None else (lambda req: req)
     binding = MockBinding(route=route, methods=methods or ["POST"])
     fn = MockFunction(_name=name, _func=handler, _bindings=[binding])
     return MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -128,8 +130,8 @@ def test_scan_discovers_validation_metadata() -> None:
 
     registry = get_openapi_registry()
     entry = registry["post::/api/users"]
-    assert entry["response_model"] is ResponseModel
-    assert "request_body" in entry
+    assert entry["request_body"] == {"type": "object"}
+    assert entry.get("response_model") is None
 
 
 def test_scan_skips_non_validated_functions() -> None:
@@ -148,44 +150,6 @@ def test_explicit_openapi_wins() -> None:
 
     entry = get_openapi_registry()["post::/api/users"]
     assert entry["summary"] == "explicit"
-
-
-def test_body_model_registered_as_request_body() -> None:
-    app = _make_app(metadata={"body": CreateBody})
-
-    scan_endpoint_metadata(app)
-
-    schema = get_openapi_registry()["post::/api/users"]["request_body"]
-    assert schema["type"] == "object"
-    assert "name" in schema["properties"]
-
-
-def test_query_model_registered_as_parameters() -> None:
-    app = _make_app(metadata={"query": QueryModel})
-
-    scan_endpoint_metadata(app)
-
-    params = get_openapi_registry()["post::/api/users"]["parameters"]
-    assert any(p["in"] == "query" and p["name"] == "limit" for p in params)
-
-
-def test_path_model_registered_as_parameters() -> None:
-    app = _make_app(route="users/{user_id}", metadata={"path": PathModel})
-
-    scan_endpoint_metadata(app)
-
-    params = get_openapi_registry()["post::/api/users/{user_id}"]["parameters"]
-    path_param = next(p for p in params if p["name"] == "user_id")
-    assert path_param["in"] == "path"
-    assert path_param["required"] is True
-
-
-def test_response_model_registered() -> None:
-    app = _make_app(metadata={"response_model": ResponseModel})
-
-    scan_endpoint_metadata(app)
-
-    assert get_openapi_registry()["post::/api/users"]["response_model"] is ResponseModel
 
 
 def test_scan_without_validation_metadata() -> None:
@@ -212,16 +176,8 @@ def test_model_to_parameters_conversion() -> None:
     assert limit["schema"]["type"] == "integer"
 
 
-def test_conflict_detection() -> None:
-    register_openapi_metadata(path="/api/users", method="post", response_model=AltResponseModel)
-    app = _make_app(metadata={"response_model": ResponseModel})
-
-    with pytest.raises(OpenAPISpecConfigError):
-        scan_endpoint_metadata(app)
-
-
 def test_scan_skips_non_http_bindings() -> None:
-    handler = _make_validated_handler({"body": CreateBody})
+    handler = _make_endpoint_handler()
     fn = MockFunction(
         _name="non_http",
         _func=handler,
@@ -237,7 +193,7 @@ def test_scan_skips_non_http_bindings() -> None:
 def test_scan_expands_unspecified_methods_to_all_http_methods() -> None:
     # Azure runtime responds to *all* HTTP methods when methods= is omitted, so
     # the scan must register every HttpMethod rather than defaulting to GET.
-    handler = _make_validated_handler({"response_model": ResponseModel})
+    handler = _make_endpoint_handler()
     binding = MockBinding(route="users", methods=None, type="httpTrigger")
     fn = MockFunction(_name="get_users", _func=handler, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -253,7 +209,7 @@ def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
     # Policy (#335): when methods= is unspecified we expand to all HTTP methods,
     # but GET/HEAD/DELETE must not carry a requestBody (OpenAPI leaves it
     # undefined there). Body-bearing methods keep it.
-    handler = _make_validated_handler({"body": CreateBody})
+    handler = _make_endpoint_handler()
     binding = MockBinding(route="users", methods=None, type="httpTrigger")
     fn = MockFunction(_name="users", _func=handler, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -386,7 +342,7 @@ def test_scan_reconciles_method_for_openapi_below_route_post() -> None:
     def make_thing(req: Any) -> Any:
         return req
 
-    setattr(make_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(make_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="make_thing", _func=make_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -417,7 +373,7 @@ def test_scan_reconciles_method_for_openapi_below_route_unspecified_expands() ->
     def any_thing(req: Any) -> Any:
         return req
 
-    setattr(any_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(any_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=None, type="httpTrigger")
     fn = MockFunction(_name="any_thing", _func=any_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -453,7 +409,7 @@ def test_scan_reconciles_method_for_openapi_below_route_multi_method() -> None:
     def rw_thing(req: Any) -> Any:
         return req
 
-    setattr(rw_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(rw_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
     fn = MockFunction(_name="rw_thing", _func=rw_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -473,7 +429,7 @@ def test_scan_below_route_is_idempotent_across_repeated_scans() -> None:
     def idem_thing(req: Any) -> Any:
         return req
 
-    setattr(idem_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(idem_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="idem_thing", _func=idem_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -498,7 +454,7 @@ def test_rescan_expanded_handler_preserves_per_method_bodies() -> None:
     def any_thing(req: Any) -> Any:
         return req
 
-    setattr(any_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(any_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=None, type="httpTrigger")
     fn = MockFunction(_name="any_thing", _func=any_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -524,7 +480,7 @@ def test_rescan_multi_method_resolves_each_method_to_own_entry() -> None:
     def rw_thing(req: Any) -> Any:
         return req
 
-    setattr(rw_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(rw_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
     fn = MockFunction(_name="rw_thing", _func=rw_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -551,7 +507,7 @@ def test_scan_below_route_does_not_override_explicit_openapi_method() -> None:
     def explicit_thing(req: Any) -> Any:
         return req
 
-    setattr(explicit_thing, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(explicit_thing, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="explicit_thing", _func=explicit_thing, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -574,7 +530,7 @@ def test_scan_below_route_preserves_binding_route_when_name_differs() -> None:
     def handler_one(req: Any) -> Any:
         return req
 
-    setattr(handler_one, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(handler_one, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="handler_one", _func=handler_one, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -599,7 +555,7 @@ def test_scan_below_route_preserves_explicit_openapi_route_override() -> None:
     def handler_three(req: Any) -> Any:
         return req
 
-    setattr(handler_three, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(handler_three, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="users/create", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="handler_three", _func=handler_three, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -831,7 +787,7 @@ def test_mismatch_flagged_for_validation_carrying_handler() -> None:
     def handler_v1(req: Any) -> Any:
         return req
 
-    setattr(handler_v1, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(handler_v1, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["POST"], type="httpTrigger")
     fn = MockFunction(_name="handler_v1", _func=handler_v1, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -857,7 +813,7 @@ def test_no_mismatch_for_validation_handler_with_subset_method() -> None:
     def handler_v2(req: Any) -> Any:
         return req
 
-    setattr(handler_v2, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(handler_v2, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=["GET", "POST"], type="httpTrigger")
     fn = MockFunction(_name="handler_v2", _func=handler_v2, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -879,7 +835,7 @@ def test_no_mismatch_for_validation_handler_with_unspecified_binding() -> None:
     def handler_v3(req: Any) -> Any:
         return req
 
-    setattr(handler_v3, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    setattr(handler_v3, _HANDLER_METADATA_ATTR, _endpoint_namespace())
     binding = MockBinding(route="things", methods=None, type="httpTrigger")
     fn = MockFunction(_name="handler_v3", _func=handler_v3, _bindings=[binding])
     app = MockApp(_function_builders=[MockBuilder(_function=fn)])
@@ -919,20 +875,6 @@ def test_scan_merges_explicit_function_name_entry() -> None:
     assert entry["request_body"]["type"] == "object"
 
 
-def test_parameter_conflict_detection() -> None:
-    register_openapi_metadata(
-        path="/api/users",
-        method="post",
-        parameters=[
-            {"name": "limit", "in": "query", "required": True, "schema": {"type": "string"}}
-        ],
-    )
-    app = _make_app(metadata={"query": QueryModel})
-
-    with pytest.raises(OpenAPISpecConfigError, match="Conflicting validation"):
-        scan_endpoint_metadata(app)
-
-
 def test_type_to_schema_registers_defs_for_generic_types() -> None:
     components: dict[str, Any] = {"schemas": {}}
 
@@ -955,238 +897,6 @@ def test_model_to_schema_accepts_generic_type_hints() -> None:
 def test_type_to_schema_without_components() -> None:
     schema = type_to_schema(ResponseModel | None)
     assert "anyOf" in schema or "oneOf" in schema or "type" in schema
-
-
-# ---------------------------------------------------------------------------
-# Tests for _read_validation_hints enhancements (Issue #172)
-# ---------------------------------------------------------------------------
-
-
-class TestWrappedChainTraversal:
-    """Verify __wrapped__ chain walking finds metadata on inner handlers."""
-
-    def test_metadata_on_inner_wrapped_handler(self) -> None:
-        """Metadata set on an inner handler is found through __wrapped__."""
-        inner: Any = lambda req: req  # noqa: E731
-        setattr(inner, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
-
-        outer: Any = lambda req: inner(req)  # noqa: E731
-        outer.__wrapped__ = inner
-
-        result = _read_validation_hints(outer)
-        assert result is not None
-        assert result["body"] is CreateBody
-
-    def test_metadata_on_outer_wins(self) -> None:
-        """When both outer and inner have metadata, outer wins (first match)."""
-        inner: Any = lambda req: req  # noqa: E731
-        setattr(inner, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
-
-        outer: Any = lambda req: inner(req)  # noqa: E731
-        setattr(outer, _HANDLER_METADATA_ATTR, {"validation": {"response_model": ResponseModel}})
-        outer.__wrapped__ = inner
-
-        result = _read_validation_hints(outer)
-        assert result is not None
-        assert "response_model" in result
-        assert "body" not in result
-
-    def test_no_metadata_in_chain(self) -> None:
-        """Returns None when no handler in the chain has metadata."""
-        inner: Any = lambda req: req  # noqa: E731
-        outer: Any = lambda req: inner(req)  # noqa: E731
-        outer.__wrapped__ = inner
-
-        assert _read_validation_hints(outer) is None
-
-    def test_deeply_nested_wrapped_chain(self) -> None:
-        """Metadata is found several levels deep."""
-        bottom: Any = lambda req: req  # noqa: E731
-        setattr(bottom, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
-
-        current: Any = bottom
-        for _ in range(5):
-            wrapper: Any = lambda req, fn=current: fn(req)  # noqa: E731
-            wrapper.__wrapped__ = current
-            current = wrapper
-
-        result = _read_validation_hints(current)
-        assert result is not None
-        assert result["body"] is CreateBody
-
-    def test_self_referencing_wrapped_stops(self) -> None:
-        """A handler whose __wrapped__ points to itself doesn't loop."""
-        handler: Any = lambda req: req  # noqa: E731
-        handler.__wrapped__ = handler
-
-        # Should not hang; just returns None
-        assert _read_validation_hints(handler) is None
-
-
-class TestVersionValidation:
-    """Verify version gating in _read_validation_hints."""
-
-    def test_missing_version_accepted(self) -> None:
-        """No 'version' key is treated as v1 — accepted."""
-        handler = lambda req: req  # noqa: E731
-        setattr(handler, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
-
-        result = _read_validation_hints(handler)
-        assert result is not None
-        assert result["body"] is CreateBody
-
-    def test_version_1_accepted(self) -> None:
-        """Explicit nested version=1 is accepted."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 1, "body": CreateBody},
-            },
-        )
-
-        result = _read_validation_hints(handler)
-        assert result is not None
-        assert result["body"] is CreateBody
-
-    def test_unsupported_version_skipped(self) -> None:
-        """Unsupported integer version emits warning and returns None."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 999, "body": CreateBody},
-            },
-        )
-
-        result = _read_validation_hints(handler)
-        assert result is None
-
-    def test_malformed_version_string_skipped(self) -> None:
-        """Non-int version (e.g. string) emits warning and returns None."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": "1", "body": CreateBody},
-            },
-        )
-
-        result = _read_validation_hints(handler)
-        assert result is None
-
-    def test_malformed_version_float_skipped(self) -> None:
-        """Float version is rejected (only int accepted)."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 1.0, "body": CreateBody},
-            },
-        )
-
-        result = _read_validation_hints(handler)
-        assert result is None
-
-    def test_unsupported_version_warning_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Warning is logged with handler repr and unsupported version."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 42, "body": CreateBody},
-            },
-        )
-
-        with caplog.at_level("WARNING", logger="azure_functions_openapi.bridge"):
-            _read_validation_hints(handler)
-
-        assert any("unsupported version" in m for m in caplog.messages)
-        assert any("42" in m for m in caplog.messages)
-
-    def test_outer_invalid_version_inner_valid_discovered(self) -> None:
-        """Invalid version on outer should not block valid inner metadata."""
-        inner: Any = lambda req: req  # noqa: E731
-        setattr(
-            inner,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 1, "body": CreateBody},
-            },
-        )
-
-        outer: Any = lambda req: inner(req)  # noqa: E731
-        setattr(
-            outer,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": 999, "body": ResponseModel},
-            },
-        )
-        outer.__wrapped__ = inner
-
-        result = _read_validation_hints(outer)
-        assert result is not None
-        # Inner metadata (v1) is discovered, not the outer (v999)
-        assert result["body"] is CreateBody
-
-    def test_boolean_version_rejected(self) -> None:
-        """version=True is a bool, not int — should be rejected."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"version": True, "body": CreateBody},
-            },
-        )
-
-        result = _read_validation_hints(handler)
-        assert result is None
-
-
-class TestDeepCopyMutationSafety:
-    """Returned hints are deep copies — mutating them doesn't affect the handler."""
-
-    def test_mutation_does_not_affect_handler(self) -> None:
-        handler = lambda req: req  # noqa: E731
-        original_meta = {"body": CreateBody, "extra": {"nested": "value"}}
-        setattr(handler, _HANDLER_METADATA_ATTR, {"validation": original_meta})
-
-        result = _read_validation_hints(handler)
-        assert result is not None
-
-        # Mutate the returned copy
-        result["injected"] = "attack"
-        result["extra"]["nested"] = "mutated"
-
-        # Original is untouched
-        stored = getattr(handler, _HANDLER_METADATA_ATTR)["validation"]
-        assert "injected" not in stored
-        assert stored["extra"]["nested"] == "value"
-
-    def test_successive_reads_are_independent(self) -> None:
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "validation": {"body": CreateBody, "extra": {"key": "original"}},
-            },
-        )
-
-        first = _read_validation_hints(handler)
-        assert first is not None
-        first["extra"]["key"] = "changed"
-
-        second = _read_validation_hints(handler)
-        assert second is not None
-        assert second["extra"]["key"] == "original"
 
 
 def test_scan_uses_default_api_prefix() -> None:
@@ -1322,18 +1032,6 @@ def test_model_to_parameters_rejects_non_pydantic_model() -> None:
         _model_to_parameters(object, "query")
 
 
-def test_scan_includes_headers_model_as_header_parameters() -> None:
-    class HeaderModel(BaseModel):
-        x_request_id: str
-
-    app = _make_app(metadata={"headers": HeaderModel})
-    scan_endpoint_metadata(app)
-
-    params = get_openapi_registry()["post::/api/users"]["parameters"]
-    header_param = next(p for p in params if p["name"] == "x_request_id")
-    assert header_param["in"] == "header"
-
-
 def test_scan_skips_builders_without_function_or_handler() -> None:
     # Under the public-accessor contract the only "skip" signal is a built
     # function whose user handler is None (get_user_function() -> None).
@@ -1348,35 +1046,24 @@ def test_scan_skips_builders_without_function_or_handler() -> None:
     assert get_openapi_registry() == {}
 
 
-class TestNestedVersionGate:
-    """Regression: the version gate reads the nested namespace payload, not the top level."""
 
-    def test_top_level_version_is_ignored(self) -> None:
-        """A stray top-level 'version' must not gate; the nested v1 payload is accepted."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "version": 999,  # top-level: producers never set this — must be ignored
-                "validation": {"version": 1, "body": CreateBody},
-            },
-        )
+def test_validation_only_namespace_is_not_discovered() -> None:
+    # Post-#313: the bridge reads ONLY the endpoint namespace. A handler that
+    # carries just the legacy validation namespace must register nothing.
+    def handler(req: Any) -> Any:
+        return req
 
-        result = _read_validation_hints(handler)
-        assert result is not None
-        assert result["body"] is CreateBody
+    setattr(handler, _HANDLER_METADATA_ATTR, {"validation": {"body": CreateBody}})
+    binding = MockBinding(route="users", methods=["POST"])
+    fn = MockFunction(_name="create_user", _func=handler, _bindings=[binding])
+    app = MockApp(_function_builders=[MockBuilder(_function=fn)])
 
-    def test_nested_unsupported_version_rejected_despite_valid_top_level(self) -> None:
-        """Only the nested version gates; a valid top-level 'version' cannot rescue it."""
-        handler = lambda req: req  # noqa: E731
-        setattr(
-            handler,
-            _HANDLER_METADATA_ATTR,
-            {
-                "version": 1,  # top-level: ignored
-                "validation": {"version": 999, "body": CreateBody},
-            },
-        )
+    scan_endpoint_metadata(app)
 
-        assert _read_validation_hints(handler) is None
+    assert get_openapi_registry() == {}
+
+
+def test_handler_metadata_attr_is_importable_from_endpoint_contract() -> None:
+    from azure_functions_openapi._endpoint_contract import HANDLER_METADATA_ATTR
+
+    assert HANDLER_METADATA_ATTR == "_azure_functions_metadata"

@@ -548,7 +548,6 @@ def test_resolve_metadata_target_reraises_when_handler_unrecoverable(
         decorator_module._resolve_metadata_target(builder)
 
 
-
 # ── #410: unified responses= with per-status model-derived schemas ──────────
 
 
