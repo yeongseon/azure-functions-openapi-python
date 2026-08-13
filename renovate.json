@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["github-actions", "custom.regex"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Keep CANONICAL_ACTIONS pins in tools/lint_release_workflows.py in sync with the workflow uses: SHAs so bot-authored bumps pass the drift lint.",
+      "managerFilePatterns": ["^tools/lint_release_workflows\\.py$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) versioning=(?<versioning>\\S+)\\n\\s*\"[^\"]+\": \\(\"(?<currentDigest>[a-f0-9]{40})\", \"(?<currentValue>v[^\"]+)\"\\)"
+      ],
+      "autoReplaceStringTemplate": "# renovate: datasource={{{datasource}}} depName={{{depName}}} versioning={{{versioning}}}\n    \"{{{depName}}}\": (\"{{{newDigest}}}\", \"{{{newValue}}}\")"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group the five release-gate action bumps so the workflow pin and the CANONICAL_ACTIONS constant land in one PR that keeps the drift lint green.",
+      "matchManagers": ["github-actions", "custom.regex"],
+      "matchPackageNames": [
+        "actions/checkout",
+        "actions/setup-python",
+        "azure/login",
+        "actions/upload-artifact",
+        "actions/download-artifact"
+      ],
+      "groupName": "release-gate GitHub Actions pins"
+    },
+    {
+      "description": "Group github/codeql-action steps (init/analyze) into one PR so they always move in lockstep; split bumps fail CodeQL Analyze with a version mismatch.",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["github/codeql-action"],
+      "groupName": "codeql-action"
+    }
+  ]
+}

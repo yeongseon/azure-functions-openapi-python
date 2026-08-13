@@ -37,10 +37,15 @@ import sys
 
 # --- Fleet-wide canonical pins (action -> (sha, annotation)) ------------------
 CANONICAL_ACTIONS: dict[str, tuple[str, str]] = {
+    # renovate: datasource=github-tags depName=actions/checkout versioning=github-tags
     "actions/checkout": ("3d3c42e5aac5ba805825da76410c181273ba90b1", "v7.0.1"),
+    # renovate: datasource=github-tags depName=actions/setup-python versioning=github-tags
     "actions/setup-python": ("5fda3b95a4ea91299a34e894583c3862153e4b97", "v7.0.0"),
+    # renovate: datasource=github-tags depName=azure/login versioning=github-tags
     "azure/login": ("f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca", "v3.0.1"),
+    # renovate: datasource=github-tags depName=actions/upload-artifact versioning=github-tags
     "actions/upload-artifact": ("ea165f8d65b6e75b540449e92b4886f43607fa02", "v4"),
+    # renovate: datasource=github-tags depName=actions/download-artifact versioning=github-tags
     "actions/download-artifact": ("d3f86a106a0bac45b974a628896c90dbdf5c8093", "v4"),
 }
 
