@@ -74,8 +74,8 @@ class UserResponse(BaseModel):
 
 @openapi(
     summary="Create user",
-    request_model=CreateUserRequest,
-    response_model=UserResponse,
+    requests=CreateUserRequest,
+    responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
 def create_user(req):
@@ -115,7 +115,7 @@ flowchart LR
 | Swagger UI | `/docs` auto-served | `render_swagger_ui()` endpoint |
 | OpenAPI spec | Auto-generated `/openapi.json` | `get_openapi_json()` endpoint |
 | CLI spec export | N/A | `azure-functions-openapi generate` |
-| Pydantic integration | Native | `request_model=` / `response_model=` |
+| Pydantic integration | Native | `requests=` / `responses=` |
 
 ## Scope
 
@@ -220,8 +220,8 @@ class GreetResponse(BaseModel):
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_model=GreetRequest,
-    response_model=GreetResponse,
+    requests=GreetRequest,
+    responses=GreetResponse,
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
@@ -235,7 +235,7 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2 is optional.** `request_model=` / `response_model=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
+> **Pydantic v2 is optional.** `requests=` / `responses=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
 
 <details>
 <summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
@@ -278,12 +278,12 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_body={
+    requests={
         "type": "object",
         "properties": {"name": {"type": "string"}},
         "required": ["name"],
     },
-    response={
+    responses={
         200: {
             "description": "Successful greeting",
             "content": {

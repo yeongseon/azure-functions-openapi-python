@@ -62,8 +62,8 @@ class UserResponse(BaseModel):
 
 @openapi(
     summary="Create user",
-    request_model=CreateUserRequest,
-    response_model=UserResponse,
+    requests=CreateUserRequest,
+    responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
 def create_user(req):
@@ -176,8 +176,8 @@ class GreetResponse(BaseModel):
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_model=GreetRequest,
-    response_model=GreetResponse,
+    requests=GreetRequest,
+    responses=GreetResponse,
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
@@ -191,7 +191,7 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2는 선택 사항입니다.** `request_model=` / `response_model=`을 권장하지만, 의존성을 추가하고 싶지 않다면 원시 JSON Schema dict를 대신 전달할 수 있습니다(아래 참고).
+> **Pydantic v2는 선택 사항입니다.** `requests=` / `responses=`을 권장하지만, 의존성을 추가하고 싶지 않다면 원시 JSON Schema dict를 대신 전달할 수 있습니다(아래 참고).
 
 <details>
 <summary>스펙 + Swagger UI 엔드포인트 연결 (openapi.json / openapi.yaml / docs)</summary>
@@ -234,12 +234,12 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_body={
+    requests={
         "type": "object",
         "properties": {"name": {"type": "string"}},
         "required": ["name"],
     },
-    response={
+    responses={
         200: {
             "description": "Successful greeting",
             "content": {

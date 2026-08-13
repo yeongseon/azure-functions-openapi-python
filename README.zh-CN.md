@@ -62,8 +62,8 @@ class UserResponse(BaseModel):
 
 @openapi(
     summary="Create user",
-    request_model=CreateUserRequest,
-    response_model=UserResponse,
+    requests=CreateUserRequest,
+    responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
 def create_user(req):
@@ -176,8 +176,8 @@ class GreetResponse(BaseModel):
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_model=GreetRequest,
-    response_model=GreetResponse,
+    requests=GreetRequest,
+    responses=GreetResponse,
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
@@ -191,7 +191,7 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2 为可选项。** 推荐使用 `request_model=` / `response_model=`，但如果你不想添加依赖，也可以改为传入原始 JSON Schema dict（见下文）。
+> **Pydantic v2 为可选项。** 推荐使用 `requests=` / `responses=`，但如果你不想添加依赖，也可以改为传入原始 JSON Schema dict（见下文）。
 
 <details>
 <summary>连接规范 + Swagger UI 端点 (openapi.json / openapi.yaml / docs)</summary>
@@ -234,12 +234,12 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 @openapi(
     summary="Greet user",
     tags=["Example"],
-    request_body={
+    requests={
         "type": "object",
         "properties": {"name": {"type": "string"}},
         "required": ["name"],
     },
-    response={
+    responses={
         200: {
             "description": "Successful greeting",
             "content": {
