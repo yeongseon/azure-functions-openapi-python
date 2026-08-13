@@ -105,9 +105,15 @@ def test_deployed_version_matches_candidate() -> None:
     r = _get("/api/version")
     assert r.status_code == 200
     deployed = r.json()["version"]
-    if EXPECTED_VERSION:
-        assert deployed == EXPECTED_VERSION, (
-            f"Deployed version {deployed!r} != expected candidate "
-            f"{EXPECTED_VERSION!r} — remote build did not install the "
-            "bundled wheel"
-        )
+    # Fail closed: when this test runs at all (BASE_URL is set), a missing/blank
+    # E2E_EXPECTED_VERSION means the workflow wiring regressed and the
+    # certification can no longer prove the deployed host ran the candidate wheel.
+    assert EXPECTED_VERSION, (
+        "E2E_EXPECTED_VERSION is not set — cannot certify that the deployed "
+        "host runs the candidate wheel. Check the e2e-azure workflow wiring."
+    )
+    assert deployed == EXPECTED_VERSION, (
+        f"Deployed version {deployed!r} != expected candidate "
+        f"{EXPECTED_VERSION!r} — remote build did not install the "
+        "bundled wheel"
+    )

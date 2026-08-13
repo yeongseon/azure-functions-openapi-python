@@ -104,11 +104,17 @@ jobs:
           RESOLVED_VERSION="${REQ_VERSION:-$FILE_VERSION}"
           echo "RESOLVED_VERSION=${RESOLVED_VERSION}" >> "$GITHUB_ENV"
           python -m build --wheel --outdir dist
-          WHEEL=$(ls dist/azure_functions_openapi-*.whl | head -n1)
-          if [ -z "$WHEEL" ]; then
-            echo "::error ::No candidate wheel produced by python -m build"
+          shopt -s nullglob
+          wheels=(dist/azure_functions_openapi-${RESOLVED_VERSION}-*.whl)
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error ::No candidate wheel matching version ${RESOLVED_VERSION} produced by python -m build"
             exit 1
           fi
+          if [ ${#wheels[@]} -gt 1 ]; then
+            echo "::error ::Expected exactly one candidate wheel for ${RESOLVED_VERSION}, found ${#wheels[@]}: ${wheels[*]}"
+            exit 1
+          fi
+          WHEEL="${wheels[0]}"
           mkdir -p examples/e2e_app/wheels
           cp "$WHEEL" examples/e2e_app/wheels/
           BASENAME=$(basename "$WHEEL")
