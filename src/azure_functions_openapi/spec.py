@@ -8,6 +8,7 @@ import logging
 import re
 from typing import Any
 
+from pydantic import BaseModel
 import yaml
 
 from azure_functions_openapi._warnings import SpecWarning, WarningCode
@@ -344,14 +345,21 @@ def generate_openapi_spec(
                         hoisted_content: dict[str, Any] = {}
                         for media, media_obj in resp_content.items():
                             if isinstance(media_obj, dict) and "schema" in media_obj:
-                                media_obj = {
-                                    **media_obj,
-                                    "schema": hoist_inline_defs(
-                                        media_obj["schema"],
+                                raw_schema = media_obj["schema"]
+                                if isinstance(raw_schema, type) and issubclass(
+                                    raw_schema, BaseModel
+                                ):
+                                    # Unified per-status model shorthand (#410):
+                                    # resolve the model to a $ref here, where the
+                                    # components registry is available.
+                                    resolved_schema = model_to_schema(raw_schema, components)
+                                else:
+                                    resolved_schema = hoist_inline_defs(
+                                        raw_schema,
                                         components,
                                         hoist_flat=hoist_flat_schemas,
-                                    ),
-                                }
+                                    )
+                                media_obj = {**media_obj, "schema": resolved_schema}
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
                     responses[str(status)] = resp

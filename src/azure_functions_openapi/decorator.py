@@ -1,8 +1,9 @@
 # src/azure_functions_openapi/decorator.py
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Callable, TypeGuard, TypeVar, cast
 import warnings
 
 from pydantic import BaseModel
@@ -107,6 +108,51 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool, boo
     return None, None, False, False
 
 
+def _is_pydantic_model(value: Any) -> TypeGuard[type[BaseModel]]:
+    """Return True when *value* is a Pydantic ``BaseModel`` subclass (a class)."""
+    return isinstance(value, type) and issubclass(value, BaseModel)
+
+
+def _default_response_description(status: int) -> str:
+    """Default OpenAPI response description for a bare per-status model shorthand."""
+    return "Successful Response" if 200 <= status < 300 else "Response"
+
+
+def _normalize_unified_responses(
+    responses: Mapping[int, Any], func_name: str
+) -> dict[int, dict[str, Any]]:
+    """Normalize a unified ``responses=`` mapping into OpenAPI Response Objects.
+
+    Each value may be either:
+
+    * a Pydantic ``BaseModel`` subclass — shorthand for a JSON body of that
+      schema, expanded to ``{"description": ..., "content":
+      {"application/json": {"schema": Model}}}`` (the model class is resolved to
+      a schema at spec-generation time, where the ``components`` registry lives), or
+    * an OpenAPI Response Object dict (unchanged; a Pydantic model may also appear
+      in its ``content.<media>.schema`` position and is resolved the same way).
+
+    Raises ``ValueError`` for any other value type so misuse fails fast at
+    decoration time rather than silently producing an invalid spec.
+    """
+    normalized: dict[int, dict[str, Any]] = {}
+    for status, value in responses.items():
+        if _is_pydantic_model(value):
+            normalized[status] = {
+                "description": _default_response_description(status),
+                "content": {"application/json": {"schema": value}},
+            }
+        elif isinstance(value, dict):
+            normalized[status] = value
+        else:
+            raise ValueError(
+                f"Invalid 'responses' entry for status {status} in function "
+                f"'{func_name}': each value must be a Pydantic BaseModel subclass "
+                f"or an OpenAPI Response Object dict, got {type(value).__name__}."
+            )
+    return normalized
+
+
 def openapi(
     # ── basic metadata ───────────────────────────────────────────
     summary: str = "",
@@ -126,7 +172,7 @@ def openapi(
     request_body_required: bool = True,
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
-    responses: type[BaseModel] | dict[int, dict[str, Any]] | None = None,
+    responses: type[BaseModel] | Mapping[int, type[BaseModel] | dict[str, Any]] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -223,9 +269,19 @@ def openapi(
     response:
         Manual responses dict keyed by status code.
     responses:
-        Unified response parameter that accepts either a Pydantic model class
-        (equivalent to `response_model`) or a manual responses dict keyed by
-        status code (equivalent to `response`).
+        Unified response parameter. Accepts either:
+
+        * a Pydantic model class (equivalent to `response_model`; its schema is
+          injected into the first 2xx response), or
+        * a dict keyed by status code whose values are OpenAPI Response Objects
+          (equivalent to `response`). Each value may additionally be a bare
+          Pydantic model class as shorthand for a JSON body of that schema, and
+          a model class may also appear in the `content.<media>.schema` position
+          of a Response Object. This lets a single operation express a typed
+          success body together with several documented status codes — e.g.
+          ``responses={202: AcceptedModel, 422: {"description": "Validation error"}}``
+          — which previously required combining the discrete `response_model` and
+          `response` parameters.
 
     .. deprecated::
        This decorator currently exposes two parallel parameter styles: the
@@ -312,9 +368,11 @@ def openapi(
                     raise ValueError(
                         "Cannot provide both 'responses' and 'response_model'/'response'."
                     )
-                if isinstance(responses, dict):
-                    resolved_response = responses
-                elif isinstance(responses, type) and issubclass(responses, BaseModel):
+                if isinstance(responses, Mapping):
+                    resolved_response = _normalize_unified_responses(
+                        responses, metadata_func.__name__
+                    )
+                elif _is_pydantic_model(responses):
                     resolved_response_model = responses
                 else:
                     raise ValueError(

@@ -546,3 +546,143 @@ def test_resolve_metadata_target_reraises_when_handler_unrecoverable(
     builder = app._function_builders[0]
     with pytest.raises(ValueError):
         decorator_module._resolve_metadata_target(builder)
+
+
+
+# ── #410: unified responses= with per-status model-derived schemas ──────────
+
+
+def test_openapi_responses_dict_accepts_per_status_model() -> None:
+    """A bare Pydantic model as a status value is normalized to a Response Object."""
+    _clear_registry()
+
+    @openapi(
+        summary="Typed 2xx body + extra statuses",
+        route="/api/items",
+        method="post",
+        responses={
+            202: _UnifiedResponseModel,
+            400: {"description": "Bad request"},
+        },
+    )
+    def per_status_model_func() -> None:
+        pass
+
+    entry = get_openapi_registry()["per_status_model_func"]
+    # No discrete response_model channel is used for per-status dict form.
+    assert entry["response_model"] is None
+    resp = entry["response"]
+    # 202 expanded to a Response Object carrying the model in schema position.
+    assert resp[202]["description"] == "Successful Response"
+    assert resp[202]["content"]["application/json"]["schema"] is _UnifiedResponseModel
+    # Non-model dict entries pass through unchanged.
+    assert resp[400] == {"description": "Bad request"}
+
+
+def test_openapi_responses_dict_non_2xx_model_default_description() -> None:
+    """A bare model on a non-2xx status defaults to a generic 'Response' description."""
+    _clear_registry()
+
+    @openapi(summary="Error body", responses={409: _UnifiedResponseModel})
+    def non_2xx_model_func() -> None:
+        pass
+
+    resp = get_openapi_registry()["non_2xx_model_func"]["response"]
+    assert resp[409]["description"] == "Response"
+    assert resp[409]["content"]["application/json"]["schema"] is _UnifiedResponseModel
+
+
+def test_openapi_responses_dict_per_status_model_generates_schema() -> None:
+    """End-to-end: per-status model resolves to a $ref and registers a component."""
+    _clear_registry()
+
+    @openapi(
+        summary="Typed 2xx body + extra statuses",
+        route="/api/items",
+        method="post",
+        responses={
+            202: _UnifiedResponseModel,
+            400: {"description": "Bad request"},
+        },
+    )
+    def per_status_spec_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    op = spec["paths"]["/api/items"]["post"]
+    responses = op["responses"]
+    # 202 carries a $ref to the model schema; 400 keeps its plain description.
+    schema = responses["202"]["content"]["application/json"]["schema"]
+    assert "$ref" in schema
+    assert schema["$ref"].endswith("/_UnifiedResponseModel")
+    assert responses["400"]["description"] == "Bad request"
+    assert "_UnifiedResponseModel" in spec["components"]["schemas"]
+
+
+def test_openapi_responses_dict_model_in_content_schema() -> None:
+    """A Pydantic model in the content.schema position is resolved at spec-gen."""
+    _clear_registry()
+
+    @openapi(
+        summary="Model in explicit content schema",
+        route="/api/items",
+        method="post",
+        responses={
+            201: {
+                "description": "Created",
+                "content": {"application/json": {"schema": _UnifiedResponseModel}},
+            },
+        },
+    )
+    def content_schema_model_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    op = spec["paths"]["/api/items"]["post"]
+    schema = op["responses"]["201"]["content"]["application/json"]["schema"]
+    assert "$ref" in schema
+    assert "_UnifiedResponseModel" in spec["components"]["schemas"]
+
+
+def test_openapi_responses_dict_rejects_invalid_value() -> None:
+    """A non-dict, non-model status value fails fast at decoration time."""
+    _clear_registry()
+
+    with pytest.raises(ValueError) as exc_info:
+
+        @openapi(
+            summary="Invalid responses entry",
+            responses={200: "bad"},  # type: ignore[dict-item]
+        )
+        def invalid_responses_func() -> None:
+            pass
+
+    assert "Invalid 'responses' entry for status 200" in str(exc_info.value)
+
+
+def test_openapi_responses_accepts_non_dict_mapping() -> None:
+    """A non-dict Mapping (e.g. MappingProxyType) is accepted, matching the
+    advertised Mapping[...] type contract rather than requiring a concrete dict."""
+    from types import MappingProxyType
+
+    _clear_registry()
+
+    @openapi(
+        summary="Non-dict mapping responses",
+        route="/api/items",
+        method="post",
+        responses=MappingProxyType(
+            {
+                202: _UnifiedResponseModel,
+                400: {"description": "Bad request"},
+            }
+        ),
+    )
+    def non_dict_mapping_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["post"]["responses"]
+    schema = responses["202"]["content"]["application/json"]["schema"]
+    assert schema["$ref"].endswith("/_UnifiedResponseModel")
+    assert responses["400"]["description"] == "Bad request"
