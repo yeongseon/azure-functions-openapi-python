@@ -8,7 +8,7 @@
 - Version: 0.16.0
 - Python: >=3.10, <3.15
 - License: MIT
-- Docs: https://yeongseon.github.io/azure-functions-openapi-python/
+- Docs: https://yeongseon.dev/azure-functions-python/openapi/
 - Repository: https://github.com/yeongseon/azure-functions-openapi-python
 
 ## What It Does
@@ -62,10 +62,10 @@ def openapi_spec(req: func.HttpRequest) -> func.HttpResponse:
 
 ## Documentation
 
-- [Installation](https://yeongseon.github.io/azure-functions-openapi-python/installation/)
-- [Usage Guide](https://yeongseon.github.io/azure-functions-openapi-python/usage/)
-- [API Reference](https://yeongseon.github.io/azure-functions-openapi-python/api/)
-- [CLI Guide](https://yeongseon.github.io/azure-functions-openapi-python/cli/)
+- [Installation](https://yeongseon.dev/azure-functions-python/openapi/installation/)
+- [Usage Guide](https://yeongseon.dev/azure-functions-python/openapi/usage/)
+- [API Reference](https://yeongseon.dev/azure-functions-python/openapi/api/)
+- [CLI Guide](https://yeongseon.dev/azure-functions-python/openapi/cli/)
 
 ## Ecosystem
 

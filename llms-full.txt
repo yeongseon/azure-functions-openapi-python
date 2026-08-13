@@ -8,7 +8,7 @@
 - Version: 0.16.0
 - Python: >=3.10, <3.15
 - License: MIT
-- Docs: https://yeongseon.github.io/azure-functions-openapi-python/
+- Docs: https://yeongseon.dev/azure-functions-python/openapi/
 - Repository: https://github.com/yeongseon/azure-functions-openapi-python
 - Azure Functions programming model: v2
 
