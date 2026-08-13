@@ -117,11 +117,10 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 schema dict. Prefer these over the older discrete parameters.
 
 !!! warning "Discrete parameters are deprecated (issue #285)"
-    The discrete parameters `request_model` / `request_body` and
     `response_model` / `response` still work but now emit a
     `DeprecationWarning`. New code should use `requests` and `responses`. See
-    the [migration note](#migrating-to-requests-responses) below for the one
-    response-side case that cannot migrate yet.
+    the [migration guide](migration/unified-params.md) for before/after recipes
+    (every discrete case now migrates) and the alias-retention policy.
 
 ### Style A: Pydantic models
 
@@ -213,13 +212,15 @@ defaults to `True`):
 | `response_model=Model` | `responses=Model` |
 | `response={201: {...}}` | `responses={201: {...}}` |
 
-!!! warning "One response case cannot migrate yet (issue #410)"
-    `responses=` accepts **either** a model (typed `200` schema) **or** a manual
-    status-code map — not both at once. If an operation needs a model-derived
-    success schema *and* additional status codes (e.g. `response_model=Model`
-    combined with `response={400: {...}}`), keep using the discrete
-    `response_model=` + `response=` pair for now. Those calls still emit a
-    `DeprecationWarning`; closing the gap is tracked in issue #410.
+!!! tip "A typed success body plus extra status codes now migrates too"
+    `responses=` accepts **either** a model (typed `200` schema) **or** a
+    per-status map — and a value **inside** that map may itself be a model. So a
+    typed success body combined with additional status codes (formerly the
+    `response_model=Model` + `response={...}` pair) is now expressible as a
+    single map, e.g. `responses={202: AcceptedModel, 422: {"description": ...}}`
+    (unblocked by issue #410 / #418). See the [migration
+    guide](migration/unified-params.md) for full before/after recipes and the
+    alias-retention policy.
 
 ## Parameters (query/path/header/cookie)
 

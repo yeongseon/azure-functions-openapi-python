@@ -22,6 +22,7 @@ nav:
       - Configuration: configuration.md
   - User Guide:
       - Usage: usage.md
+      - Migrating to unified params: migration/unified-params.md
       - CLI: cli.md
       - Route Prefix: route-prefix.md
       - Architecture: architecture.md
