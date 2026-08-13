@@ -6,17 +6,11 @@ import logging
 from typing import Any, cast, get_origin
 import warnings
 
-from pydantic import BaseModel
-
 from azure_functions_openapi import adapters
 from azure_functions_openapi._endpoint_contract import (
     ENDPOINT_NAMESPACE,
-    SUPPORTED_ENDPOINT_VERSIONS,
-)
-from azure_functions_openapi._validation_contract import (
     HANDLER_METADATA_ATTR,
-    SUPPORTED_VALIDATION_VERSIONS,
-    VALIDATION_NAMESPACE,
+    SUPPORTED_ENDPOINT_VERSIONS,
 )
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import register_openapi_metadata
@@ -53,10 +47,6 @@ def _tag_skew(entry: dict[str, Any], codes: Iterable[WarningCode]) -> None:
     merged: set[str] = {str(flag) for flag in entry.get("_skew_flags", ())}
     merged.update(code.value for code in codes)
     entry["_skew_flags"] = sorted(merged)
-
-
-def _is_base_model_type(model: Any) -> bool:
-    return isinstance(model, type) and issubclass(model, BaseModel)
 
 
 def _normalize_method(method: Any) -> str:
@@ -246,33 +236,12 @@ def _model_to_parameters(model_cls: type, location: str) -> list[dict[str, Any]]
     return params
 
 
-def _discovered_operation(
-    function_name: str, metadata: dict[str, Any], path: str, method: str
-) -> dict[str, Any]:
-    request_body = type_to_schema(metadata["body"]) if metadata.get("body") is not None else None
-    parameters: list[dict[str, Any]] = []
-    if metadata.get("query") is not None:
-        parameters.extend(_model_to_parameters(metadata["query"], "query"))
-    if metadata.get("path") is not None:
-        parameters.extend(_model_to_parameters(metadata["path"], "path"))
-    if metadata.get("headers") is not None:
-        parameters.extend(_model_to_parameters(metadata["headers"], "header"))
-    return {
-        "function_name": function_name,
-        "route": path,
-        "method": method,
-        "request_body": request_body,
-        "parameters": parameters,
-        "response_model": metadata.get("response_model"),
-    }
-
-
 def _discovered_operation_from_endpoint(
     function_name: str, endpoint: dict[str, Any], path: str, method: str
 ) -> dict[str, Any]:
     """Build a discovered-operation dict from the self-contained ``endpoint`` payload.
 
-    Unlike :func:`_discovered_operation`, every schema field here is already a
+    Every schema field here is already a
     JSON Schema dict authored by the producer, so no Pydantic model access is
     needed. The producer's ``responses`` map is ``{"<status>": {"schema": ...}}``;
     we wrap each entry into a full OpenAPI response object so the spec generator
@@ -335,61 +304,11 @@ _MAX_WRAPPED_DEPTH = 16
 _HANDLER_METADATA_ATTR = HANDLER_METADATA_ATTR
 
 
-def _read_validation_hints(handler: Any) -> dict[str, Any] | None:
-    """Read validation hints from a handler using the convention attribute.
-
-    Walks the ``__wrapped__`` chain (outer → inner) looking for the first
-    handler that carries ``_azure_functions_metadata["validation"]``.  This
-    ensures that metadata set by an inner decorator is still discovered even
-    when additional decorators (e.g. ``@functools.wraps``) wrap the handler.
-
-    Version policy (``version`` is nested inside the ``validation`` payload):
-    * Missing ``version`` key -> accepted as v1 (backward-compatible).
-    * Present and supported → accepted.
-    * Present but malformed or unsupported → ``logger.warning()`` + continue walking.
-
-    Returns a *deep copy* of the validation dict so callers cannot mutate
-    the original handler attribute.
-    """
-    current: Any = handler
-    for _ in range(_MAX_WRAPPED_DEPTH):
-        toolkit_meta = getattr(current, HANDLER_METADATA_ATTR, None)
-        if isinstance(toolkit_meta, dict):
-            hints = toolkit_meta.get(VALIDATION_NAMESPACE)
-            if isinstance(hints, dict):
-                # --- version gate (version is nested in the namespace payload) ---
-                raw_version = hints.get("version")
-                if raw_version is not None and (
-                    type(raw_version) is not int or raw_version not in SUPPORTED_VALIDATION_VERSIONS
-                ):
-                    logger.warning(
-                        "Skipping metadata on %r: unsupported version %r (supported: %s)",
-                        current,
-                        raw_version,
-                        ", ".join(str(v) for v in sorted(SUPPORTED_VALIDATION_VERSIONS)),
-                    )
-                    # Continue walking; an inner handler may have valid metadata.
-                    wrapped = getattr(current, "__wrapped__", None)
-                    if wrapped is None or wrapped is current:
-                        break
-                    current = wrapped
-                    continue
-                return copy.deepcopy(hints)
-
-        # Walk the __wrapped__ chain.
-        wrapped = getattr(current, "__wrapped__", None)
-        if wrapped is None or wrapped is current:
-            break
-        current = wrapped
-
-    return None
-
-
 def _read_endpoint_hints(handler: Any) -> dict[str, Any] | None:
     """Read shared ``endpoint`` namespace metadata from a handler.
 
-    Mirrors :func:`_read_validation_hints` but targets the self-contained
-    ``endpoint`` namespace (pure JSON Schema, no model classes). Walks the
+    Reads the self-contained ``endpoint`` namespace (pure JSON Schema, no model
+    classes). Walks the
     ``__wrapped__`` chain (outer -> inner) for the first handler carrying
     ``_azure_functions_metadata["endpoint"]``.
 
@@ -562,8 +481,14 @@ def scan_endpoint_metadata(
             continue
 
         endpoint_hints = _read_endpoint_hints(handler)
-        metadata = None if endpoint_hints is not None else _read_validation_hints(handler)
-        has_enrichment = endpoint_hints is not None or metadata is not None
+        has_enrichment = endpoint_hints is not None
+        # Endpoint namespace present but rejected (unsupported/malformed
+        # version): no enrichment is consumed. We still surface a structured
+        # VERSION_SKEW warning on the binding-derived operation so a degraded,
+        # wrong-but-plausible spec stays observable (e.g. via
+        # --fail-on-warnings) instead of silently producing an empty spec.
+        # There is no longer a validation-namespace fallback to consume.
+        endpoint_skew = endpoint_hints is None and _has_endpoint_namespace(handler)
 
         # Binding-first (#364): the Azure @app.route binding is the source of
         # truth for route + method. Resolve it before anything else -- a handler
@@ -584,19 +509,6 @@ def scan_endpoint_metadata(
         # but to keep meta["route"] as the binding's source-of-truth route rather
         # than a pre-normalized path that already folds in the prefix.
         raw_route = getattr(binding, "route", None)
-
-        # Namespace-fallback skew: only when validation metadata is consumed
-        # because the self-contained endpoint namespace was malformed.
-        handler_skew: set[WarningCode] = set()
-        if endpoint_hints is None and metadata is not None and _has_endpoint_namespace(handler):
-            logger.warning(
-                "Function '%s' carries an unsupported or malformed endpoint "
-                "namespace; falling back to the validation namespace for OpenAPI "
-                "generation. The generated spec may differ from the intended "
-                "endpoint contract.",
-                function_name,
-            )
-            handler_skew.update({WarningCode.NAMESPACE_FALLBACK, WarningCode.VERSION_SKEW})
 
         canonical_id = canonical_function_id(handler)
 
@@ -647,18 +559,17 @@ def scan_endpoint_metadata(
 
         for method in methods:
             endpoint_key = f"{method}::{path}"
-            entry_skew = set(handler_skew)
+            entry_skew: set[WarningCode] = {WarningCode.VERSION_SKEW} if endpoint_skew else set()
 
             # Build the enrichment payload for this concrete operation. Plain
-            # @openapi handlers have no metadata to merge, so ``discovered`` is
-            # None and the binding alone materializes the operation.
+            # @openapi handlers (and endpoint-skew handlers) have no metadata to
+            # merge, so ``discovered`` is None and the binding alone materializes
+            # the operation.
             discovered: dict[str, Any] | None = None
             if endpoint_hints is not None:
                 discovered = _discovered_operation_from_endpoint(
                     function_name, endpoint_hints, path, method
                 )
-            elif metadata is not None:
-                discovered = _discovered_operation(function_name, metadata, path, method)
 
             # When methods= was unspecified and we auto-expanded to every HTTP
             # method, drop the request body from GET/HEAD/DELETE operations:
@@ -691,70 +602,77 @@ def scan_endpoint_metadata(
                     continue
 
                 if discovered is None:
-                    # Plain @openapi with an explicit method and no enrichment.
-                    # The entry's authored method stands (its binding methods
-                    # were already stamped above for mismatch detection), but
-                    # when @openapi decorated the handler before the @app.route
-                    # binding was visible the entry was registered with
-                    # route=None and spec.py would fall back to the function
-                    # name. Reconcile the missing route from the binding without
-                    # exploding or overriding the explicit method. An explicit
-                    # @openapi(route=...) stays truthy and is never overwritten.
-                    if (
-                        canonical_target is not None
-                        and canonical_target.get("route") is None
-                        and raw_route
-                    ):
-                        canonical_target["route"] = raw_route
-                    continue
+                    # No enrichment payload for this operation.
+                    if canonical_target is not None:
+                        # Plain @openapi with an explicit method and no
+                        # enrichment. When @openapi decorated the handler before
+                        # the @app.route binding was visible the entry was
+                        # registered with route=None and spec.py would fall back
+                        # to the function name. Reconcile the missing route from
+                        # the binding without exploding or overriding the explicit
+                        # method. An explicit @openapi(route=...) stays truthy and
+                        # is never overwritten.
+                        if canonical_target.get("route") is None and raw_route:
+                            canonical_target["route"] = raw_route
+                        _tag_skew(canonical_target, entry_skew)
+                        continue
+                    if not entry_skew:
+                        # Plain binding with neither @openapi nor enrichment nor
+                        # skew: nothing to register.
+                        continue
+                    # Endpoint namespace present but rejected (skew) with no
+                    # canonical @openapi entry: fall through to register a bare
+                    # binding-derived operation below and tag the skew, so the
+                    # degraded spec stays observable via --fail-on-warnings.
+                else:
+                    # Resolve the target entry by, in order of trust:
+                    #   1. the exact OpenAPI endpoint key (method::path),
+                    #   2. canonical callable identity, method-aware,
+                    #   3. the short function name (backward-compatible fallback).
+                    #
+                    # The endpoint key is tried FIRST because #359 made
+                    # ``_function_id`` one-to-many: an exploded multi-method
+                    # handler has several entries sharing one ``_function_id``.
+                    # Resolving by id alone would let every method iteration merge
+                    # into whichever sibling comes first, corrupting per-method
+                    # operations on a re-scan. The exact ``method::path`` key pins
+                    # each method to its own entry; the id lookup is then
+                    # method-aware as a backstop.
+                    target = reg.get(endpoint_key)
+                    match_kind = "OpenAPI endpoint"
 
-                # Resolve the target entry by, in order of trust:
-                #   1. the exact OpenAPI endpoint key (method::path),
-                #   2. canonical callable identity, method-aware,
-                #   3. the short function name (backward-compatible fallback).
-                #
-                # The endpoint key is tried FIRST because #359 made
-                # ``_function_id`` one-to-many: an exploded multi-method handler
-                # has several entries sharing one ``_function_id``. Resolving by
-                # id alone would let every method iteration merge into whichever
-                # sibling comes first, corrupting per-method operations on a
-                # re-scan. The exact ``method::path`` key pins each method to its
-                # own entry; the id lookup is then method-aware as a backstop.
-                target = reg.get(endpoint_key)
-                match_kind = "OpenAPI endpoint"
+                    if target is None:
+                        target = reg.find_by_function_id(canonical_id, method=method)
+                        match_kind = "canonical @openapi id"
 
-                if target is None:
-                    target = reg.find_by_function_id(canonical_id, method=method)
-                    match_kind = "canonical @openapi id"
+                    if target is None:
+                        # Short-name fallback: refuse to merge when the name is
+                        # ambiguous (shared across modules) to avoid silently
+                        # attaching metadata to the wrong handler.
+                        if reg.count_by_function_name(function_name) > 1:
+                            logger.warning(
+                                "Refusing to merge endpoint metadata by ambiguous "
+                                "short name '%s': multiple @openapi entries share "
+                                "this name across modules. Registering a standalone "
+                                "endpoint instead.",
+                                function_name,
+                            )
+                            entry_skew.add(WarningCode.AMBIGUOUS_NAMESPACE)
+                        else:
+                            target = reg.get(function_name)
+                            match_kind = "short-name fallback"
 
-                if target is None:
-                    # Short-name fallback: refuse to merge when the name is
-                    # ambiguous (shared across modules) to avoid silently
-                    # attaching metadata to the wrong handler.
-                    if reg.count_by_function_name(function_name) > 1:
-                        logger.warning(
-                            "Refusing to merge validation metadata by ambiguous "
-                            "short name '%s': multiple @openapi entries share this "
-                            "name across modules. Registering a standalone endpoint "
-                            "instead.",
-                            function_name,
+                    if target is not None:
+                        _merge_into_existing(target, discovered)
+                        _tag_skew(target, entry_skew)
+                        logger.debug(
+                            "Merged endpoint metadata via %s into endpoint '%s'",
+                            match_kind,
+                            endpoint_key,
                         )
-                        entry_skew.add(WarningCode.AMBIGUOUS_NAMESPACE)
-                    else:
-                        target = reg.get(function_name)
-                        match_kind = "short-name fallback"
+                        continue
 
-                if target is not None:
-                    _merge_into_existing(target, discovered)
-                    _tag_skew(target, entry_skew)
-                    logger.debug(
-                        "Merged validation metadata via %s into endpoint '%s'",
-                        match_kind,
-                        endpoint_key,
-                    )
-                    continue
-
-            if endpoint_hints is not None:
+            if discovered is not None:
                 register_openapi_metadata(
                     path=path,
                     method=method,
@@ -765,17 +683,15 @@ def scan_endpoint_metadata(
                     registry=reg,
                 )
             else:
+                # Bare binding-derived operation for an endpoint-skew handler: no
+                # enrichment was consumed, but the operation is materialized so
+                # the structured VERSION_SKEW warning is observable in the spec.
                 register_openapi_metadata(
                     path=path,
                     method=method,
-                    request_body=discovered.get("request_body"),
-                    response_model=discovered.get("response_model")
-                    if _is_base_model_type(discovered.get("response_model"))
-                    else None,
-                    parameters=discovered.get("parameters") or None,
                     registry=reg,
                 )
-            logger.debug("Registered validation metadata for endpoint '%s'", endpoint_key)
+            logger.debug("Registered endpoint metadata for endpoint '%s'", endpoint_key)
             # Hold the registry lock across the get+mutate so tagging honours the
             # registry's documented thread-safety contract (the entry must not be
             # mutated after the lock protecting it has been released).

@@ -46,7 +46,7 @@ from azure_functions_openapi import (
 | `OpenAPIRegistry` | class | Thread-safe registry backing the decorator; pass an instance for isolated (test-friendly) registration |
 | `SpecReport` | dataclass | Result of `generate_openapi_report`: the `spec` dict plus a `warnings` tuple |
 | `SpecWarning` | dataclass | A single structured warning (`code`, `message`, `function_name`) emitted during generation |
-| `WarningCode` | enum | Stable string identifiers for warning categories (e.g. `version-skew`, `namespace-fallback`) |
+| `WarningCode` | enum | Stable string identifiers for warning categories (e.g. `version-skew`, `ambiguous-namespace`) |
 | `OpenAPISpecConfigError` | exception | Raised for configuration errors |
 | `SDKIncompatibleError` | exception | Subclass of `OpenAPISpecConfigError`; raised when the installed Functions SDK is incompatible |
 | `OPENAPI_VERSION_3_0` | constant | OpenAPI version string `"3.0.0"` |
@@ -238,7 +238,7 @@ spec = report.spec
 | --- | --- |
 | `SpecReport` | Dataclass with `spec: dict` and `warnings: tuple[SpecWarning, ...]` |
 | `SpecWarning` | Frozen dataclass: `code: WarningCode`, `message: str`, `function_name: str \| None`; `to_dict()` for JSON |
-| `WarningCode` | `str`-based enum of stable codes: `version-skew`, `namespace-fallback`, `ambiguous-namespace`, `duplicate-operation`, `spec-validation`, `discovery-skipped`, `empty-discovery`, `method-binding-mismatch` |
+| `WarningCode` | `str`-based enum of stable codes: `version-skew`, `ambiguous-namespace`, `duplicate-operation`, `spec-validation`, `discovery-skipped`, `empty-discovery`, `method-binding-mismatch` |
 
 ## Related internals
 

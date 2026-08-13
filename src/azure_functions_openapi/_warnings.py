@@ -27,7 +27,6 @@ class WarningCode(str, Enum):
     """
 
     VERSION_SKEW = "version-skew"
-    NAMESPACE_FALLBACK = "namespace-fallback"
     AMBIGUOUS_NAMESPACE = "ambiguous-namespace"
     DUPLICATE_OPERATION = "duplicate-operation"
     SPEC_VALIDATION = "spec-validation"

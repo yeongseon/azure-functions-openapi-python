@@ -801,12 +801,9 @@ def get_openapi_yaml(
 # on the enum) so the wording can evolve without touching the stable code values.
 _SKEW_MESSAGES: dict[WarningCode, str] = {
     WarningCode.VERSION_SKEW: (
-        "Endpoint contract version is unsupported; the operation was generated "
-        "from a fallback namespace and may not match the intended contract."
-    ),
-    WarningCode.NAMESPACE_FALLBACK: (
-        "Endpoint namespace was present but rejected; fell back to the legacy "
-        "validation namespace for OpenAPI generation."
+        "Endpoint contract version is unsupported; the endpoint namespace was "
+        "rejected and the operation was generated from the HTTP binding alone, "
+        "so it may not match the intended contract."
     ),
     WarningCode.AMBIGUOUS_NAMESPACE: (
         "Validation metadata could not be merged: the short function name is "

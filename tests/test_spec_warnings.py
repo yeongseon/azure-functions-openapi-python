@@ -101,11 +101,11 @@ def _make_app(
 
 
 def _skewed_namespaces() -> dict[str, Any]:
-    """Endpoint namespace present but at an unsupported version, plus a valid
-    validation namespace — the exact shape that triggers a silent fallback."""
+    """Endpoint namespace present but at an unsupported version and no other
+    consumable namespace: the operation is generated from the HTTP binding
+    alone and flagged with VERSION_SKEW."""
     return {
         "endpoint": {"version": 99, "request_body": {"type": "object"}},
-        "validation": {"version": 1, "body": _Body},
     }
 
 
@@ -128,7 +128,6 @@ def _isolate_registry() -> Any:
 class TestSpecWarning:
     def test_warning_code_serialises_as_plain_string(self) -> None:
         assert WarningCode.VERSION_SKEW.value == "version-skew"
-        assert str(WarningCode.NAMESPACE_FALLBACK) == "namespace-fallback"
 
     def test_to_dict_is_json_serialisable(self) -> None:
         warning = SpecWarning(
@@ -175,7 +174,6 @@ class TestGenerateReport:
         report = generate_openapi_report()
         codes = {w.code for w in report.warnings}
         assert WarningCode.VERSION_SKEW in codes
-        assert WarningCode.NAMESPACE_FALLBACK in codes
         # Every warning is attributed to the affected operation.
         assert all(w.function_name for w in report.warnings)
 
@@ -219,7 +217,6 @@ class TestReportRegistryIsolation:
         report = generate_openapi_report(registry=self._clean_registry())
         isolated_codes = {w.code for w in report.warnings}
         assert WarningCode.VERSION_SKEW not in isolated_codes
-        assert WarningCode.NAMESPACE_FALLBACK not in isolated_codes
 
     def test_collect_spec_warnings_honors_injected_registry(self) -> None:
         scan_endpoint_metadata(_make_app(_skewed_namespaces()))
@@ -227,7 +224,6 @@ class TestReportRegistryIsolation:
         spec = generate_openapi_spec(registry=isolated)
         isolated_codes = {w.code for w in collect_spec_warnings(spec, registry=isolated)}
         assert WarningCode.VERSION_SKEW not in isolated_codes
-        assert WarningCode.NAMESPACE_FALLBACK not in isolated_codes
         # Without injection, the same spec still reflects the global skew.
         assert any(w.code == WarningCode.VERSION_SKEW for w in collect_spec_warnings(spec))
 
