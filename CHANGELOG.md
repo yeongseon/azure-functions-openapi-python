@@ -1,6 +1,42 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.21.2] - 2026-08-14
+
+### Documentation
+
+- Link runtime-validation callout to a paired cookbook example (#449) 
+- Surface azure-functions-validation as optional runtime companion (#447) 
+- *(migration)* Add unified requests/responses migration guide + retention policy (#440) 
+- Consolidate official documentation URL onto yeongseon.dev (#439) 
+- *(i18n)* Adopt best-effort translation policy with staleness banners (#431) 
+- *(readme)* Migrate root README examples to unified requests/responses params (#419) 
+- Sync docs and examples with unified requests/responses contract (#412) 
+
+### Features
+
+- *(decorator)* Let responses= express model-derived schemas across multiple status codes (#418) 
+
+### Miscellaneous Tasks
+
+- Stop auto-deploying docs to GitHub Pages (#445) 
+- Adopt Renovate for GitHub Actions bumps (#437) 
+- *(ci)* Normalize action version-comment labels (#435) 
+- Add workflow pin-hygiene lint (#433) 
+- Add release-gate workflow drift lint (#429) 
+- Normalize release-gate action pins to canonical SHAs (#427) 
+- *(e2e)* Certify the release candidate wheel, not the PyPI build (#417) 
+- Add tiered pre-publish runtime gate with real-Azure certification (#413) 
+- Ignore agent orchestration state (.sisyphus/, .omc/) (#416) 
+- Bump ruff to 0.16.2 and repair pre-commit hooks (#407) 
+
+### Other
+
+- Bump version to 0.21.2 
+
+### Refactor
+
+- *(bridge)* Remove legacy validation-namespace read mirror (#442) 
 ## [0.21.1] - 2026-08-11
 
 ### Bug Fixes
@@ -9,6 +45,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - Add Branch Hygiene section to AGENTS.md 
 
 ### Other
