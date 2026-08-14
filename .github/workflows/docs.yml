@@ -1,4 +1,4 @@
-name: Deploy MkDocs to GitHub Pages
+name: Docs (strict build check)
 
 on:
   push:
@@ -34,30 +34,3 @@ jobs:
 
       - name: Build docs (strict)
         run: hatch run mkdocs build --strict
-
-  deploy:
-    needs: docs-check
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.10"
-
-      - name: Install Hatch and docs dependencies
-        run: |
-          pip install hatch
-          make install
-
-      - name: Build docs (verify build before deploy)
-        run: hatch run mkdocs build --strict
-
-      - name: Deploy to GitHub Pages
-        run: hatch run mkdocs gh-deploy --force
