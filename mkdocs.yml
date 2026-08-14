@@ -23,6 +23,7 @@ nav:
   - User Guide:
       - Usage: usage.md
       - Migrating to unified params: migration/unified-params.md
+      - Migrating off the validation namespace: migration/endpoint-namespace.md
       - CLI: cli.md
       - Route Prefix: route-prefix.md
       - Architecture: architecture.md
