@@ -237,6 +237,8 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 > **Pydantic v2 is optional.** `requests=` / `responses=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
 
+> **Want runtime validation too? (optional)** `@openapi` documents your Pydantic models — it does not parse or validate requests at runtime. If you also want automatic request parsing, consistent `400`/`422` error responses, and response-model enforcement, layer [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)'s `@validate_http` on the **same** Pydantic models. It is an optional companion, not a dependency — this package works fully on its own. See the [validation README](https://github.com/yeongseon/azure-functions-validation-python#readme) for details.
+
 <details>
 <summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
 
