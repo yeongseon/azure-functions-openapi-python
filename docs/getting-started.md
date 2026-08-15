@@ -172,9 +172,9 @@ Fetch YAML spec:
 curl "http://localhost:7071/api/openapi.yaml"
 ```
 
-The generated spec is served as a JSON document — the same format a client generator reads to produce SDKs:
+The generated spec is served as a JSON document — the same format a client generator reads to produce SDKs. The preview below is captured from the representative `webhook_receiver` example, which documents a richer API than this walkthrough:
 
-![OpenAPI spec preview for the Hello API generated from the @openapi decorator](assets/hello_openapi_spec_preview.png)
+![OpenAPI spec preview generated from the representative webhook_receiver example](assets/webhook_receiver_openapi_spec_preview.png)
 
 ## View Swagger UI
 
@@ -182,14 +182,9 @@ Open:
 
 `http://localhost:7071/api/docs`
 
-You should see:
+You should see your operation with its summary, description, parameters, and response schema. The Swagger UI preview below is captured from the representative `webhook_receiver` example:
 
-- one operation (`http_trigger`)
-- operation summary and description
-- query parameter `name`
-- response schema generated from `HelloResponse`
-
-![Swagger UI showing the Hello API with the greetUser GET operation, query parameter, and response schema](assets/hello_openapi_swagger_ui_preview.png)
+![Swagger UI preview generated from the representative webhook_receiver example](assets/webhook_receiver_openapi_swagger_ui_preview.png)
 
 ## Next steps
 

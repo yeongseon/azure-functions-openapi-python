@@ -356,7 +356,7 @@ def docs(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-![Swagger UI showing multiple API operations grouped by tags](assets/todo_crud_api_swagger_ui_preview.png)
+![Swagger UI showing multiple API operations grouped by tags](assets/partner_import_bridge_swagger_ui.png)
 
 If your deployment needs stricter or custom CSP:
 

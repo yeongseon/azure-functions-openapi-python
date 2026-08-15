@@ -3,7 +3,7 @@ PYTHON := $(VENV_DIR)/bin/python
 PIP := $(VENV_DIR)/bin/pip
 HATCH := $(VENV_DIR)/bin/hatch
 PACKAGE_INIT := $(shell find src -mindepth 2 -maxdepth 2 -name "__init__.py" | head -n1)
-SPEC_PREVIEW_PNG := docs/assets/hello_openapi_spec_preview.png
+SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
 PLAYWRIGHT_VERSION := 1.54.1
 PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.cache/ms-playwright
 SWAGGER_PREVIEW_DIR := demo/.preview/swagger-ui
@@ -221,7 +221,7 @@ demo-swagger: ensure-hatch
 	@mkdir -p $(SWAGGER_PREVIEW_DIR) $(SPEC_PREVIEW_DIR) docs/assets
 	@$(HATCH) run python demo/run_webhook_receiver_example.py --output-dir demo/.preview
 	@PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" npx -y playwright@$(PLAYWRIGHT_VERSION) install chromium > /dev/null
-	@python3 -m http.server $(SPEC_PREVIEW_PORT) --directory $(SPEC_PREVIEW_DIR) > /tmp/openapi-spec-preview.log 2>&1 & \
+	@python3 demo/serve_preview.py $(SPEC_PREVIEW_PORT) $(SPEC_PREVIEW_DIR) > /tmp/openapi-spec-preview.log 2>&1 & \
 	SPEC_PID=$$!; \
 	trap 'kill $$SPEC_PID 2>/dev/null || true' EXIT; \
 	sleep 2; \
@@ -234,7 +234,7 @@ demo-swagger: ensure-hatch
 		"$(SPEC_PREVIEW_PNG)" > /dev/null; \
 	kill $$SPEC_PID 2>/dev/null || true; \
 	wait $$SPEC_PID 2>/dev/null || true
-	@python3 -m http.server $(SWAGGER_PREVIEW_PORT) --directory $(SWAGGER_PREVIEW_DIR) > /tmp/openapi-swagger-preview.log 2>&1 & \
+	@python3 demo/serve_preview.py $(SWAGGER_PREVIEW_PORT) $(SWAGGER_PREVIEW_DIR) > /tmp/openapi-swagger-preview.log 2>&1 & \
 	SERVER_PID=$$!; \
 	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
 	sleep 2; \
@@ -243,7 +243,7 @@ demo-swagger: ensure-hatch
 		--wait-for-selector ".opblock.is-open" \
 		--wait-for-timeout 2000 \
 		"http://127.0.0.1:$(SWAGGER_PREVIEW_PORT)/index.html" \
-		"docs/assets/hello_openapi_swagger_ui_preview.png" > /dev/null; \
+		"docs/assets/webhook_receiver_openapi_swagger_ui_preview.png" > /dev/null; \
 	kill $$SERVER_PID 2>/dev/null || true; \
 	wait $$SERVER_PID 2>/dev/null || true
 
@@ -256,7 +256,7 @@ demo-examples: ensure-hatch
 		--example webhook_receiver \
 		--title "Webhook Receiver API" \
 		--output-dir demo/.preview/webhook_receiver
-	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/webhook_receiver > /tmp/openapi-webhook.log 2>&1 & \
+	@python3 demo/serve_preview.py $(EXAMPLES_PREVIEW_PORT) demo/.preview/webhook_receiver > /tmp/openapi-webhook.log 2>&1 & \
 	SERVER_PID=$$!; \
 	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
 	sleep 2; \
@@ -273,7 +273,7 @@ demo-examples: ensure-hatch
 		--example notification_request \
 		--title "Notification API" \
 		--output-dir demo/.preview/notification_request
-	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/notification_request > /tmp/openapi-notification.log 2>&1 & \
+	@python3 demo/serve_preview.py $(EXAMPLES_PREVIEW_PORT) demo/.preview/notification_request > /tmp/openapi-notification.log 2>&1 & \
 	SERVER_PID=$$!; \
 	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
 	sleep 2; \
@@ -290,7 +290,7 @@ demo-examples: ensure-hatch
 		--example partner_import_bridge \
 		--title "Partner Import API" \
 		--output-dir demo/.preview/partner_import_bridge
-	@python3 -m http.server $(EXAMPLES_PREVIEW_PORT) --directory demo/.preview/partner_import_bridge > /tmp/openapi-partner.log 2>&1 & \
+	@python3 demo/serve_preview.py $(EXAMPLES_PREVIEW_PORT) demo/.preview/partner_import_bridge > /tmp/openapi-partner.log 2>&1 & \
 	SERVER_PID=$$!; \
 	trap 'kill $$SERVER_PID 2>/dev/null || true' EXIT; \
 	sleep 2; \
