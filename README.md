@@ -17,11 +17,6 @@ Read this in: [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中
 
 OpenAPI (Swagger) documentation and Swagger UI for the **Azure Functions Python v2 programming model**.
 
----
-
-Part of the **Azure Functions Python DX Toolkit**
-→ Bring FastAPI-like developer experience to Azure Functions
-
 ## Why this exists
 
 Azure Functions Python v2 has no built-in API documentation story:
@@ -357,13 +352,13 @@ The representative `webhook_receiver` example shows the full outcome of adopting
 
 The generated OpenAPI file is captured as a static preview from the same example run, so the README shows the actual document produced by the representative function.
 
-![OpenAPI spec preview](docs/assets/hello_openapi_spec_preview.png)
+![OpenAPI spec preview](docs/assets/webhook_receiver_openapi_spec_preview.png)
 
 ### Swagger UI Result
 
 The web preview below is generated from the same representative example and captured automatically from the rendered Swagger UI page produced by that example flow.
 
-![OpenAPI Swagger UI preview](docs/assets/hello_openapi_swagger_ui_preview.png)
+![OpenAPI Swagger UI preview](docs/assets/webhook_receiver_openapi_swagger_ui_preview.png)
 
 ## When to use
 
