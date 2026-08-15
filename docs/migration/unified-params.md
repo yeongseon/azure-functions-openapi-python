@@ -144,6 +144,25 @@ model required:
 )
 ```
 
+### Fallback error responses → `responses={..., "default": ErrorModel}`
+
+The OpenAPI `"default"` response key documents the response for any status code
+not otherwise listed — ideal for a shared error model. Pass it alongside your
+concrete statuses; a bare model is expanded to a Response Object just like a
+numeric key:
+
+```python
+@openapi(
+    summary="Get order",
+    method="get",
+    responses={
+        200: OrderResponse,
+        404: ErrorResponse,
+        "default": ErrorResponse,   # any other status → ErrorResponse
+    },
+)
+```
+
 ### Optional request bodies are unchanged
 
 `request_body_required=` is orthogonal to this migration — keep using it

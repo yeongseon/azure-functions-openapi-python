@@ -287,7 +287,7 @@ def test_openapi_responses_accepts_model() -> None:
 def test_openapi_responses_accepts_dict() -> None:
     manual_responses = {201: {"description": "Created"}}
 
-    @openapi(summary="Unified response dict", responses=manual_responses)
+    @openapi(summary="Unified response dict", responses={201: {"description": "Created"}})
     def unified_response_dict_func() -> None:
         pass
 
@@ -756,3 +756,106 @@ def test_openapi_responses_accepts_inner_mapping_response_object() -> None:
     spec = generate_openapi_spec(route_prefix="")
     responses = spec["paths"]["/api/items"]["post"]["responses"]
     assert responses["400"]["description"] == "Bad request"
+
+
+def test_openapi_responses_default_key_model_shorthand() -> None:
+    """A `"default"` key with a bare model produces a valid default Response Object."""
+    _clear_registry()
+
+    @openapi(
+        summary="Default error fallback",
+        route="/api/items",
+        method="get",
+        responses={200: _UnifiedResponseModel, "default": _UnifiedResponseModel},
+    )
+    def default_shorthand_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["get"]["responses"]
+    assert "default" in responses
+    assert responses["default"]["description"] == "Response"
+    assert responses["default"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/_UnifiedResponseModel"
+    )
+    assert responses["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/_UnifiedResponseModel"
+    )
+
+
+def test_openapi_responses_default_key_response_object_dict() -> None:
+    """A `"default"` key with a Response Object dict passes through unchanged."""
+    _clear_registry()
+
+    @openapi(
+        summary="Default fallback dict",
+        route="/api/items",
+        method="get",
+        responses={404: {"description": "Not there"}, "default": {"description": "Fallback"}},
+    )
+    def default_dict_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["get"]["responses"]
+    assert responses["default"]["description"] == "Fallback"
+    assert responses["404"]["description"] == "Not there"
+
+
+def test_openapi_responses_default_only_gets_explicit_200() -> None:
+    """A mapping containing only `"default"` still gets an explicit 200 success entry."""
+    _clear_registry()
+
+    @openapi(
+        summary="Only default",
+        route="/api/items",
+        method="get",
+        responses={"default": {"description": "Anything"}},
+    )
+    def default_only_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["get"]["responses"]
+    assert "200" in responses
+    assert responses["default"]["description"] == "Anything"
+
+
+def test_openapi_responses_default_with_response_model_not_targeted() -> None:
+    """`response_model` never selects `"default"` as its 2xx target."""
+    _clear_registry()
+
+    @openapi(
+        summary="Response model plus default",
+        route="/api/items",
+        method="get",
+        response_model=_UnifiedResponseModel,
+        response={"default": {"description": "Fallback"}},  # type: ignore[dict-item]
+    )
+    def model_plus_default_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["get"]["responses"]
+    assert responses["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/_UnifiedResponseModel"
+    )
+    assert "content" not in responses["default"]
+
+
+def test_openapi_responses_default_key_preserved_in_3_0() -> None:
+    """The `"default"` key survives OpenAPI 3.0 downconversion unchanged."""
+    _clear_registry()
+
+    @openapi(
+        summary="Default under 3.0",
+        route="/api/items",
+        method="get",
+        responses={200: {"description": "OK"}, "default": {"description": "Fallback"}},
+    )
+    def default_3_0_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="", openapi_version="3.0.0")
+    responses = spec["paths"]["/api/items"]["get"]["responses"]
+    assert responses["default"]["description"] == "Fallback"
