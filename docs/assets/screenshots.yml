@@ -117,3 +117,29 @@ screenshots:
       hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
     output:
       hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
+  - id: e2e_app_swagger_ui
+    image: docs/assets/e2e_app_swagger_ui.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "d821aefd3c7280591246b65a1014625a81d94c22"
+      date: "2026-08-15"
+      method: playwright
+    source:
+      inputs:
+        - examples/e2e_app/function_app.py
+      hash: "sha256:837e68ee44be25eb1a899de37188dfce9c7c2955e35c4dfa6be8b29656dc5f7b"
+    output:
+      hash: "sha256:ad9b0d3d8203823ebf3d70629b8c411e5571f2f6c993a575fbaa79e6cc011369"
+  - id: e2e_app_openapi_json
+    image: docs/assets/e2e_app_openapi_json.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "d821aefd3c7280591246b65a1014625a81d94c22"
+      date: "2026-08-15"
+      method: playwright
+    source:
+      inputs:
+        - examples/e2e_app/function_app.py
+      hash: "sha256:837e68ee44be25eb1a899de37188dfce9c7c2955e35c4dfa6be8b29656dc5f7b"
+    output:
+      hash: "sha256:e6a67724fbed5b9fa3186487557cc24a7784679f9ad26bf594b30d54f1594395"
