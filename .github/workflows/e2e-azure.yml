@@ -135,6 +135,46 @@ jobs:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
           E2E_EXPECTED_VERSION: ${{ env.RESOLVED_VERSION }}
 
+      - name: Capture Swagger UI screenshots
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        env:
+          E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
+          CAPTURE_VERSION: ${{ env.RESOLVED_VERSION }}
+        run: |
+          set -euo pipefail
+          npm install --no-save playwright@1.54.1
+          npx playwright install --with-deps chromium
+          SHA=$(git rev-parse HEAD)
+          OUT=screenshots
+          mkdir -p "$OUT"
+          npx playwright screenshot --browser=chromium --full-page --wait-for-timeout=3000 \
+            "$E2E_BASE_URL/api/docs" "$OUT/api_docs.png"
+          npx playwright screenshot --browser=chromium --wait-for-timeout=1000 \
+            "$E2E_BASE_URL/api/openapi.json" "$OUT/api_openapi_json.png"
+          SRC_HASH=$(python -c "import hashlib; rel='examples/e2e_app/function_app.py'; h=hashlib.sha256(); h.update(rel.encode()+b'\0'); h.update(open(rel,'rb').read()+b'\0'); print('sha256:'+h.hexdigest())")
+          cat > "$OUT/metadata.json" <<EOF
+          {
+            "package_version": "${CAPTURE_VERSION}",
+            "git_sha": "${SHA}",
+            "captured_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "method": "playwright",
+            "base_url": "${E2E_BASE_URL}",
+            "endpoints": ["/api/docs", "/api/openapi.json"],
+            "source_inputs": ["examples/e2e_app/function_app.py"],
+            "source_hash": "${SRC_HASH}"
+          }
+          EOF
+          cat "$OUT/metadata.json"
+
+      - name: Upload screenshots
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: swagger-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: screenshots/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Record certification
         run: |
           SHA=$(git rev-parse HEAD)
