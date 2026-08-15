@@ -62,6 +62,21 @@ In this guide, you deploy example apps that provide:
 
 ---
 
+## Automated verification on Azure
+
+Every release runs an end-to-end job that deploys the `examples/e2e_app` app to a
+temporary Azure Functions instance, exercises it, and captures its live
+`/api/docs` and `/api/openapi.json` pages before tearing the resources down. The
+images below are produced by that automated capture — their provenance (package
+version, commit, and source hash) is recorded in
+[`docs/assets/screenshots.yml`](assets/screenshots.yml).
+
+![Swagger UI served from a live Azure Functions deployment of the e2e app](assets/e2e_app_swagger_ui.png)
+
+![OpenAPI 3.1 document served at /api/openapi.json from the same deployment](assets/e2e_app_openapi_json.png)
+
+---
+
 ## Example 1: report_jobs
 
 This is the primary guided path. It demonstrates Bearer token authentication, async job submission, status polling, and file download.
