@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from http import HTTPStatus
 import logging
-from typing import Any, Callable, TypeGuard, TypeVar, cast
+from typing import Any, Callable, TypeGuard, TypeVar, cast, get_origin
 import warnings
 
 from pydantic import BaseModel
@@ -115,11 +116,32 @@ def _is_pydantic_model(value: Any) -> TypeGuard[type[BaseModel]]:
 
 def _default_response_description(status: int) -> str:
     """Default OpenAPI response description for a bare per-status model shorthand."""
-    return "Successful Response" if 200 <= status < 300 else "Response"
+    try:
+        return HTTPStatus(status).phrase
+    except ValueError:
+        return "Successful Response" if 200 <= status < 300 else "Response"
+
+
+def _coerce_status_key(status: Any, func_name: str) -> int:
+    """Coerce a ``responses`` status key to an int, accepting numeric strings."""
+    if isinstance(status, bool):
+        raise ValueError(
+            f"Invalid 'responses' status key {status!r} in function '{func_name}': "
+            f"status keys must be integers (e.g. 200) or numeric strings (e.g. '200')."
+        )
+    if isinstance(status, int):
+        return status
+    if isinstance(status, str) and status.isdigit():
+        return int(status)
+    raise ValueError(
+        f"Invalid 'responses' status key {status!r} in function '{func_name}': "
+        f"status keys must be integers (e.g. 200) or numeric strings (e.g. '200'). "
+        f"To describe a full Response Object, use the dict form as the value."
+    )
 
 
 def _normalize_unified_responses(
-    responses: Mapping[int, Any], func_name: str
+    responses: Mapping[Any, Any], func_name: str
 ) -> dict[int, dict[str, Any]]:
     """Normalize a unified ``responses=`` mapping into OpenAPI Response Objects.
 
@@ -129,26 +151,32 @@ def _normalize_unified_responses(
       schema, expanded to ``{"description": ..., "content":
       {"application/json": {"schema": Model}}}`` (the model class is resolved to
       a schema at spec-generation time, where the ``components`` registry lives), or
-    * an OpenAPI Response Object dict (unchanged; a Pydantic model may also appear
+    * a generic collection alias such as ``list[Model]`` — the same bare-shorthand
+      treatment, resolved to an array schema at spec-generation time, or
+    * an OpenAPI Response Object mapping (unchanged; a Pydantic model may also appear
       in its ``content.<media>.schema`` position and is resolved the same way).
 
-    Raises ``ValueError`` for any other value type so misuse fails fast at
-    decoration time rather than silently producing an invalid spec.
+    Status keys may be ints (``200``) or numeric strings (``"200"``); any other
+    key type raises ``ValueError``. Values of any other type also raise
+    ``ValueError`` so misuse fails fast at decoration time rather than silently
+    producing an invalid spec.
     """
     normalized: dict[int, dict[str, Any]] = {}
-    for status, value in responses.items():
-        if _is_pydantic_model(value):
+    for raw_status, value in responses.items():
+        status = _coerce_status_key(raw_status, func_name)
+        if _is_pydantic_model(value) or get_origin(value) is not None:
             normalized[status] = {
                 "description": _default_response_description(status),
                 "content": {"application/json": {"schema": value}},
             }
-        elif isinstance(value, dict):
-            normalized[status] = value
+        elif isinstance(value, Mapping):
+            normalized[status] = dict(value)
         else:
             raise ValueError(
                 f"Invalid 'responses' entry for status {status} in function "
-                f"'{func_name}': each value must be a Pydantic BaseModel subclass "
-                f"or an OpenAPI Response Object dict, got {type(value).__name__}."
+                f"'{func_name}': each value must be a Pydantic BaseModel subclass, "
+                f"a generic collection alias (e.g. list[Model]), or an OpenAPI "
+                f"Response Object mapping, got {type(value).__name__}."
             )
     return normalized
 
@@ -172,7 +200,7 @@ def openapi(
     request_body_required: bool = True,
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
-    responses: type[BaseModel] | Mapping[int, type[BaseModel] | dict[str, Any]] | None = None,
+    responses: type[BaseModel] | Mapping[int, Any] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
