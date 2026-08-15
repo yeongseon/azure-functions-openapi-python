@@ -1,0 +1,119 @@
+# Screenshot provenance manifest.
+#
+# Records where each documentation screenshot came from so drift can be
+# detected automatically. `source.hash` is a combined SHA-256 over the
+# `source.inputs` files (see scripts/check_screenshots.py); when those inputs
+# change, the recomputed hash no longer matches and the screenshot is flagged
+# as potentially stale and in need of re-capture.
+#
+# `captured` fields are provenance only — they are never used for staleness
+# decisions (that is what `source.hash` is for). The values below were seeded
+# when the manifest was introduced; existing screenshots predate the automated
+# Playwright capture pipeline and are therefore recorded as `method: manual`.
+#
+# schema_version 1 entry shape:
+#   id:        stable unique identifier (kebab/underscore)
+#   image:     repo-relative path to the PNG
+#   captured:
+#     package_version: version the screenshot was captured against
+#     git_sha:         commit the screenshot was captured against
+#     date:            ISO-8601 capture (or seed) date
+#     method:          "manual" | "playwright"
+#   source:
+#     inputs: [repo-relative files whose change invalidates the screenshot]
+#     hash:   combined sha256 over inputs (recomputed by the checker)
+#   output:  (optional)
+#     hash:  sha256 of the image bytes, for tamper/regeneration tracking
+schema_version: 1
+screenshots:
+  - id: deployment_report_jobs_openapi_json
+    image: docs/assets/deployment_report_jobs_openapi_json.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/report_jobs/function_app.py
+      hash: "sha256:955d8afaa73b5d5c252609b2c6395d06169a28126bf5456d50a7c0babff93fb5"
+    output:
+      hash: "sha256:aec622c63df0425f60a47b36551fc79853df805ff77732594340058119d78b72"
+  - id: deployment_report_jobs_swagger_ui
+    image: docs/assets/deployment_report_jobs_swagger_ui.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/report_jobs/function_app.py
+      hash: "sha256:955d8afaa73b5d5c252609b2c6395d06169a28126bf5456d50a7c0babff93fb5"
+    output:
+      hash: "sha256:579ee7357acd04644926b7861e7129775553df4ffb1b67b9149b46384d0b4296"
+  - id: notification_request_swagger_ui
+    image: docs/assets/notification_request_swagger_ui.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/notification_request/function_app.py
+      hash: "sha256:868ab2f640823ff4e561982f9a0bd561bb396e614ca6dd5b856fc788ce58b8aa"
+    output:
+      hash: "sha256:f8ef5429b57db07e9c222de5d978c114f76f345c84d19774ba2b8e74a016c522"
+  - id: partner_import_bridge_swagger_ui
+    image: docs/assets/partner_import_bridge_swagger_ui.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/partner_import_bridge/function_app.py
+      hash: "sha256:c8319c9917e1018b10e925c98a0943789cda4ba2bd577c4d1387388287aa10cf"
+    output:
+      hash: "sha256:9f9f204a5e5028e875e4446fdd738b83e04de7a7cb17b880d69a9ab4122d0986"
+  - id: webhook_receiver_openapi_spec_preview
+    image: docs/assets/webhook_receiver_openapi_spec_preview.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/webhook_receiver/function_app.py
+      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+    output:
+      hash: "sha256:ecb270e3c9dd74fc55c99b67776e2c5b48e65f6be019cb6265715cd54cd03900"
+  - id: webhook_receiver_openapi_swagger_ui_preview
+    image: docs/assets/webhook_receiver_openapi_swagger_ui_preview.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/webhook_receiver/function_app.py
+      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+    output:
+      hash: "sha256:42658bfeeffab7caa4815a4d1588361f39ae4975434a4214ef5af5d3a281a0c8"
+  - id: webhook_receiver_swagger_ui
+    image: docs/assets/webhook_receiver_swagger_ui.png
+    captured:
+      package_version: "0.21.2"
+      git_sha: "8310039aa73e91d45cc8389b356428071225eb5b"
+      date: "2026-08-15"
+      method: manual
+    source:
+      inputs:
+        - examples/webhook_receiver/function_app.py
+      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+    output:
+      hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"

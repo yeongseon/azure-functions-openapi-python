@@ -1,0 +1,35 @@
+name: screenshots
+
+# Validates docs/assets/screenshots.yml on pull requests: fails on structural
+# problems (invalid manifest, missing image, missing source input, duplicate id)
+# and warns (without failing) when declared source inputs changed but the
+# manifest was not refreshed — that drift is expected to be reviewed by a human
+# who then re-captures the screenshot via the e2e-azure workflow.
+on:
+  pull_request:
+    paths:
+      - docs/assets/screenshots.yml
+      - scripts/check_screenshots.py
+      - examples/**
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check screenshot manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+
+      - name: Install checker dependencies
+        run: pip install pyyaml
+
+      - name: Run staleness checker
+        run: python scripts/check_screenshots.py
