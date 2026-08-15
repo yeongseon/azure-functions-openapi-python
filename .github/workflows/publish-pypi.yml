@@ -19,8 +19,11 @@ permissions:
 #   build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
 #         -> verify-azure-certification -> publish
 # Tiered runtime verification before any PyPI upload:
-#   * lib-tests            : the library's own unit suite (against the built wheel).
-#   * cookbook-smoke       : downstream module-import checks (catches registration/import drift).
+#   * lib-tests            : the library's own unit suite, run from a source checkout via
+#                            `hatch run test` (not against the built wheel; the candidate-wheel
+#                            tiers are cookbook-smoke and cookbook-host-smoke below).
+#   * cookbook-smoke       : install the candidate wheel into the cookbook, then run downstream
+#                            module-import checks (catches registration/import drift).
 #   * cookbook-host-smoke  : install the candidate wheel into the cookbook, then boot a real func
 #                            host + Azurite and run the cookbook HTTP e2e. This proves the candidate
 #                            installs cleanly and the Functions host starts with it present in the
