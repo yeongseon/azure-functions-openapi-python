@@ -52,9 +52,11 @@ def _ensure_default_response(
 ) -> None:
     """Ensure *responses* contains at least one entry.
 
-    If *responses* is non-empty this function is a no-op.  When it is empty
-    a generic ``200 Successful Response`` entry is added using *schema* when
-    provided, or a plain ``{type: object}`` schema otherwise.
+    If *responses* already contains a concrete (non-``"default"``) entry this
+    function is a no-op.  When it is empty — or contains only the OpenAPI
+    ``"default"`` fallback entry — a generic ``200 Successful Response`` entry is
+    added using *schema* when provided, or a plain ``{type: object}`` schema
+    otherwise, so every operation advertises at least one concrete status.
 
     Parameters:
         responses: The responses dict being built for the current operation.
@@ -63,7 +65,7 @@ def _ensure_default_response(
             ``content.application/json.schema``.  Defaults to
             ``{"type": "object"}``.
     """
-    if responses:
+    if any(status != "default" for status in responses):
         return
     resolved_schema: dict[str, Any] = schema if schema is not None else {"type": "object"}
     responses["200"] = {
@@ -375,8 +377,9 @@ def generate_openapi_spec(
                         model_schema = model_to_schema(meta["response_model"], components)
                         target_status = "200"
                         for status_key in responses:
-                            if str(status_key).startswith("2"):
-                                target_status = str(status_key)
+                            key = str(status_key)
+                            if key.isdigit() and 200 <= int(key) < 300:
+                                target_status = key
                                 break
 
                         if target_status not in responses:

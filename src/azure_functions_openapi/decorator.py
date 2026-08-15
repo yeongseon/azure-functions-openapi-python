@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from http import HTTPStatus
 import logging
-from typing import Any, Callable, TypeGuard, TypeVar, cast, get_origin
+from typing import Any, Callable, Literal, TypeGuard, TypeVar, cast, get_origin
 import warnings
 
 from pydantic import BaseModel
@@ -114,20 +114,25 @@ def _is_pydantic_model(value: Any) -> TypeGuard[type[BaseModel]]:
     return isinstance(value, type) and issubclass(value, BaseModel)
 
 
-def _default_response_description(status: int) -> str:
+def _default_response_description(status: int | Literal["default"]) -> str:
     """Default OpenAPI response description for a bare per-status model shorthand."""
+    if status == "default":
+        return "Response"
     try:
         return HTTPStatus(status).phrase
     except ValueError:
         return "Successful Response" if 200 <= status < 300 else "Response"
 
 
-def _coerce_status_key(status: Any, func_name: str) -> int:
-    """Coerce a ``responses`` status key to an int, accepting numeric strings."""
+def _coerce_status_key(status: Any, func_name: str) -> int | Literal["default"]:
+    """Coerce a ``responses`` status key to an int or the literal ``"default"``."""
+    if status == "default":
+        return "default"
     if isinstance(status, bool):
         raise ValueError(
             f"Invalid 'responses' status key {status!r} in function '{func_name}': "
-            f"status keys must be integers (e.g. 200) or numeric strings (e.g. '200')."
+            f"status keys must be integers (e.g. 200), numeric strings (e.g. '200'), "
+            f"or the literal 'default'."
         )
     if isinstance(status, int):
         return status
@@ -135,14 +140,15 @@ def _coerce_status_key(status: Any, func_name: str) -> int:
         return int(status)
     raise ValueError(
         f"Invalid 'responses' status key {status!r} in function '{func_name}': "
-        f"status keys must be integers (e.g. 200) or numeric strings (e.g. '200'). "
-        f"To describe a full Response Object, use the dict form as the value."
+        f"status keys must be integers (e.g. 200), numeric strings (e.g. '200'), "
+        f"or the literal 'default'. To describe a full Response Object, use the "
+        f"dict form as the value."
     )
 
 
 def _normalize_unified_responses(
     responses: Mapping[Any, Any], func_name: str
-) -> dict[int, dict[str, Any]]:
+) -> dict[int | str, dict[str, Any]]:
     """Normalize a unified ``responses=`` mapping into OpenAPI Response Objects.
 
     Each value may be either:
@@ -156,12 +162,13 @@ def _normalize_unified_responses(
     * an OpenAPI Response Object mapping (unchanged; a Pydantic model may also appear
       in its ``content.<media>.schema`` position and is resolved the same way).
 
-    Status keys may be ints (``200``) or numeric strings (``"200"``); any other
-    key type raises ``ValueError``. Values of any other type also raise
+    Status keys may be ints (``200``), numeric strings (``"200"``), or the literal
+    OpenAPI ``"default"`` key (the fallback response for any undocumented status);
+    any other key raises ``ValueError``. Values of any other type also raise
     ``ValueError`` so misuse fails fast at decoration time rather than silently
     producing an invalid spec.
     """
-    normalized: dict[int, dict[str, Any]] = {}
+    normalized: dict[int | str, dict[str, Any]] = {}
     for raw_status, value in responses.items():
         status = _coerce_status_key(raw_status, func_name)
         if _is_pydantic_model(value) or get_origin(value) is not None:
@@ -200,7 +207,7 @@ def openapi(
     request_body_required: bool = True,
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
-    responses: type[BaseModel] | Mapping[int, Any] | None = None,
+    responses: type[BaseModel] | Mapping[int | Literal["default"], Any] | None = None,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -375,7 +382,9 @@ def openapi(
             resolved_request_model = request_model
             resolved_request_body = request_body
             resolved_response_model = response_model
-            resolved_response = response
+            resolved_response: dict[int | str, dict[str, Any]] | None = cast(
+                "dict[int | str, dict[str, Any]] | None", response
+            )
 
             if requests is not None:
                 if request_model is not None or request_body is not None:
