@@ -130,6 +130,20 @@ model (expanded to a JSON body of that schema) *or* a raw Response Object dict:
 )
 ```
 
+### Array response bodies → `responses={200: list[Model]}`
+
+A per-status value may also be a generic collection alias such as
+`list[Model]`, resolved to an array schema in the generated spec — no wrapper
+model required:
+
+```python
+@openapi(
+    summary="List orders",
+    method="get",
+    responses={200: list[OrderResponse]},   # → array of OrderResponse
+)
+```
+
 ### Optional request bodies are unchanged
 
 `request_body_required=` is orthogonal to this migration — keep using it

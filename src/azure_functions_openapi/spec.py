@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, get_origin
 
 from pydantic import BaseModel
 import yaml
@@ -22,7 +22,7 @@ from azure_functions_openapi.routes import (
     apply_route_prefix,
     normalize_route_prefix,
 )
-from azure_functions_openapi.utils import hoist_inline_defs, model_to_schema
+from azure_functions_openapi.utils import hoist_inline_defs, model_to_schema, type_to_schema
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +353,12 @@ def generate_openapi_spec(
                                     # resolve the model to a $ref here, where the
                                     # components registry is available.
                                     resolved_schema = model_to_schema(raw_schema, components)
+                                elif get_origin(raw_schema) is not None:
+                                    # Generic collection alias shorthand (#450),
+                                    # e.g. list[Model]: resolve via TypeAdapter to a
+                                    # valid array schema; hoist_inline_defs expects a
+                                    # dict JSON-Schema and would break on a raw alias.
+                                    resolved_schema = type_to_schema(raw_schema, components)
                                 else:
                                     resolved_schema = hoist_inline_defs(
                                         raw_schema,

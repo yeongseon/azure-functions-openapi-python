@@ -572,14 +572,14 @@ def test_openapi_responses_dict_accepts_per_status_model() -> None:
     assert entry["response_model"] is None
     resp = entry["response"]
     # 202 expanded to a Response Object carrying the model in schema position.
-    assert resp[202]["description"] == "Successful Response"
+    assert resp[202]["description"] == "Accepted"
     assert resp[202]["content"]["application/json"]["schema"] is _UnifiedResponseModel
     # Non-model dict entries pass through unchanged.
     assert resp[400] == {"description": "Bad request"}
 
 
 def test_openapi_responses_dict_non_2xx_model_default_description() -> None:
-    """A bare model on a non-2xx status defaults to a generic 'Response' description."""
+    """A bare model on a standard status defaults to its HTTP reason phrase."""
     _clear_registry()
 
     @openapi(summary="Error body", responses={409: _UnifiedResponseModel})
@@ -587,7 +587,7 @@ def test_openapi_responses_dict_non_2xx_model_default_description() -> None:
         pass
 
     resp = get_openapi_registry()["non_2xx_model_func"]["response"]
-    assert resp[409]["description"] == "Response"
+    assert resp[409]["description"] == "Conflict"
     assert resp[409]["content"]["application/json"]["schema"] is _UnifiedResponseModel
 
 
@@ -651,7 +651,7 @@ def test_openapi_responses_dict_rejects_invalid_value() -> None:
 
         @openapi(
             summary="Invalid responses entry",
-            responses={200: "bad"},  # type: ignore[dict-item]
+            responses={200: "bad"},
         )
         def invalid_responses_func() -> None:
             pass
@@ -684,4 +684,75 @@ def test_openapi_responses_accepts_non_dict_mapping() -> None:
     responses = spec["paths"]["/api/items"]["post"]["responses"]
     schema = responses["202"]["content"]["application/json"]["schema"]
     assert schema["$ref"].endswith("/_UnifiedResponseModel")
+    assert responses["400"]["description"] == "Bad request"
+
+
+def test_openapi_responses_accepts_generic_alias_shorthand() -> None:
+    """A generic alias such as list[Model] is accepted and resolves to an array schema."""
+    _clear_registry()
+
+    @openapi(
+        summary="List body shorthand",
+        route="/api/items",
+        method="get",
+        responses={200: list[_UnifiedResponseModel]},
+    )
+    def list_shorthand_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    schema = spec["paths"]["/api/items"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    assert schema["type"] == "array"
+    assert schema["items"]["$ref"].endswith("/_UnifiedResponseModel")
+    assert "_UnifiedResponseModel" in spec["components"]["schemas"]
+
+
+def test_openapi_responses_normalizes_numeric_string_key() -> None:
+    """A numeric-string status key (e.g. '200') is normalized to an int."""
+    _clear_registry()
+
+    @openapi(summary="String key", responses={"200": _UnifiedResponseModel})  # type: ignore[dict-item]
+    def string_key_func() -> None:
+        pass
+
+    resp = get_openapi_registry()["string_key_func"]["response"]
+    assert 200 in resp
+    assert resp[200]["description"] == "OK"
+
+
+def test_openapi_responses_rejects_non_numeric_key() -> None:
+    """A non-int, non-numeric-string status key fails fast with a clear ValueError."""
+    _clear_registry()
+
+    with pytest.raises(ValueError) as exc_info:
+
+        @openapi(
+            summary="Bad key",
+            responses={"twohundred": _UnifiedResponseModel},  # type: ignore[dict-item]
+        )
+        def bad_key_func() -> None:
+            pass
+
+    assert "status key" in str(exc_info.value)
+
+
+def test_openapi_responses_accepts_inner_mapping_response_object() -> None:
+    """A non-dict Mapping (MappingProxyType) used as an inner Response Object value is accepted."""
+    from types import MappingProxyType
+
+    _clear_registry()
+
+    @openapi(
+        summary="Inner mapping response object",
+        route="/api/items",
+        method="post",
+        responses={400: MappingProxyType({"description": "Bad request"})},
+    )
+    def inner_mapping_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items"]["post"]["responses"]
     assert responses["400"]["description"] == "Bad request"
