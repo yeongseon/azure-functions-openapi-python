@@ -147,6 +147,7 @@ Supported versions:
 
 - `OPENAPI_VERSION_3_0` (`"3.0.0"`)
 - `OPENAPI_VERSION_3_1` (`"3.1.0"`)
+- `OPENAPI_VERSION_3_2` (`"3.2.0"`)
 
 ```python
 from azure_functions_openapi import OPENAPI_VERSION_3_1, get_openapi_json
@@ -158,10 +159,16 @@ json_spec = get_openapi_json(
 )
 ```
 
-### What changes in 3.1 mode
+### What changes in 3.1 / 3.2 mode
 
 - nullable schemas are converted from `nullable: true` to `type: [<type>, "null"]`
 - `example` values are normalized to `examples`
+
+3.2.0 is a backward-compatible superset of 3.1.0 and reuses the same JSON
+Schema 2020-12 conversions. This library emits a valid 3.2.0 document; it does
+not yet add 3.2-only constructs (querystring schemas, `additionalOperations`,
+the `query` HTTP method, or streaming media types). Note that some viewers —
+including the bundled Swagger UI — may not yet render 3.2.0 documents.
 
 ## Spec generation options
 

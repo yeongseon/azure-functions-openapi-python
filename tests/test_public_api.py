@@ -11,6 +11,7 @@ class TestAPISurface:
             "__version__",
             "OPENAPI_VERSION_3_0",
             "OPENAPI_VERSION_3_1",
+            "OPENAPI_VERSION_3_2",
             "OpenAPISpecConfigError",
             "SDKIncompatibleError",
             "OpenAPIOperationMetadata",

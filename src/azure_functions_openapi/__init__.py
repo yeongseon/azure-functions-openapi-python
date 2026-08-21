@@ -11,6 +11,7 @@ from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    OPENAPI_VERSION_3_2,
     SpecReport,
     generate_openapi_report,
     generate_openapi_spec,
@@ -28,6 +29,7 @@ __all__ = [
     "__version__",
     "OPENAPI_VERSION_3_0",
     "OPENAPI_VERSION_3_1",
+    "OPENAPI_VERSION_3_2",
     "OpenAPISpecConfigError",
     "SDKIncompatibleError",
     "OpenAPIOperationMetadata",
