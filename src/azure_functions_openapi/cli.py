@@ -13,6 +13,7 @@ from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    OPENAPI_VERSION_3_2,
     collect_spec_warnings,
     generate_openapi_spec,
 )
@@ -134,7 +135,7 @@ Examples:
     )
     generate_parser.add_argument(
         "--openapi-version",
-        choices=["3.0", "3.1"],
+        choices=["3.0", "3.1", "3.2"],
         default="3.1",
         help="OpenAPI version (default: 3.1)",
     )
@@ -258,9 +259,12 @@ def handle_generate(args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
 
-        openapi_version = (
-            OPENAPI_VERSION_3_1 if args.openapi_version == "3.1" else OPENAPI_VERSION_3_0
-        )
+        if args.openapi_version == "3.2":
+            openapi_version = OPENAPI_VERSION_3_2
+        elif args.openapi_version == "3.1":
+            openapi_version = OPENAPI_VERSION_3_1
+        else:
+            openapi_version = OPENAPI_VERSION_3_0
 
         description = getattr(args, "description", None)
         if not isinstance(description, str):

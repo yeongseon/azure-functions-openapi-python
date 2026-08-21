@@ -122,7 +122,7 @@ flowchart TD
 
 - Compiles registry into OpenAPI document via `generate_openapi_spec()`.
 - Serializes to JSON (`get_openapi_json`) and YAML (`get_openapi_yaml`).
-- Supports OpenAPI 3.0.0 and 3.1.0 output (3.1 converts `nullable` to union types, `example` to `examples`).
+- Supports OpenAPI 3.0.0, 3.1.0, and 3.2.0 output (3.1/3.2 convert `nullable` to union types, `example` to `examples`; 3.2.0 is a backward-compatible superset of 3.1.0).
 - Resolves routes, methods, request/response schemas, Pydantic model components, and security schemes.
 
 ### `utils.py`
@@ -160,6 +160,7 @@ Exported symbols (via `__all__`):
 - `OpenAPISpecConfigError` — configuration error exception
 - `OPENAPI_VERSION_3_0` — version constant (`"3.0.0"`)
 - `OPENAPI_VERSION_3_1` — version constant (`"3.1.0"`)
+- `OPENAPI_VERSION_3_2` — version constant (`"3.2.0"`)
 - `__version__` — package version string
 
 CLI contract: `azure-functions-openapi generate` (entrypoint: `azure_functions_openapi.cli:main`).

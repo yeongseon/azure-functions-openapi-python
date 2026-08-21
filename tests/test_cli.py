@@ -313,6 +313,21 @@ class TestCLIIntegration:
         spec = json.loads(output)
         assert spec["openapi"] == "3.1.0"
 
+    def test_generate_with_openapi_version_3_2(self) -> None:
+        """Test generate command with --openapi-version 3.2."""
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["azure-functions-openapi", "generate", "--openapi-version", "3.2"],
+        ):
+            with mock.patch("builtins.print") as mock_print:
+                result = main()
+
+        assert result == 0
+        output = mock_print.call_args[0][0]
+        spec = json.loads(output)
+        assert spec["openapi"] == "3.2.0"
+
     def test_generate_with_all_options(self) -> None:
         """Test generate command with all options."""
         with tempfile.TemporaryDirectory() as tmpdir:

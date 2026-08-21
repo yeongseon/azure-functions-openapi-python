@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 OPENAPI_VERSION_3_0 = "3.0.0"
 OPENAPI_VERSION_3_1 = "3.1.0"
+OPENAPI_VERSION_3_2 = "3.2.0"
 DEFAULT_OPENAPI_INFO_DESCRIPTION = (
     "Auto-generated OpenAPI documentation. Markdown supported in descriptions (CommonMark)."
 )
@@ -269,7 +270,7 @@ def generate_openapi_spec(
     Parameters:
         title: API title
         version: API version
-        openapi_version: OpenAPI specification version ("3.0.0" or "3.1.0")
+        openapi_version: OpenAPI specification version ("3.0.0", "3.1.0", or "3.2.0")
         description: Description for the OpenAPI info object
         security_schemes: Security scheme definitions for components.securitySchemes.
             Example: {"BearerAuth": {"type": "http", "scheme": "bearer"}}
@@ -290,10 +291,10 @@ def generate_openapi_spec(
     Returns:
         OpenAPI specification dictionary
     """
-    if openapi_version not in (OPENAPI_VERSION_3_0, OPENAPI_VERSION_3_1):
+    if openapi_version not in (OPENAPI_VERSION_3_0, OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
         raise OpenAPISpecConfigError(
             f"Unsupported OpenAPI version: {openapi_version}. Supported: "
-            f"{OPENAPI_VERSION_3_0}, {OPENAPI_VERSION_3_1}"
+            f"{OPENAPI_VERSION_3_0}, {OPENAPI_VERSION_3_1}, {OPENAPI_VERSION_3_2}"
         )
 
     normalized_prefix = normalize_route_prefix(route_prefix)
@@ -523,7 +524,7 @@ def generate_openapi_spec(
             "paths": paths,
         }
 
-        if openapi_version == OPENAPI_VERSION_3_1:
+        if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
             spec["info"]["summary"] = title
             _convert_operation_schemas_to_3_1(paths)
 
@@ -548,7 +549,7 @@ def generate_openapi_spec(
             components["securitySchemes"] = all_security_schemes
 
         if components.get("schemas"):
-            if openapi_version == OPENAPI_VERSION_3_1:
+            if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
             elif openapi_version == OPENAPI_VERSION_3_0:
                 compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
@@ -716,7 +717,7 @@ def get_openapi_json(
     Parameters:
         title: API title
         version: API version
-        openapi_version: OpenAPI specification version ("3.0.0" or "3.1.0")
+        openapi_version: OpenAPI specification version ("3.0.0", "3.1.0", or "3.2.0")
         description: Description for the OpenAPI info object
         security_schemes: Security scheme definitions for components.securitySchemes.
         route_prefix: HTTP route prefix from ``host.json``
@@ -769,7 +770,7 @@ def get_openapi_yaml(
     Parameters:
         title: API title
         version: API version
-        openapi_version: OpenAPI specification version ("3.0.0" or "3.1.0")
+        openapi_version: OpenAPI specification version ("3.0.0", "3.1.0", or "3.2.0")
         description: Description for the OpenAPI info object
         security_schemes: Security scheme definitions for components.securitySchemes.
         route_prefix: HTTP route prefix from ``host.json``

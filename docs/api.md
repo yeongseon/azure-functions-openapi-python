@@ -51,6 +51,7 @@ from azure_functions_openapi import (
 | `SDKIncompatibleError` | exception | Subclass of `OpenAPISpecConfigError`; raised when the installed Functions SDK is incompatible |
 | `OPENAPI_VERSION_3_0` | constant | OpenAPI version string `"3.0.0"` |
 | `OPENAPI_VERSION_3_1` | constant | OpenAPI version string `"3.1.0"` |
+| `OPENAPI_VERSION_3_2` | constant | OpenAPI version string `"3.2.0"` |
 ## Decorator behavior model
 
 `@openapi` stores metadata in a thread-safe registry and the spec functions read from that registry to generate output.
