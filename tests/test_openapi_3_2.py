@@ -1,7 +1,11 @@
 from __future__ import annotations
 
-import pytest
+import json
 
+import pytest
+import yaml
+
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
@@ -51,7 +55,7 @@ class TestGenerateOpenapiSpec3_2:
         assert spec_3_1 == spec_3_2
 
     def test_unsupported_version_still_raises(self) -> None:
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(OpenAPISpecConfigError) as exc_info:
             generate_openapi_spec(openapi_version="4.0.0")
 
         assert "Unsupported OpenAPI version" in str(exc_info.value)
@@ -61,11 +65,11 @@ class TestGetOpenapiJson3_2:
     def test_json_emits_3_2(self) -> None:
         result = get_openapi_json(openapi_version=OPENAPI_VERSION_3_2)
 
-        assert '"3.2.0"' in result
+        assert json.loads(result)["openapi"] == "3.2.0"
 
 
 class TestGetOpenapiYaml3_2:
     def test_yaml_emits_3_2(self) -> None:
         result = get_openapi_yaml(openapi_version=OPENAPI_VERSION_3_2)
 
-        assert "3.2.0" in result
+        assert yaml.safe_load(result)["openapi"] == "3.2.0"
