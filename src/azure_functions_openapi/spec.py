@@ -709,9 +709,12 @@ def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
-# Path-item fields that are NOT operations and therefore must never be moved
-# into ``additionalOperations``. ``query`` is a first-class 3.2 operation field
-# handled separately (#472); the rest are the OpenAPI path-item metadata fields.
+# Path-item fields that are NOT non-standard operations and therefore must never
+# be moved into ``additionalOperations``. ``query`` is a first-class OpenAPI 3.2
+# operation field, so it is never treated as an additionalOperations candidate;
+# its removal on pre-3.2 targets is owned by the dedicated query-compat step
+# (``_drop_unsupported_query``, #472), keeping that concern in one place. The
+# remaining entries are the OpenAPI path-item metadata fields.
 _RESERVED_PATH_ITEM_FIELDS: frozenset[str] = frozenset(
     {"summary", "description", "servers", "parameters", "$ref", "query", "additionalOperations"}
 )

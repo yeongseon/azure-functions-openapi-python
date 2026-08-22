@@ -30,7 +30,8 @@ ALL_HTTP_METHODS: tuple[str, ...] = (
 BODYLESS_HTTP_METHODS: frozenset[str] = frozenset({"get", "head", "delete"})
 
 # The fixed set of HTTP methods OpenAPI represents as first-class path-item
-# operation fields in 3.0/3.1 (RFC 7231 verbs plus TRACE). Methods outside this
+# operation fields in 3.0/3.1 (the verbs enumerated by the OpenAPI Path Item
+# Object; note this omits CONNECT). Methods outside this
 # set cannot be expressed as ordinary path-item operations; under OpenAPI 3.2
 # they are emitted through the ``additionalOperations`` map instead (#471), and
 # under 3.0/3.1 they are dropped with a warning because the format cannot
