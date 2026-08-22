@@ -1,10 +1,40 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.22.0] - 2026-08-22
+
+### Documentation
+
+- *(deployment)* Embed auto-captured Azure e2e screenshots (#408) (#463) 
+- *(ci)* Correct lib-tests description in publish-pypi workflow (#458) 
+- *(deployment)* Restore real Azure deployment screenshots at OAS 3.1 (#457) 
+- Recapture OpenAPI previews with real output and align docs (#456) 
+- *(migration)* Document validation-namespace read-mirror removal (#453) 
+
+### Features
+
+- *(decorator)* Accept None as body-less response shorthand (#481) 
+- *(spec)* Support OpenAPI 3.2 query method operations (#478) 
+- *(spec)* Support non-standard HTTP methods via additionalOperations (OpenAPI 3.2) (#477) 
+- *(spec)* Document streaming response media types (OpenAPI 3.2) (#476) 
+- *(spec)* Support OpenAPI 3.2 querystring parameters (#475) 
+- *(spec)* Emit OpenAPI 3.2.0 documents (#474) 
+- *(responses)* First-class OpenAPI "default" response key (#461) 
+- *(responses)* List shorthand, string keys, inner Mapping, HTTP phrases (#460) 
+
+### Miscellaneous Tasks
+
+- *(docs)* Add screenshot provenance manifest + staleness checker (#408) (#462) 
+- Allow refactor/ and test/ branch prefixes in branch-naming validation (#459) 
+
+### Other
+
+- Bump version to 0.22.0 
 ## [0.21.2] - 2026-08-14
 
 ### Documentation
 
+- Update changelog 
 - Link runtime-validation callout to a paired cookbook example (#449) 
 - Surface azure-functions-validation as optional runtime companion (#447) 
 - *(migration)* Add unified requests/responses migration guide + retention policy (#440) 
