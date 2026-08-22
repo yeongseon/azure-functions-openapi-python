@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from typing import Any, get_origin
+import warnings
 
 from pydantic import BaseModel
 import yaml
@@ -217,7 +218,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
 
     Converts schemas in:
     - requestBody.content.*.schema
-    - responses.*.content.*.schema
+    - responses.*.content.*.schema and .itemSchema
     - parameters[].schema
     """
     for _path, methods in paths.items():
@@ -243,15 +244,60 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                     content = resp.get("content")
                     if isinstance(content, dict):
                         for _media, media_obj in content.items():
-                            if isinstance(media_obj, dict) and "schema" in media_obj:
-                                media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+                            if not isinstance(media_obj, dict):
+                                continue
+                            for _schema_key in _MEDIA_SCHEMA_KEYS:
+                                if _schema_key in media_obj:
+                                    media_obj[_schema_key] = _convert_schema_to_3_1(
+                                        media_obj[_schema_key]
+                                    )
 
             # parameters
             for param in operation.get("parameters", []):
-                if isinstance(param, dict) and "schema" in param:
+                if not isinstance(param, dict):
+                    continue
+                if "schema" in param:
                     param["schema"] = _convert_schema_to_3_1(param["schema"])
+                # querystring parameters (OpenAPI 3.2) carry a content map
+                # instead of a bare schema.
+                param_content = param.get("content")
+                if isinstance(param_content, dict):
+                    for _media, media_obj in param_content.items():
+                        if isinstance(media_obj, dict) and "schema" in media_obj:
+                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
 
     return paths
+
+
+# Media Type Object keys (OpenAPI 3.2 adds ``itemSchema`` for sequential/
+# streaming media types such as ``text/event-stream``; see #473). Both
+# positions may carry a Pydantic model / generic alias / inline JSON Schema
+# and are resolved to a ``$ref`` (or hoisted defs) the same way.
+_MEDIA_SCHEMA_KEYS = ("schema", "itemSchema")
+
+
+def _resolve_media_schema(
+    raw_schema: Any,
+    components: dict[str, Any],
+    hoist_flat_schemas: bool,
+) -> Any:
+    """Resolve a media-type schema value into an emittable JSON Schema.
+
+    Handles the three shorthands accepted in a ``content.<media>.schema`` or
+    ``content.<media>.itemSchema`` position: a Pydantic ``BaseModel`` subclass,
+    a generic collection alias (e.g. ``list[Model]``), or a raw inline
+    JSON-Schema dict.
+    """
+    if isinstance(raw_schema, type) and issubclass(raw_schema, BaseModel):
+        # Unified per-status model shorthand (#410): resolve the model to a
+        # $ref here, where the components registry is available.
+        return model_to_schema(raw_schema, components)
+    if get_origin(raw_schema) is not None:
+        # Generic collection alias shorthand (#450), e.g. list[Model]: resolve
+        # via TypeAdapter to a valid array schema; hoist_inline_defs expects a
+        # dict JSON-Schema and would break on a raw alias.
+        return type_to_schema(raw_schema, components)
+    return hoist_inline_defs(raw_schema, components, hoist_flat=hoist_flat_schemas)
 
 
 def generate_openapi_spec(
@@ -348,28 +394,34 @@ def generate_openapi_spec(
                     if isinstance(resp_content, dict):
                         hoisted_content: dict[str, Any] = {}
                         for media, media_obj in resp_content.items():
-                            if isinstance(media_obj, dict) and "schema" in media_obj:
-                                raw_schema = media_obj["schema"]
-                                if isinstance(raw_schema, type) and issubclass(
-                                    raw_schema, BaseModel
+                            if isinstance(media_obj, dict) and any(
+                                key in media_obj for key in _MEDIA_SCHEMA_KEYS
+                            ):
+                                new_media_obj = dict(media_obj)
+                                for schema_key in _MEDIA_SCHEMA_KEYS:
+                                    if schema_key in new_media_obj:
+                                        new_media_obj[schema_key] = _resolve_media_schema(
+                                            new_media_obj[schema_key],
+                                            components,
+                                            hoist_flat_schemas,
+                                        )
+                                if (
+                                    "itemSchema" in new_media_obj
+                                    and openapi_version != OPENAPI_VERSION_3_2
                                 ):
-                                    # Unified per-status model shorthand (#410):
-                                    # resolve the model to a $ref here, where the
-                                    # components registry is available.
-                                    resolved_schema = model_to_schema(raw_schema, components)
-                                elif get_origin(raw_schema) is not None:
-                                    # Generic collection alias shorthand (#450),
-                                    # e.g. list[Model]: resolve via TypeAdapter to a
-                                    # valid array schema; hoist_inline_defs expects a
-                                    # dict JSON-Schema and would break on a raw alias.
-                                    resolved_schema = type_to_schema(raw_schema, components)
-                                else:
-                                    resolved_schema = hoist_inline_defs(
-                                        raw_schema,
-                                        components,
-                                        hoist_flat=hoist_flat_schemas,
+                                    warnings.warn(
+                                        f"Response media type '{media}' for function "
+                                        f"'{func_name}' uses 'itemSchema', which is an "
+                                        f"OpenAPI 3.2 feature for sequential/streaming "
+                                        f"media types, but the target openapi_version is "
+                                        f"{openapi_version}. The field is emitted as-is "
+                                        f"but may not be understood by 3.0/3.1 tooling. "
+                                        f"Use openapi_version='3.2.0' for streaming "
+                                        f"responses.",
+                                        RuntimeWarning,
+                                        stacklevel=2,
                                     )
-                                media_obj = {**media_obj, "schema": resolved_schema}
+                                media_obj = new_media_obj
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
                     responses[str(status)] = resp
@@ -430,6 +482,69 @@ def generate_openapi_spec(
                         else param
                         for param in parameters
                     ]
+
+                # querystring (OpenAPI 3.2 only) ---------------------------------
+                qs_model = meta.get("querystring_model")
+                qs_schema = meta.get("querystring_schema")
+                has_querystring = qs_model is not None or qs_schema is not None
+
+                # Count querystring entries supplied through the raw
+                # ``parameters`` escape hatch so gating/validation covers both
+                # the dedicated ``querystring=`` surface and manual parameters.
+                raw_querystring_count = sum(
+                    1
+                    for p in (op_parameters or [])
+                    if isinstance(p, dict) and p.get("in") == "querystring"
+                )
+                total_querystring = raw_querystring_count + (1 if has_querystring else 0)
+
+                if total_querystring and openapi_version != OPENAPI_VERSION_3_2:
+                    raise OpenAPISpecConfigError(
+                        f"querystring parameters require openapi_version="
+                        f"'{OPENAPI_VERSION_3_2}', got '{openapi_version}' "
+                        f"(function '{logical_name}')."
+                    )
+
+                if has_querystring:
+                    qs_media_type = meta.get(
+                        "querystring_media_type", "application/x-www-form-urlencoded"
+                    )
+                    if qs_model is not None:
+                        qs_resolved = model_to_schema(qs_model, components)
+                    else:
+                        qs_resolved = hoist_inline_defs(
+                            qs_schema, components, hoist_flat=hoist_flat_schemas
+                        )
+                    qs_param = {
+                        "in": "querystring",
+                        "content": {qs_media_type: {"schema": qs_resolved}},
+                    }
+                    if op_parameters is None:
+                        op_parameters = []
+                    op_parameters.append(qs_param)
+
+                # Validation: querystring must not coexist with 'query' params,
+                # and at most one querystring parameter may appear per operation.
+                if op_parameters:
+                    has_query_param = any(
+                        isinstance(p, dict) and p.get("in") == "query"
+                        for p in op_parameters
+                    )
+                    qs_total = sum(
+                        1
+                        for p in op_parameters
+                        if isinstance(p, dict) and p.get("in") == "querystring"
+                    )
+                    if qs_total > 1:
+                        raise OpenAPISpecConfigError(
+                            f"Operation for '{logical_name}' declares multiple "
+                            f"'querystring' parameters; at most one is allowed."
+                        )
+                    if qs_total and has_query_param:
+                        raise OpenAPISpecConfigError(
+                            f"Operation for '{logical_name}' mixes 'query' and "
+                            f"'querystring' parameters, which OpenAPI 3.2 forbids."
+                        )
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
@@ -508,6 +623,10 @@ def generate_openapi_spec(
                         _dup_registry.add_duplicate_operation(method, path)
                     path_item[method] = op
 
+            except OpenAPISpecConfigError:
+                # Configuration contract violations (e.g. querystring misuse)
+                # must always surface, regardless of strict mode.
+                raise
             except (KeyError, TypeError, ValueError):
                 if strict:
                     logger.error("Failed to process function %s (strict mode)", func_name)

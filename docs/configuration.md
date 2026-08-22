@@ -165,10 +165,47 @@ json_spec = get_openapi_json(
 - `example` values are normalized to `examples`
 
 3.2.0 is a backward-compatible superset of 3.1.0 and reuses the same JSON
-Schema 2020-12 conversions. This library emits a valid 3.2.0 document; it does
-not yet add 3.2-only constructs (querystring schemas, `additionalOperations`,
-the `query` HTTP method, or streaming media types). Note that some viewers —
-including the bundled Swagger UI — may not yet render 3.2.0 documents.
+Schema 2020-12 conversions. This library emits a valid 3.2.0 document and
+supports 3.2-only constructs (the **querystring** parameter — see below —
+non-standard HTTP methods via `additionalOperations`, and streaming media types
+via `itemSchema`); it does not yet add the `query` HTTP method. Note that some
+viewers — including the bundled Swagger UI — may not yet render 3.2.0 documents.
+
+### Querystring parameters (3.2 only)
+
+OpenAPI 3.2 introduces the `querystring` parameter location, which describes the
+**entire** query string as a single schema-backed value instead of enumerating
+individual `query` parameters. Pass a Pydantic model or a raw JSON Schema dict
+via `querystring=`:
+
+```python
+from pydantic import BaseModel
+
+class SearchQuery(BaseModel):
+    q: str
+    limit: int = 10
+
+@openapi(
+    method="get",
+    querystring=SearchQuery,
+    # querystring_media_type defaults to application/x-www-form-urlencoded
+)
+@app.route(route="search", methods=["GET"])
+def search(req):
+    ...
+```
+
+This emits a single `in: querystring` parameter whose content schema is derived
+from the model. Constraints enforced at generation time:
+
+- `querystring` is only valid when `openapi_version="3.2.0"`; using it under
+  3.0/3.1 raises `OpenAPISpecConfigError`.
+- An operation may declare **at most one** querystring parameter.
+- A querystring parameter **must not** coexist with any `in: query` parameter
+  in the same operation.
+
+The raw `parameters=[{"in": "querystring", "content": {...}}]` escape hatch is
+also supported for callers who need full control over the media type or schema.
 
 ## Spec generation options
 

@@ -209,6 +209,9 @@ def openapi(
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
     responses: type[BaseModel] | Mapping[int | Literal["default"], Any] | None = None,
+    # ── querystring (OpenAPI 3.2 only) ───────────────────────
+    querystring: type[BaseModel] | dict[str, Any] | None = None,
+    querystring_media_type: str = "application/x-www-form-urlencoded",
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -318,6 +321,14 @@ def openapi(
           ``responses={202: AcceptedModel, 422: {"description": "Validation error"}}``
           — which previously required combining the discrete `response_model` and
           `response` parameters.
+    querystring:
+        OpenAPI 3.2 querystring parameter schema. Accepts either a Pydantic
+        model class or a raw JSON Schema dict, emitted as an ``in: querystring``
+        parameter. Only valid for ``openapi_version="3.2.0"``; raises under
+        3.0/3.1.
+    querystring_media_type:
+        Media type used to encode the querystring content. Defaults to
+        ``application/x-www-form-urlencoded``.
 
     .. deprecated::
        This decorator currently exposes two parallel parameter styles: the
@@ -417,6 +428,19 @@ def openapi(
                         "'responses' must be either a Pydantic BaseModel subclass or a dictionary."
                     )
 
+            resolved_querystring_model: type[BaseModel] | None = None
+            resolved_querystring_schema: dict[str, Any] | None = None
+            if querystring is not None:
+                if isinstance(querystring, dict):
+                    resolved_querystring_schema = querystring
+                elif isinstance(querystring, type) and issubclass(querystring, BaseModel):
+                    resolved_querystring_model = querystring
+                else:
+                    raise ValueError(
+                        "'querystring' must be either a Pydantic BaseModel subclass "
+                        "or a dictionary."
+                    )
+
             # Emit the deprecation warning only after mixed-style validation
             # has passed, so callers hitting a ValueError above are not also
             # warned about a config they were told is invalid.
@@ -484,6 +508,10 @@ def openapi(
                         "request_body_required": request_body_required,
                         "response_model": resolved_response_model,
                         "response": resolved_response or {},
+                        # ── querystring (OpenAPI 3.2) ────────────────────────
+                        "querystring_model": resolved_querystring_model,
+                        "querystring_schema": resolved_querystring_schema,
+                        "querystring_media_type": querystring_media_type,
                         "function_name": metadata_func.__name__,
                         "_function_id": function_id,
                     },
@@ -543,6 +571,8 @@ def register_openapi_metadata(
     request_body_required: bool = True,
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
+    querystring: type[BaseModel] | dict[str, Any] | None = None,
+    querystring_media_type: str = "application/x-www-form-urlencoded",
     parameters: list[dict[str, Any]] | None = None,
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
@@ -578,6 +608,13 @@ def register_openapi_metadata(
         Pydantic model for the 200-response schema.
     response:
         Manual responses dict keyed by status code.
+    querystring:
+        OpenAPI 3.2 querystring parameter schema. Accepts either a Pydantic
+        model class or a raw JSON Schema dict. Emitted only for
+        ``openapi_version="3.2.0"``; raises under 3.0/3.1.
+    querystring_media_type:
+        Media type used to encode the querystring content. Defaults to
+        ``application/x-www-form-urlencoded``.
     parameters:
         List of OpenAPI parameter objects (query/path/header/cookie).
     security:
@@ -641,6 +678,19 @@ def register_openapi_metadata(
     if request_model is not None or response_model is not None:
         _validate_models(request_model, response_model, registry_key)
 
+    resolved_querystring_model: type[BaseModel] | None = None
+    resolved_querystring_schema: dict[str, Any] | None = None
+    if querystring is not None:
+        if isinstance(querystring, dict):
+            resolved_querystring_schema = querystring
+        elif isinstance(querystring, type) and issubclass(querystring, BaseModel):
+            resolved_querystring_model = querystring
+        else:
+            raise ValueError(
+                "'querystring' must be either a Pydantic BaseModel subclass "
+                "or a dictionary."
+            )
+
     reg = registry if registry is not None else _registry
     with reg.lock:
         # Same method+path is a single OpenAPI operation by definition, so
@@ -673,6 +723,9 @@ def register_openapi_metadata(
                 "request_body_required": request_body_required,
                 "response_model": response_model,
                 "response": response or {},
+                "querystring_model": resolved_querystring_model,
+                "querystring_schema": resolved_querystring_schema,
+                "querystring_media_type": querystring_media_type,
                 "function_name": registry_key,
                 "_function_id": f"programmatic.{registry_key}",
             },
@@ -766,11 +819,21 @@ def _validate_parameters(
         if not isinstance(param, dict):
             raise ValueError(f"Parameter at index {i} must be a dictionary")
 
-        # Validate required fields
-        required_fields = ["name", "in"]
-        for field in required_fields:
-            if field not in param:
-                raise ValueError(f"Parameter at index {i} missing required field: {field}")
+        # Validate required fields. OpenAPI 3.2 'querystring' parameters are
+        # special: 'name' is unused and the payload is carried in 'content'
+        # rather than 'schema'.
+        if param.get("in") == "querystring":
+            if "content" not in param:
+                raise ValueError(
+                    f"querystring parameter at index {i} missing required field: content"
+                )
+        else:
+            required_fields = ["name", "in"]
+            for field in required_fields:
+                if field not in param:
+                    raise ValueError(
+                        f"Parameter at index {i} missing required field: {field}"
+                    )
 
         validated_params.append(param)
 
