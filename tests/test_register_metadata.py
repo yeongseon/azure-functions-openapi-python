@@ -156,7 +156,7 @@ def test_register_empty_method_raises() -> None:
 
 def test_register_invalid_method_raises() -> None:
     with pytest.raises(ValueError, match="Invalid HTTP method"):
-        register_openapi_metadata(path="/api/bad", method="BADMETHOD")
+        register_openapi_metadata(path="/api/bad", method="BAD METHOD")
 
 
 def test_register_with_response_model() -> None:

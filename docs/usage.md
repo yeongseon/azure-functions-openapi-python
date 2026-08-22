@@ -222,6 +222,58 @@ defaults to `True`):
     guide](migration/unified-params.md) for full before/after recipes and the
     alias-retention policy.
 
+## Streaming responses (OpenAPI 3.2)
+
+OpenAPI 3.2 adds first-class support for **sequential / streaming media types**
+such as Server-Sent Events (`text/event-stream`), `application/jsonl`, and
+`application/json-seq`. Each streamed item is described with the Media Type
+Object's **`itemSchema`** field (the `schema` field, when present, describes the
+complete body as a whole).
+
+Pass a raw Response Object with an `itemSchema` entry — a Pydantic model, a
+generic alias like `list[Model]`, or an inline JSON Schema dict are all resolved
+the same way the `schema` position is:
+
+```python
+from pydantic import BaseModel
+
+
+class ChatDelta(BaseModel):
+    token: str
+    index: int
+
+
+@openapi(
+    summary="Stream chat completions",
+    method="get",
+    route="/api/chat/stream",
+    responses={
+        200: {
+            "description": "Server-sent event stream of chat deltas",
+            "content": {
+                # itemSchema describes each streamed event
+                "text/event-stream": {"itemSchema": ChatDelta},
+            },
+        }
+    },
+)
+@app.route(route="chat/stream", methods=["GET"])
+def chat_stream(req):
+    ...
+```
+
+Generate the document with `openapi_version="3.2.0"` so the streaming media type
+is emitted under a spec version that understands `itemSchema`:
+
+```python
+spec = generate_openapi_spec(openapi_version="3.2.0")
+```
+
+> `itemSchema` is an OpenAPI 3.2 construct. If you emit it while targeting
+> `3.0.0` or `3.1.0`, the field is still written out but a `RuntimeWarning` is
+> raised, since 3.0/3.1 tooling may not understand it. Prefer `3.2.0` for
+> streaming responses.
+
 ## Parameters (query/path/header/cookie)
 
 Use OpenAPI Parameter Objects in `parameters`.
@@ -368,6 +420,29 @@ spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
 
 Under 3.0/3.1 there is no `query` path-item field, so the operation is dropped
 with a warning (and raises under `strict=True`).
+
+    ### Non-standard HTTP methods (OpenAPI 3.2)
+
+    OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
+`post`, `delete`, `options`, `head`, `patch`, `trace`). OpenAPI 3.2 adds an
+`additionalOperations` map for methods outside that set (for example `PURGE`
+or `LINK`). When you document a handler bound to a non-standard method and
+generate a **3.2** spec, the operation is emitted under `additionalOperations`
+keyed by the uppercased method name:
+
+```python
+from azure_functions_openapi import OPENAPI_VERSION_3_2, generate_openapi_spec
+from azure_functions_openapi.decorator import register_openapi_metadata
+
+register_openapi_metadata("/api/cache", "purge", summary="Purge cache")
+
+spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+# spec["paths"]["/api/cache"]["additionalOperations"]["PURGE"] -> Operation
+```
+
+Standard methods are unaffected — they stay first-class path-item fields. When
+you target 3.0/3.1, a non-standard method cannot be represented, so it is
+dropped from the spec with a warning (and raises under `strict=True`).
 
 ## Swagger UI route
 
