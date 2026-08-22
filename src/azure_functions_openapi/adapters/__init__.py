@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from azure_functions_openapi.adapters.azure_functions import (
     build_function,
+    extract_auth_level,
     extract_http_binding,
     get_bindings,
     get_function_name,
@@ -21,6 +22,7 @@ from azure_functions_openapi.adapters.azure_functions import (
 
 __all__ = [
     "build_function",
+    "extract_auth_level",
     "extract_http_binding",
     "get_bindings",
     "get_function_name",

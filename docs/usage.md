@@ -345,6 +345,56 @@ You can define security at operation-level and component-level.
 )
 ```
 
+### Infer security from `auth_level` (opt-in)
+
+Azure Functions routes already declare their auth policy via `auth_level`:
+
+```python
+@app.route(route="users", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])
+```
+
+Rather than repeating that intent in `@openapi(security=..., security_scheme=...)`,
+you can have the spec derive the security requirement and scheme directly from the
+route's `auth_level` by passing `infer_auth_level=True`:
+
+```python
+spec = generate_openapi_spec(title="My API", infer_auth_level=True)
+# get_openapi_json(..., infer_auth_level=True) and
+# get_openapi_yaml(..., infer_auth_level=True) accept the same flag.
+```
+
+Mapping:
+
+| `auth_level`         | Injected security                                      |
+| -------------------- | ------------------------------------------------------ |
+| `ANONYMOUS`          | nothing                                                |
+| `FUNCTION`           | `apiKey` `x-functions-key` (header), scheme `AzureFunctionKey` |
+| `ADMIN`              | `apiKey` `x-functions-key` (header, master key), scheme `AzureFunctionKey` |
+
+Generated output for a `FUNCTION` route:
+
+```yaml
+security:
+  - AzureFunctionKey: []
+components:
+  securitySchemes:
+    AzureFunctionKey:
+      type: apiKey
+      in: header
+      name: x-functions-key
+```
+
+**Notes:**
+
+- The flag defaults to `False`, so existing specs are unchanged unless you opt in.
+- Inference only works on the **binding-scan path** — i.e. when the spec is built by
+  scanning a `FunctionApp` instance (the CLI `module:variable` form, or
+  `scan_endpoint_metadata`). The plain `@openapi`-only path cannot see the HTTP
+  trigger binding, so no `auth_level` is available there.
+- User-supplied values always win: inference injects `security` / `security_scheme`
+  only for operations that have none.
+
+
 ## Multiple endpoints and tags
 
 You can annotate each endpoint independently and group by tags.

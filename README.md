@@ -90,6 +90,7 @@ Spec matches code. Always. Swagger UI out of the box.
 - **Swagger UI** — built-in `/docs` endpoint with security defaults
 - **CLI tooling** — generate specs at build time for CI validation
 - **Schema support** — query, path, header, body, and response schemas
+- **`auth_level` security inference** — opt-in `infer_auth_level=True` derives OpenAPI security from a route's Azure Functions `auth_level` (see [Usage Guide](docs/usage.md#infer-security-from-auth_level-opt-in))
 
 
 ### How it fits together

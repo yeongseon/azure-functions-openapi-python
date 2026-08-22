@@ -237,3 +237,22 @@ def extract_http_binding(function: Any) -> Any | None:
         if str(getattr(binding, "type", "")).lower() == _HTTP_TRIGGER_TYPE:
             return binding
     return None
+
+
+def extract_auth_level(binding: Any) -> str | None:
+    """Return the HTTP-trigger binding's ``auth_level`` as a lowercase string.
+
+    Azure Functions exposes the per-route auth level (declared via
+    ``@app.route(auth_level=...)``) on the HTTP-trigger binding as an
+    ``AuthLevel`` enum (e.g. ``AuthLevel.FUNCTION``). We normalize it to the
+    enum's lowercase string value (``"anonymous"`` / ``"function"`` /
+    ``"admin"``) so downstream consumers never import the SDK enum. Returns
+    ``None`` when the binding carries no ``auth_level`` (e.g. a non-trigger
+    binding), guarding every read so an SDK shape change degrades to ``None``
+    rather than raising.
+    """
+    level = getattr(binding, "auth_level", None)
+    if level is None:
+        return None
+    value = getattr(level, "value", level)
+    return str(value).lower()
