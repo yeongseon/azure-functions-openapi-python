@@ -7,6 +7,7 @@ import json
 import logging
 import re
 from typing import Any, get_origin
+import warnings
 
 from pydantic import BaseModel
 import yaml
@@ -216,7 +217,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
 
     Converts schemas in:
     - requestBody.content.*.schema
-    - responses.*.content.*.schema
+    - responses.*.content.*.schema and .itemSchema
     - parameters[].schema
     """
     for _path, methods in paths.items():
@@ -242,8 +243,13 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                     content = resp.get("content")
                     if isinstance(content, dict):
                         for _media, media_obj in content.items():
-                            if isinstance(media_obj, dict) and "schema" in media_obj:
-                                media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+                            if not isinstance(media_obj, dict):
+                                continue
+                            for _schema_key in _MEDIA_SCHEMA_KEYS:
+                                if _schema_key in media_obj:
+                                    media_obj[_schema_key] = _convert_schema_to_3_1(
+                                        media_obj[_schema_key]
+                                    )
 
             # parameters
             for param in operation.get("parameters", []):
@@ -251,6 +257,37 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                     param["schema"] = _convert_schema_to_3_1(param["schema"])
 
     return paths
+
+
+# Media Type Object keys (OpenAPI 3.2 adds ``itemSchema`` for sequential/
+# streaming media types such as ``text/event-stream``; see #473). Both
+# positions may carry a Pydantic model / generic alias / inline JSON Schema
+# and are resolved to a ``$ref`` (or hoisted defs) the same way.
+_MEDIA_SCHEMA_KEYS = ("schema", "itemSchema")
+
+
+def _resolve_media_schema(
+    raw_schema: Any,
+    components: dict[str, Any],
+    hoist_flat_schemas: bool,
+) -> Any:
+    """Resolve a media-type schema value into an emittable JSON Schema.
+
+    Handles the three shorthands accepted in a ``content.<media>.schema`` or
+    ``content.<media>.itemSchema`` position: a Pydantic ``BaseModel`` subclass,
+    a generic collection alias (e.g. ``list[Model]``), or a raw inline
+    JSON-Schema dict.
+    """
+    if isinstance(raw_schema, type) and issubclass(raw_schema, BaseModel):
+        # Unified per-status model shorthand (#410): resolve the model to a
+        # $ref here, where the components registry is available.
+        return model_to_schema(raw_schema, components)
+    if get_origin(raw_schema) is not None:
+        # Generic collection alias shorthand (#450), e.g. list[Model]: resolve
+        # via TypeAdapter to a valid array schema; hoist_inline_defs expects a
+        # dict JSON-Schema and would break on a raw alias.
+        return type_to_schema(raw_schema, components)
+    return hoist_inline_defs(raw_schema, components, hoist_flat=hoist_flat_schemas)
 
 
 def generate_openapi_spec(
@@ -347,28 +384,34 @@ def generate_openapi_spec(
                     if isinstance(resp_content, dict):
                         hoisted_content: dict[str, Any] = {}
                         for media, media_obj in resp_content.items():
-                            if isinstance(media_obj, dict) and "schema" in media_obj:
-                                raw_schema = media_obj["schema"]
-                                if isinstance(raw_schema, type) and issubclass(
-                                    raw_schema, BaseModel
+                            if isinstance(media_obj, dict) and any(
+                                key in media_obj for key in _MEDIA_SCHEMA_KEYS
+                            ):
+                                new_media_obj = dict(media_obj)
+                                for schema_key in _MEDIA_SCHEMA_KEYS:
+                                    if schema_key in new_media_obj:
+                                        new_media_obj[schema_key] = _resolve_media_schema(
+                                            new_media_obj[schema_key],
+                                            components,
+                                            hoist_flat_schemas,
+                                        )
+                                if (
+                                    "itemSchema" in new_media_obj
+                                    and openapi_version != OPENAPI_VERSION_3_2
                                 ):
-                                    # Unified per-status model shorthand (#410):
-                                    # resolve the model to a $ref here, where the
-                                    # components registry is available.
-                                    resolved_schema = model_to_schema(raw_schema, components)
-                                elif get_origin(raw_schema) is not None:
-                                    # Generic collection alias shorthand (#450),
-                                    # e.g. list[Model]: resolve via TypeAdapter to a
-                                    # valid array schema; hoist_inline_defs expects a
-                                    # dict JSON-Schema and would break on a raw alias.
-                                    resolved_schema = type_to_schema(raw_schema, components)
-                                else:
-                                    resolved_schema = hoist_inline_defs(
-                                        raw_schema,
-                                        components,
-                                        hoist_flat=hoist_flat_schemas,
+                                    warnings.warn(
+                                        f"Response media type '{media}' for function "
+                                        f"'{func_name}' uses 'itemSchema', which is an "
+                                        f"OpenAPI 3.2 feature for sequential/streaming "
+                                        f"media types, but the target openapi_version is "
+                                        f"{openapi_version}. The field is emitted as-is "
+                                        f"but may not be understood by 3.0/3.1 tooling. "
+                                        f"Use openapi_version='3.2.0' for streaming "
+                                        f"responses.",
+                                        RuntimeWarning,
+                                        stacklevel=2,
                                     )
-                                media_obj = {**media_obj, "schema": resolved_schema}
+                                media_obj = new_media_obj
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
                     responses[str(status)] = resp

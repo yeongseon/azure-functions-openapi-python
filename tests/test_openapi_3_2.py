@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 import yaml
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
@@ -73,3 +75,211 @@ class TestGetOpenapiYaml3_2:
         result = get_openapi_yaml(openapi_version=OPENAPI_VERSION_3_2)
 
         assert yaml.safe_load(result)["openapi"] == "3.2.0"
+
+
+
+class TestStreamingItemSchema3_2:
+    """OpenAPI 3.2 sequential/streaming media types via ``itemSchema`` (#473)."""
+
+    def _register(self, response: dict[int, dict[str, Any]], *, registry: OpenAPIRegistry) -> None:
+        from azure_functions_openapi.decorator import register_openapi_metadata
+
+        register_openapi_metadata(
+            "/api/events",
+            "get",
+            response=response,
+            registry=registry,
+        )
+
+    def test_item_schema_model_resolves_to_ref(self) -> None:
+        from pydantic import BaseModel
+
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        class SseEvent(BaseModel):
+            id: int
+            message: str
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {"text/event-stream": {"itemSchema": SseEvent}},
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "text/event-stream"
+        ]
+        assert media["itemSchema"] == {"$ref": "#/components/schemas/SseEvent"}
+        assert "SseEvent" in spec["components"]["schemas"]
+
+    def test_item_schema_generic_alias_resolves_to_array(self) -> None:
+        from pydantic import BaseModel
+
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        class Item(BaseModel):
+            name: str
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Sequential items",
+                    "content": {"application/jsonl": {"itemSchema": list[Item]}},
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "application/jsonl"
+        ]
+        assert media["itemSchema"]["type"] == "array"
+
+    def test_item_schema_inline_dict_passes_through(self) -> None:
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {
+                            "itemSchema": {
+                                "type": "object",
+                                "properties": {"message": {"type": "string"}},
+                            }
+                        }
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "text/event-stream"
+        ]
+        assert media["itemSchema"]["properties"]["message"] == {"type": "string"}
+
+    def test_item_schema_and_schema_coexist(self) -> None:
+        from pydantic import BaseModel
+
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        class Event(BaseModel):
+            seq: int
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {
+                            "schema": {"type": "array"},
+                            "itemSchema": Event,
+                        }
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "text/event-stream"
+        ]
+        assert media["schema"] == {"type": "array"}
+        assert media["itemSchema"] == {"$ref": "#/components/schemas/Event"}
+
+    def test_item_schema_warns_on_pre_3_2_version(self) -> None:
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {
+                            "itemSchema": {"type": "object"},
+                        }
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+        with pytest.warns(RuntimeWarning, match="itemSchema"):
+            generate_openapi_spec(
+                openapi_version=OPENAPI_VERSION_3_1, registry=registry, route_prefix=""
+            )
+
+    def test_item_schema_no_warning_on_3_2(self, recwarn: pytest.WarningsRecorder) -> None:
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {
+                            "itemSchema": {"type": "object"},
+                        }
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+        generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        assert not [w for w in recwarn.list if issubclass(w.category, RuntimeWarning)]
+
+    def test_plain_schema_response_unaffected(self) -> None:
+        """Regression: schema-only responses keep resolving as before."""
+        from pydantic import BaseModel
+
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        class Body(BaseModel):
+            ok: bool
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "JSON body",
+                    "content": {"application/json": {"schema": Body}},
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]
+        assert media["schema"] == {"$ref": "#/components/schemas/Body"}
+        assert "itemSchema" not in media
