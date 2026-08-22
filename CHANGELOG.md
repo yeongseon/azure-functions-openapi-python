@@ -1,10 +1,20 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.23.0] - 2026-08-22
+
+### Features
+
+- *(spec)* Infer OpenAPI security from Azure Functions auth_level (#482) (#483) 
+
+### Other
+
+- Bump version to 0.23.0 
 ## [0.22.0] - 2026-08-22
 
 ### Documentation
 
+- Update changelog 
 - *(deployment)* Embed auto-captured Azure e2e screenshots (#408) (#463) 
 - *(ci)* Correct lib-tests description in publish-pypi workflow (#458) 
 - *(deployment)* Restore real Azure deployment screenshots at OAS 3.1 (#457) 
