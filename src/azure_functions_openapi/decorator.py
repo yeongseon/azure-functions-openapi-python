@@ -680,7 +680,13 @@ def register_openapi_metadata(
     logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
 
 
-_VALID_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
+# ``QUERY`` (OpenAPI 3.2 §4.8.5): a safe, idempotent method that carries a
+# request payload. Accepted here for documentation; it is emitted as a
+# first-class ``query`` path-item operation only under 3.2 (#472) and dropped
+# with a warning under 3.0/3.1, which have no such field.
+_VALID_HTTP_METHODS = frozenset(
+    {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "QUERY"}
+)
 
 
 def _validate_method(method: str | None, func_name: str) -> str | None:

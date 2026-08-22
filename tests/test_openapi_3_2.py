@@ -73,3 +73,74 @@ class TestGetOpenapiYaml3_2:
         result = get_openapi_yaml(openapi_version=OPENAPI_VERSION_3_2)
 
         assert yaml.safe_load(result)["openapi"] == "3.2.0"
+
+
+class TestQueryMethod3_2:
+    """#472: the OpenAPI 3.2 ``query`` HTTP method."""
+
+    def _register_query(self) -> None:
+        from azure_functions_openapi.decorator import (
+            clear_openapi_registry,
+            register_openapi_metadata,
+        )
+
+        clear_openapi_registry()
+        register_openapi_metadata(
+            "/api/search",
+            "query",
+            summary="Query search",
+            request_body={"type": "object", "properties": {"q": {"type": "string"}}},
+        )
+
+    def test_query_emitted_as_first_class_field_on_3_2(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+        finally:
+            clear_openapi_registry()
+
+        path_item = spec["paths"]["/api/search"]
+        assert "query" in path_item
+        assert path_item["query"]["summary"] == "Query search"
+
+    def test_query_carries_request_body(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+        finally:
+            clear_openapi_registry()
+
+        assert "requestBody" in spec["paths"]["/api/search"]["query"]
+
+    def test_query_dropped_with_warning_on_3_1(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1)
+        finally:
+            clear_openapi_registry()
+
+        assert "query" not in spec["paths"]["/api/search"]
+
+    def test_query_on_3_1_strict_raises(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            with pytest.raises(OpenAPISpecConfigError) as exc_info:
+                generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, strict=True)
+        finally:
+            clear_openapi_registry()
+
+        assert "query" in str(exc_info.value)
+
+    def test_query_method_accepted_by_validator(self) -> None:
+        from azure_functions_openapi.decorator import _validate_method
+
+        assert _validate_method("QUERY", "fn") == "query"
+        assert _validate_method("query", "fn") == "query"
