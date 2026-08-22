@@ -396,9 +396,34 @@ json_spec = get_openapi_json(title="Orders API", version="2026.03")
 yaml_spec = get_openapi_yaml(title="Orders API", version="2026.03")
 ```
 
-### Non-standard HTTP methods (OpenAPI 3.2)
+### The `query` HTTP method (OpenAPI 3.2)
 
-OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
+OpenAPI 3.2 adds `query`, a safe, idempotent HTTP method that carries a
+request payload. Document a handler with `method="query"` and generate a
+**3.2** spec to emit it as a first-class path-item operation (with an optional
+`requestBody`):
+
+```python
+from azure_functions_openapi import OPENAPI_VERSION_3_2, generate_openapi_spec
+from azure_functions_openapi.decorator import register_openapi_metadata
+
+register_openapi_metadata(
+    "/api/search",
+    "query",
+    summary="Query search",
+    request_body={"type": "object", "properties": {"q": {"type": "string"}}},
+)
+
+spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+# spec["paths"]["/api/search"]["query"] -> Operation (with requestBody)
+```
+
+Under 3.0/3.1 there is no `query` path-item field, so the operation is dropped
+with a warning (and raises under `strict=True`).
+
+    ### Non-standard HTTP methods (OpenAPI 3.2)
+
+    OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
 `post`, `delete`, `options`, `head`, `patch`, `trace`). OpenAPI 3.2 adds an
 `additionalOperations` map for methods outside that set (for example `PURGE`
 or `LINK`). When you document a handler bound to a non-standard method and

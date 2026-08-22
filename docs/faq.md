@@ -10,7 +10,8 @@ Use 3.2.0 if you specifically need to advertise a 3.2 document. It is a
 backward-compatible superset of 3.1.0 and shares the same JSON Schema 2020-12
 dialect. This library emits a valid 3.2.0 document and supports 3.2-only
 constructs (querystring schemas, non-standard HTTP methods via
-`additionalOperations`, and streaming media types via `itemSchema`).
+`additionalOperations`, the `query` HTTP method, and streaming media types via
+`itemSchema`).
 Some viewers (including the bundled Swagger UI) may not render 3.2.0 yet —
 prefer 3.1.0 unless you need one of those constructs or a concrete 3.2
 requirement.

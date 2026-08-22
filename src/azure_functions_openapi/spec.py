@@ -602,8 +602,10 @@ def generate_openapi_spec(
 
                     # requestBody: only body-bearing methods, and never on an
                     # auto-expanded GET/HEAD/DELETE (OpenAPI leaves the body
-                    # undefined there and many tools reject it).
-                    body_methods = {"post", "put", "patch", "delete"}
+                    # undefined there and many tools reject it). ``query`` (3.2)
+                    # is safe/idempotent but explicitly carries a request
+                    # payload, so it is body-bearing too.
+                    body_methods = {"post", "put", "patch", "delete", "query"}
                     if methods_expanded:
                         body_methods -= BODYLESS_HTTP_METHODS
                     if request_body_obj is not None and method in body_methods:
@@ -688,6 +690,9 @@ def generate_openapi_spec(
         validation_warnings.extend(
             _restructure_additional_operations(spec, openapi_version)
         )
+        # ``query`` is a first-class operation field only in OpenAPI 3.2; under
+        # 3.0/3.1 it cannot be represented, so drop it with a warning.
+        validation_warnings.extend(_drop_unsupported_query(spec, openapi_version))
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
 
@@ -828,6 +833,29 @@ def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
+
+def _drop_unsupported_query(spec: dict[str, Any], openapi_version: str) -> list[str]:
+    """Drop ``query`` operations from pre-3.2 specs (#472).
+
+    The ``query`` HTTP method is a first-class path-item operation field only in
+    OpenAPI 3.2. Under 3.0/3.1 there is no way to represent it, so any ``query``
+    operation is removed and a warning message is returned. Under 3.2 (and for
+    paths without a ``query`` operation) nothing is changed and an empty list is
+    returned.
+    """
+    if openapi_version == OPENAPI_VERSION_3_2:
+        return []
+    warnings: list[str] = []
+    for path, path_item in spec.get("paths", {}).items():
+        if isinstance(path_item, dict) and "query" in path_item:
+            path_item.pop("query")
+            warnings.append(
+                f"The 'query' HTTP method on {path} requires OpenAPI 3.2; "
+                f"dropped from the {openapi_version} spec"
+            )
+    return warnings
+
+
 # Path-item fields that are NOT non-standard operations and therefore must never
 # be moved into ``additionalOperations``. ``query`` is a first-class OpenAPI 3.2
 # operation field, so it is never treated as an additionalOperations candidate;
@@ -880,6 +908,7 @@ def _restructure_additional_operations(
                     f"OpenAPI 3.2 (additionalOperations); dropped from the "
                     f"{openapi_version} spec"
                 )
+
     return warnings
 
 

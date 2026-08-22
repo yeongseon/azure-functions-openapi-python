@@ -734,7 +734,6 @@ def register_openapi_metadata(
     logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
 
 
-_VALID_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 
 # RFC 7230 §3.2.6 token: the grammar an HTTP method name must satisfy. Used to
 # accept non-standard methods (e.g. ``PURGE``, ``QUERY``) for documentation-only

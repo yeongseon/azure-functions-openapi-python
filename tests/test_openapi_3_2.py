@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -668,3 +669,80 @@ class TestValidateMethodTokens:
 
         with pytest.raises(ValueError):
             _validate_method("   ", "fn")
+
+
+class TestQueryMethod3_2:
+    """#472: the OpenAPI 3.2 ``query`` HTTP method."""
+
+    def _register_query(self) -> None:
+        from azure_functions_openapi.decorator import (
+            clear_openapi_registry,
+            register_openapi_metadata,
+        )
+
+        clear_openapi_registry()
+        register_openapi_metadata(
+            "/api/search",
+            "query",
+            summary="Query search",
+            request_body={"type": "object", "properties": {"q": {"type": "string"}}},
+        )
+
+    def test_query_emitted_as_first_class_field_on_3_2(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+        finally:
+            clear_openapi_registry()
+
+        path_item = spec["paths"]["/api/search"]
+        assert "query" in path_item
+        assert path_item["query"]["summary"] == "Query search"
+
+    def test_query_carries_request_body(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+        finally:
+            clear_openapi_registry()
+
+        assert "requestBody" in spec["paths"]["/api/search"]["query"]
+
+    def test_query_dropped_with_warning_on_3_1(self, caplog: pytest.LogCaptureFixture) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            with caplog.at_level(logging.WARNING, logger="azure_functions_openapi.spec"):
+                spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1)
+        finally:
+            clear_openapi_registry()
+
+        assert "query" not in spec["paths"]["/api/search"]
+        assert any(
+            "query" in record.getMessage().lower()
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        ), "expected a WARNING log noting the dropped 'query' operation"
+
+    def test_query_on_3_1_strict_raises(self) -> None:
+        from azure_functions_openapi.decorator import clear_openapi_registry
+
+        self._register_query()
+        try:
+            with pytest.raises(OpenAPISpecConfigError) as exc_info:
+                generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, strict=True)
+        finally:
+            clear_openapi_registry()
+
+        assert "query" in str(exc_info.value)
+
+    def test_query_method_accepted_by_validator(self) -> None:
+        from azure_functions_openapi.decorator import _validate_method
+
+        assert _validate_method("QUERY", "fn") == "query"
+        assert _validate_method("query", "fn") == "query"
