@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field
 import pytest
 
 from azure_functions_openapi.decorator import (
-    _expand_model_parameters,
+_expand_model_parameters,
     _merge_typed_parameters,
+    _schema_is_object,
     clear_openapi_registry,
     openapi,
 )
@@ -191,6 +192,46 @@ class TestEdgeCaseHardening:
         params = _expand_model_parameters(Two, "path", "h")
         assert params[0]["schema"] == params[1]["schema"]
         assert params[0]["schema"] is not params[1]["schema"]
+
+    def test_aliased_fields_colliding_on_wire_name_are_rejected(self) -> None:
+        class H(BaseModel):
+            a: str = Field(alias="X-Id")
+            b: str = Field(alias="X-Id")
+
+        with pytest.raises(OpenAPISpecConfigError, match="map to parameter name"):
+            _expand_model_parameters(H, "header", "h")
+
+    def test_nullable_array_element_strips_nested_null_branch(self) -> None:
+        class H(BaseModel):
+            tags: list[Optional[int]] = Field(default_factory=list)
+
+        params = _expand_model_parameters(H, "header", "h")
+        items = params[0]["schema"]["items"]
+        assert "null" not in json.dumps(items)
+        assert items == {"type": "integer"}
+
+    def test_schema_is_object_detects_array_form_type(self) -> None:
+        assert _schema_is_object({"type": ["object", "null"]}) is True
+
+    def test_schema_is_object_detects_prefix_items(self) -> None:
+        assert _schema_is_object({"prefixItems": [{"type": "integer"}]}) is True
+
+    def test_schema_is_object_allows_scalar(self) -> None:
+        assert _schema_is_object({"type": "string"}) is False
+
+    def test_tuple_field_is_rejected(self) -> None:
+        class T(BaseModel):
+            pair: tuple[int, str]
+
+        with pytest.raises(OpenAPISpecConfigError, match="object schema"):
+            _expand_model_parameters(T, "header", "h")
+
+    def test_strip_titles_preserves_example_payload(self) -> None:
+        class H(BaseModel):
+            v: str = Field(json_schema_extra={"example": {"title": "keep me"}})
+
+        params = _expand_model_parameters(H, "header", "h")
+        assert params[0]["schema"]["example"] == {"title": "keep me"}
 
 
 class TestMergeTypedParameters:

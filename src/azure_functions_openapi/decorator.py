@@ -885,6 +885,12 @@ def _assert_param_schema_scalar(
                 _assert_param_schema_scalar(sub, location, field, func_name)
 
 
+# Keys whose values are user data (examples/defaults), not nested schemas: do
+# not recurse into them when stripping ``title`` so caller-supplied payloads that
+# happen to contain a ``title`` field are preserved verbatim.
+_SCHEMA_OPAQUE_KEYS = frozenset({"example", "examples", "default"})
+
+
 def _strip_titles(node: Any) -> Any:
     """Recursively drop pydantic-injected ``title`` keys from a schema.
 
@@ -893,7 +899,11 @@ def _strip_titles(node: Any) -> Any:
     every level rather than only at the top.
     """
     if isinstance(node, dict):
-        return {k: _strip_titles(v) for k, v in node.items() if k != "title"}
+        return {
+            k: (v if k in _SCHEMA_OPAQUE_KEYS else _strip_titles(v))
+            for k, v in node.items()
+            if k != "title"
+        }
     if isinstance(node, list):
         return [_strip_titles(item) for item in node]
     return node
@@ -929,6 +939,18 @@ def _strip_null_branches(schema: dict[str, Any]) -> tuple[dict[str, Any], bool]:
             result[combinator] = non_null
         else:
             del result[combinator]
+    # Nested schemas carry their own Optional encodings — e.g. ``list[Optional[T]]``
+    # renders the null branch under ``items`` — which are equally invalid under
+    # OpenAPI 3.0, so clean surviving children recursively. Their nullability does
+    # not affect the parameter's own presence, so ``was_nullable`` stays top-level.
+    if isinstance(result.get("items"), dict):
+        result["items"], _ = _strip_null_branches(result["items"])
+    for combinator in ("anyOf", "oneOf", "allOf"):
+        subs = result.get(combinator)
+        if isinstance(subs, list):
+            result[combinator] = [
+                _strip_null_branches(s)[0] if isinstance(s, dict) else s for s in subs
+            ]
     # A leftover ``default: null`` only encoded the now-removed null branch.
     if "default" in result and result["default"] is None:
         del result["default"]
@@ -951,6 +973,20 @@ def _expand_model_parameters(
         return []
     if not (isinstance(model, type) and issubclass(model, BaseModel)):
         raise ValueError(f"'{location}' must be a Pydantic BaseModel subclass.")
+
+    # ``model_json_schema()`` keys properties by wire name, so two fields sharing
+    # an alias collapse into one property and one parameter would be silently
+    # dropped. Inspect the declared fields first and fail fast on the collision.
+    seen_wire: dict[str, str] = {}
+    for field_name, field_info in model.model_fields.items():
+        wire = field_info.alias or field_name
+        if wire in seen_wire:
+            raise OpenAPISpecConfigError(
+                f"Fields '{seen_wire[wire]}' and '{field_name}' of the '{location}' "
+                f"model for '{func_name}' both map to parameter name '{wire}'. "
+                f"Use distinct field names or aliases."
+            )
+        seen_wire[wire] = field_name
 
     schema = model.model_json_schema()
     defs = schema.get("$defs", {})
