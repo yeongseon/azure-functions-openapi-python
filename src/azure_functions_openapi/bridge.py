@@ -49,6 +49,20 @@ def _tag_skew(entry: dict[str, Any], codes: Iterable[WarningCode]) -> None:
     entry["_skew_flags"] = sorted(merged)
 
 
+def _stamp_auth_level(entry: dict[str, Any], auth_level: str | None) -> None:
+    """Record the binding's normalized ``auth_level`` on a registry entry.
+
+    Stored under the private ``_auth_level`` key (lowercase ``AuthLevel`` value)
+    so :func:`azure_functions_openapi.spec.generate_openapi_spec` can optionally
+    derive an OpenAPI security requirement from it when ``infer_auth_level`` is
+    enabled. A ``None`` level (non-HTTP binding, or an SDK that does not expose
+    ``auth_level``) is not stamped, leaving the entry untouched.
+    """
+    if auth_level is None:
+        return
+    entry["_auth_level"] = auth_level
+
+
 def _normalize_method(method: Any) -> str:
     if method is None:
         return "get"
@@ -509,6 +523,11 @@ def scan_endpoint_metadata(
         # but to keep meta["route"] as the binding's source-of-truth route rather
         # than a pre-normalized path that already folds in the prefix.
         raw_route = getattr(binding, "route", None)
+        # Per-route auth level (declared via ``@app.route(auth_level=...)``)
+        # lives on the HTTP-trigger binding, not the app default. Capture it as
+        # a normalized lowercase string so spec.py can optionally infer an
+        # OpenAPI security requirement from it (#482).
+        auth_level = adapters.extract_auth_level(binding)
 
         canonical_id = canonical_function_id(handler)
 
@@ -699,6 +718,21 @@ def scan_endpoint_metadata(
                 registered = reg.get(endpoint_key)
                 if registered is not None:
                     _tag_skew(registered, entry_skew)
+
+        # Stamp the per-route auth level onto every operation this function
+        # produced so spec.py can infer security when ``infer_auth_level`` is on
+        # (#482). Stamping is done here, after all terminal branches, because the
+        # method loop has several exit points (explode / plain / merge /
+        # register); resolving each finalized entry once here keeps the capture
+        # in a single place. Re-stamping is idempotent.
+        if auth_level is not None:
+            with reg.lock:
+                if canonical_target is not None:
+                    _stamp_auth_level(canonical_target, auth_level)
+                for method in methods:
+                    entry = reg.get(f"{method}::{path}")
+                    if entry is not None:
+                        _stamp_auth_level(entry, auth_level)
 
         # After exploding a method=None @openapi entry into per-method entries,
         # drop the original so spec.py does not additionally emit it as a bare

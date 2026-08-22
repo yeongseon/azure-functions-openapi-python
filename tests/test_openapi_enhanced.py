@@ -191,6 +191,7 @@ class TestGetOpenAPIJSONEnhanced:
                 route_prefix="/api",
                 strict=False,
                 hoist_flat_schemas=False,
+                infer_auth_level=False,
                 registry=None,
             )
 
@@ -221,6 +222,7 @@ class TestGetOpenAPIJSONEnhanced:
                 route_prefix="/api",
                 strict=False,
                 hoist_flat_schemas=False,
+                infer_auth_level=False,
                 registry=None,
             )
 
@@ -260,6 +262,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 route_prefix="/api",
                 strict=False,
                 hoist_flat_schemas=False,
+                infer_auth_level=False,
                 registry=None,
             )
 
@@ -290,6 +293,7 @@ class TestGetOpenAPIYAMLEnhanced:
                 route_prefix="/api",
                 strict=False,
                 hoist_flat_schemas=False,
+                infer_auth_level=False,
                 registry=None,
             )
 

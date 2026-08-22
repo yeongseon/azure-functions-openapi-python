@@ -37,6 +37,42 @@ DEFAULT_OPENAPI_INFO_DESCRIPTION = (
 )
 
 
+# Auth-level inference (#482). Azure Functions declares a per-route auth policy
+# via ``@app.route(auth_level=...)``. When ``infer_auth_level`` is enabled, that
+# policy is translated into an OpenAPI security requirement + scheme so users do
+# not have to repeat it in ``@openapi(...)``. The scheme name is a stable
+# documented constant so downstream tooling can reference it.
+AZURE_FUNCTION_KEY_SCHEME_NAME = "AzureFunctionKey"
+_AZURE_FUNCTION_KEY_SCHEME: dict[str, Any] = {
+    "type": "apiKey",
+    "in": "header",
+    "name": "x-functions-key",
+}
+
+
+def _infer_auth_security(
+    auth_level: Any,
+) -> tuple[list[dict[str, list[str]]], dict[str, dict[str, Any]]] | None:
+    """Map a normalized ``auth_level`` to an OpenAPI (security, scheme) pair.
+
+    ``auth_level`` is the lowercase ``AuthLevel`` value captured on the binding
+    by the bridge scan (``"anonymous"`` / ``"function"`` / ``"admin"``).
+
+    * ``"anonymous"`` -> ``None`` (the endpoint is public; inject nothing).
+    * ``"function"`` / ``"admin"`` -> an ``apiKey`` ``x-functions-key`` scheme.
+      Both levels are satisfied by a function/master key sent in the
+      ``x-functions-key`` header, so they share one scheme.
+    * Anything else (unknown/missing) -> ``None`` so an SDK change never
+      fabricates a wrong requirement.
+    """
+    if auth_level in ("function", "admin"):
+        return (
+            [{AZURE_FUNCTION_KEY_SCHEME_NAME: []}],
+            {AZURE_FUNCTION_KEY_SCHEME_NAME: dict(_AZURE_FUNCTION_KEY_SCHEME)},
+        )
+    return None
+
+
 def get_openapi_registry() -> dict[str, dict[str, Any]]:
     """Return a snapshot of the process-wide OpenAPI metadata registry.
 
@@ -310,6 +346,7 @@ def generate_openapi_spec(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
 ) -> dict[str, Any]:
     """
     Compile an OpenAPI specification from the registry.
@@ -334,6 +371,16 @@ def generate_openapi_spec(
             ``components.schemas`` under their ``title`` and replaced with a
             ``$ref``, deduplicating schemas reused across endpoints. Defaults to
             ``False`` to preserve the verbatim inline-schema behaviour.
+        infer_auth_level: When ``True`` (opt-in, #482), derive an OpenAPI
+            security requirement from each operation's Azure Functions
+            ``auth_level`` (captured on the binding during the metadata scan).
+            ``FUNCTION``/``ADMIN`` map to an ``apiKey`` ``x-functions-key``
+            scheme named ``AzureFunctionKey``; ``ANONYMOUS`` injects nothing.
+            Inference is only applied to operations that supply no explicit
+            ``@openapi(security=...)`` — user-declared security always wins.
+            Requires the FunctionApp-scan path (e.g. CLI ``module:variable``);
+            a plain ``@openapi``-only registry carries no ``auth_level``.
+            Defaults to ``False`` for full backward compatibility.
 
     Returns:
         OpenAPI specification dictionary
@@ -548,6 +595,14 @@ def generate_openapi_spec(
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
+                # Infer from auth_level only when the operation declares no
+                # explicit security (user-declared security always wins) and the
+                # opt-in flag is set (#482). The binding-captured ``_auth_level``
+                # is only present on the FunctionApp-scan path.
+                if infer_auth_level and not security:
+                    _inferred = _infer_auth_security(meta.get("_auth_level"))
+                    if _inferred is not None:
+                        security = _inferred[0]
 
                 # requestBody schema (POST/PUT/PATCH/DELETE) ----------------------
                 request_body_obj: dict[str, Any] | None = None
@@ -666,6 +721,20 @@ def generate_openapi_spec(
                             f"new={definition!r}"
                         )
                     all_security_schemes[name] = definition
+            # Add the inferred Azure function-key scheme for operations that
+            # relied on auth_level inference (#482). Only when the operation
+            # declared neither explicit security nor an explicit scheme, and
+            # only if the name is free — a user scheme of the same name always
+            # wins (no collision error is raised for the inferred default).
+            if (
+                infer_auth_level
+                and not meta.get("security")
+                and not meta.get("security_scheme")
+            ):
+                _inferred = _infer_auth_security(meta.get("_auth_level"))
+                if _inferred is not None:
+                    for name, definition in _inferred[1].items():
+                        all_security_schemes.setdefault(name, definition)
 
         if all_security_schemes:
             components["securitySchemes"] = all_security_schemes
@@ -922,6 +991,7 @@ def get_openapi_json(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
 ) -> str:
     """Return the spec as pretty-printed JSON (UTF-8).
 
@@ -941,6 +1011,9 @@ def get_openapi_json(
         hoist_flat_schemas: When ``True`` (opt-in, #375), structured flat
             schemas are promoted into ``components.schemas``. Defaults to
             ``False`` to preserve the existing generated spec shape.
+        infer_auth_level: When ``True`` (opt-in, #482), derive OpenAPI security
+            from each operation's Azure Functions ``auth_level``. Defaults to
+            ``False``. See :func:`generate_openapi_spec` for details.
 
     Returns:
         OpenAPI spec in JSON format.
@@ -955,6 +1028,7 @@ def get_openapi_json(
             route_prefix=route_prefix,
             strict=strict,
             hoist_flat_schemas=hoist_flat_schemas,
+            infer_auth_level=infer_auth_level,
             registry=registry,
         )
         return json.dumps(spec, indent=2, ensure_ascii=False)
@@ -975,6 +1049,7 @@ def get_openapi_yaml(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
 ) -> str:
     """Return the spec as YAML.
 
@@ -994,6 +1069,9 @@ def get_openapi_yaml(
         hoist_flat_schemas: When ``True`` (opt-in, #375), structured flat
             schemas are promoted into ``components.schemas``. Defaults to
             ``False`` to preserve the existing generated spec shape.
+        infer_auth_level: When ``True`` (opt-in, #482), derive OpenAPI security
+            from each operation's Azure Functions ``auth_level``. Defaults to
+            ``False``. See :func:`generate_openapi_spec` for details.
 
     Returns:
         OpenAPI spec in YAML format.
@@ -1008,6 +1086,7 @@ def get_openapi_yaml(
             route_prefix=route_prefix,
             strict=strict,
             hoist_flat_schemas=hoist_flat_schemas,
+            infer_auth_level=infer_auth_level,
             registry=registry,
         )
         return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
