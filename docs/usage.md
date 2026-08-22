@@ -307,6 +307,56 @@ Use OpenAPI Parameter Objects in `parameters`.
 )
 ```
 
+### Typed parameters with Pydantic (`path=` / `headers=`)
+
+Writing raw parameter dicts is verbose. For **path** and **header** parameters
+you can pass a Pydantic model instead and let each field expand into a
+parameter entry — mirroring the Pydantic-first ergonomics of `requests=` /
+`responses=`.
+
+```python
+from pydantic import BaseModel, Field
+
+
+class OrderPath(BaseModel):
+    order_id: int
+
+
+class OrderHeaders(BaseModel):
+    correlation_id: str = Field(alias="X-Correlation-ID", description="Trace id")
+
+
+@openapi(
+    summary="Get order",
+    method="get",
+    route="/api/orders/{order_id}",
+    path=OrderPath,
+    headers=OrderHeaders,
+)
+def get_order(req): ...
+```
+
+Rules:
+
+- **`path=`** — every field becomes `in: path` and is always `required: true`
+  (per the OpenAPI spec).
+- **`headers=`** — every field becomes `in: header`; `required` follows the
+  model (a field with no default is required, an `Optional`/defaulted field is
+  not).
+- Field **aliases** are used as the wire parameter name; field `description`
+  flows onto the parameter.
+- Only scalar, enum, and array-of-scalar fields are allowed. **Nested-object
+  fields are rejected** because path/header parameters cannot carry objects.
+- Typed params **merge** with any raw `parameters=` you also pass. A duplicate
+  `(name, in)` pair raises an error instead of silently overriding.
+- `query=` is intentionally not offered here — use the OpenAPI 3.2
+  [`querystring=`](#the-query-http-method-openapi-32) surface for typed query
+  input.
+
+> Like the rest of `@openapi`, this is **documentation only** — it does not
+> parse or validate requests at runtime. For runtime validation, layer
+> [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python).
+
 ## Security documentation
 
 You can define security at operation-level and component-level.

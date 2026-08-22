@@ -204,6 +204,9 @@ def openapi(
     route: str | None = None,
     method: str | None = None,
     parameters: list[dict[str, Any]] | None = None,
+    # ── typed parameters (documentation sugar) ──────────────────
+    path: type[BaseModel] | None = None,
+    headers: type[BaseModel] | None = None,
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
     # ── request / response schema ───────────────────────────────
@@ -291,7 +294,15 @@ def openapi(
         HTTP method (matching the Azure runtime). A bare ``@openapi`` with no
         route binding and no ``method=`` emits a single ``get`` operation.
     parameters:
-        List of param objects (query/path/header/cookie).
+        List of raw OpenAPI param objects (query/path/header/cookie).
+    path:
+        Pydantic model whose fields document ``in: path`` parameters. Every
+        field becomes ``required: true``. Nested-object fields are rejected.
+        Documentation only — no runtime validation.
+    headers:
+        Pydantic model whose fields document ``in: header`` parameters.
+        Requiredness follows the model's optional/required fields. Nested-object
+        fields are rejected. Documentation only — no runtime validation.
     security:
         List of OpenAPI Security Requirement Objects.
         Example: [{"BearerAuth": []}]
@@ -390,6 +401,9 @@ def openapi(
                 operation_id, metadata_func.__name__
             )
             validated_parameters = _validate_parameters(parameters, metadata_func.__name__)
+            validated_parameters = _merge_typed_parameters(
+                validated_parameters, path, headers, metadata_func.__name__
+            )
             validated_security = _validate_security(security, metadata_func.__name__)
             validated_security_scheme = _validate_security_scheme(
                 security_scheme, metadata_func.__name__
@@ -806,6 +820,128 @@ def _validate_and_sanitize_operation_id(operation_id: str | None, func_name: str
         raise ValueError(f"Invalid operation ID: {operation_id}")
 
     return sanitized
+
+
+def _inline_param_defs(node: Any, defs: dict[str, Any], seen: frozenset[str]) -> Any:
+    """Recursively inline ``$ref`` targets from ``$defs`` into ``node``.
+
+    Pydantic represents enums and nested models as ``$ref`` entries pointing at
+    ``$defs``. Inlining lets the parameter-schema validator inspect the real
+    shape (enum vs object) instead of an opaque reference. A ``seen`` guard
+    prevents infinite recursion on self-referential models.
+    """
+    if isinstance(node, dict):
+        ref = node.get("$ref")
+        if isinstance(ref, str):
+            name = ref.rsplit("/", 1)[-1]
+            if name in seen:
+                return {}
+            target = defs.get(name, {})
+            return _inline_param_defs(target, defs, seen | {name})
+        return {k: _inline_param_defs(v, defs, seen) for k, v in node.items()}
+    if isinstance(node, list):
+        return [_inline_param_defs(item, defs, seen) for item in node]
+    return node
+
+
+def _assert_param_schema_scalar(
+    schema: dict[str, Any], location: str, field: str, func_name: str
+) -> None:
+    """Reject object-shaped schemas for ``path``/``header`` parameters.
+
+    OpenAPI ``path`` and ``header`` parameters must be primitives, enums, or
+    arrays of primitives. Nested models (objects) are invalid, so an explicit,
+    early error is raised instead of emitting a malformed spec.
+    """
+    if schema.get("type") == "object" or "properties" in schema:
+        raise OpenAPISpecConfigError(
+            f"Field '{field}' of the '{location}' model for '{func_name}' maps to "
+            f"an object schema, which is invalid for '{location}' parameters. "
+            f"Use scalar, enum, or array-of-scalar fields only."
+        )
+    if schema.get("type") == "array":
+        items = schema.get("items")
+        if isinstance(items, dict):
+            _assert_param_schema_scalar(items, location, field, func_name)
+    for combinator in ("anyOf", "allOf", "oneOf"):
+        for sub in schema.get(combinator, []):
+            if isinstance(sub, dict) and sub.get("type") != "null":
+                _assert_param_schema_scalar(sub, location, field, func_name)
+
+
+def _expand_model_parameters(
+    model: type[BaseModel] | None, location: str, func_name: str
+) -> list[dict[str, Any]]:
+    """Expand a Pydantic model into OpenAPI ``parameters`` entries.
+
+    Each model field becomes one parameter with ``in=location``. Field aliases
+    (when present) are used as the wire name. ``path`` parameters are always
+    ``required: true`` per the OpenAPI spec; ``header`` requiredness follows the
+    model's own required/optional field semantics. Nested-object fields are
+    rejected. This is documentation sugar only — it performs no runtime
+    validation.
+    """
+    if model is None:
+        return []
+    if not (isinstance(model, type) and issubclass(model, BaseModel)):
+        raise ValueError(f"'{location}' must be a Pydantic BaseModel subclass.")
+
+    schema = model.model_json_schema()
+    defs = schema.get("$defs", {})
+    properties: dict[str, Any] = schema.get("properties", {})
+    required_names = set(schema.get("required", []))
+
+    params: list[dict[str, Any]] = []
+    for name, raw_field_schema in properties.items():
+        field_schema = _inline_param_defs(raw_field_schema, defs, frozenset())
+        _assert_param_schema_scalar(field_schema, location, name, func_name)
+
+        field_schema.pop("title", None)
+        description = field_schema.pop("description", None)
+
+        param: dict[str, Any] = {"name": name, "in": location}
+        param["required"] = True if location == "path" else name in required_names
+        if description is not None:
+            param["description"] = description
+        param["schema"] = field_schema
+        params.append(param)
+    return params
+
+
+def _merge_typed_parameters(
+    base: list[dict[str, Any]],
+    path: type[BaseModel] | None,
+    headers: type[BaseModel] | None,
+    func_name: str,
+) -> list[dict[str, Any]]:
+    """Merge typed ``path``/``headers`` params into the raw ``parameters`` list.
+
+    On a duplicate ``(name, in)`` pair — across raw and typed params, or between
+    the two typed models — fail fast rather than silently overriding.
+    """
+    typed = _expand_model_parameters(path, "path", func_name) + _expand_model_parameters(
+        headers, "header", func_name
+    )
+    if not typed:
+        return base
+
+    merged = list(base)
+    seen = {
+        (p.get("name"), p.get("in"))
+        for p in merged
+        if isinstance(p, dict) and "name" in p
+    }
+    for param in typed:
+        key = (param["name"], param["in"])
+        if key in seen:
+            raise OpenAPISpecConfigError(
+                f"Duplicate parameter '{param['name']}' (in: {param['in']}) for "
+                f"'{func_name}': typed path=/headers= collides with an existing "
+                f"parameter. Remove the duplicate from parameters= or the model."
+            )
+        seen.add(key)
+        merged.append(param)
+    return merged
 
 
 def _validate_parameters(
