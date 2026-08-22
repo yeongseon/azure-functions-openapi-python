@@ -297,7 +297,6 @@ class TestQuerystring3_2:
                 )
         finally:
             clear_openapi_registry()
-            clear_openapi_registry()
 
     def test_register_metadata_rejects_invalid_querystring_type(self) -> None:
         from azure_functions_openapi.decorator import (
