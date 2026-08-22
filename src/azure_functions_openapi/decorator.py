@@ -161,7 +161,9 @@ def _normalize_unified_responses(
     * a generic collection alias such as ``list[Model]`` — the same bare-shorthand
       treatment, resolved to an array schema at spec-generation time, or
     * an OpenAPI Response Object mapping (unchanged; a Pydantic model may also appear
-      in its ``content.<media>.schema`` position and is resolved the same way).
+      in its ``content.<media>.schema`` position and is resolved the same way), or
+    * ``None`` — shorthand for a body-less response (e.g. ``204 No Content``),
+      expanded to ``{"description": ...}`` with no ``content`` key.
 
     Status keys may be ints (``200``), numeric strings (``"200"``), or the literal
     OpenAPI ``"default"`` key (the fallback response for any undocumented status);
@@ -172,7 +174,9 @@ def _normalize_unified_responses(
     normalized: dict[int | str, dict[str, Any]] = {}
     for raw_status, value in responses.items():
         status = _coerce_status_key(raw_status, func_name)
-        if _is_pydantic_model(value) or get_origin(value) is not None:
+        if value is None:
+            normalized[status] = {"description": _default_response_description(status)}
+        elif _is_pydantic_model(value) or get_origin(value) is not None:
             normalized[status] = {
                 "description": _default_response_description(status),
                 "content": {"application/json": {"schema": value}},
@@ -183,8 +187,9 @@ def _normalize_unified_responses(
             raise ValueError(
                 f"Invalid 'responses' entry for status {status} in function "
                 f"'{func_name}': each value must be a Pydantic BaseModel subclass, "
-                f"a generic collection alias (e.g. list[Model]), or an OpenAPI "
-                f"Response Object mapping, got {type(value).__name__}."
+                f"a generic collection alias (e.g. list[Model]), an OpenAPI "
+                f"Response Object mapping, or None (body-less response), "
+                f"got {type(value).__name__}."
             )
     return normalized
 
