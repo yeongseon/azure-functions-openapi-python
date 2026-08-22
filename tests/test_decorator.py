@@ -370,12 +370,18 @@ def test_openapi_registers_request_body_required_false() -> None:
 
 
 def test_openapi_raises_error_for_invalid_method() -> None:
-    """Test that @openapi rejects invalid HTTP methods like typos."""
+    """@openapi rejects malformed method strings (whitespace / non-token chars).
+
+    Since #471 the method set is no longer restricted to the standard verbs
+    (non-standard methods like ``PURGE`` are documented via 3.2
+    ``additionalOperations``), but a value that is not a valid HTTP token is
+    still rejected.
+    """
     import pytest
 
     with pytest.raises(ValueError, match="Invalid HTTP method"):
 
-        @openapi(summary="Bad method", method="posts")
+        @openapi(summary="Bad method", method="bad method")
         def bad_method_func() -> None:
             pass
 

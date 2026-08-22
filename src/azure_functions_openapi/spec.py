@@ -19,6 +19,7 @@ from azure_functions_openapi.routes import (
     ALL_HTTP_METHODS,
     BODYLESS_HTTP_METHODS,
     DEFAULT_ROUTE_PREFIX,
+    STANDARD_OPENAPI_METHODS,
     apply_route_prefix,
     normalize_route_prefix,
 )
@@ -561,6 +562,13 @@ def generate_openapi_spec(
         spec = _normalize_spec_output(spec)
 
         validation_warnings = _validate_spec(spec)
+        # Custom (non-standard) HTTP methods are validated above as ordinary
+        # operations, then relocated: under 3.2 into each path item's
+        # ``additionalOperations`` map, and under 3.0/3.1 dropped (the format has
+        # no way to express them) with a warning.
+        validation_warnings.extend(
+            _restructure_additional_operations(spec, openapi_version)
+        )
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
 
@@ -699,6 +707,58 @@ def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
     if "paths" in spec:
         spec["paths"] = dict(sorted(spec["paths"].items()))
     return spec
+
+
+# Path-item fields that are NOT operations and therefore must never be moved
+# into ``additionalOperations``. ``query`` is a first-class 3.2 operation field
+# handled separately (#472); the rest are the OpenAPI path-item metadata fields.
+_RESERVED_PATH_ITEM_FIELDS: frozenset[str] = frozenset(
+    {"summary", "description", "servers", "parameters", "$ref", "query", "additionalOperations"}
+)
+
+
+def _restructure_additional_operations(
+    spec: dict[str, Any], openapi_version: str
+) -> list[str]:
+    """Relocate non-standard HTTP method operations (#471).
+
+    Operations keyed by a method outside :data:`STANDARD_OPENAPI_METHODS`
+    cannot appear as ordinary path-item fields. Under OpenAPI 3.2 they are moved
+    into the path item's ``additionalOperations`` map (keyed by the uppercased
+    method name); under 3.0/3.1 they are removed because the format cannot
+    represent them.
+
+    Returns a list of human-readable warning messages for methods dropped from a
+    pre-3.2 spec (empty for 3.2, and for specs with only standard methods).
+    """
+    warnings: list[str] = []
+    for path, path_item in spec.get("paths", {}).items():
+        if not isinstance(path_item, dict):
+            continue
+        custom_methods = sorted(
+            method
+            for method, operation in path_item.items()
+            if method not in STANDARD_OPENAPI_METHODS
+            and method not in _RESERVED_PATH_ITEM_FIELDS
+            and isinstance(operation, dict)
+        )
+        if not custom_methods:
+            continue
+
+        if openapi_version == OPENAPI_VERSION_3_2:
+            additional = path_item.setdefault("additionalOperations", {})
+            for method in custom_methods:
+                additional[method.upper()] = path_item.pop(method)
+            path_item["additionalOperations"] = dict(sorted(additional.items()))
+        else:
+            for method in custom_methods:
+                path_item.pop(method)
+                warnings.append(
+                    f"Non-standard HTTP method '{method.upper()}' on {path} requires "
+                    f"OpenAPI 3.2 (additionalOperations); dropped from the "
+                    f"{openapi_version} spec"
+                )
+    return warnings
 
 
 def get_openapi_json(

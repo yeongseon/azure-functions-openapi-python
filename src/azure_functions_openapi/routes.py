@@ -29,6 +29,16 @@ ALL_HTTP_METHODS: tuple[str, ...] = (
 # operations (an explicitly requested method is left untouched).
 BODYLESS_HTTP_METHODS: frozenset[str] = frozenset({"get", "head", "delete"})
 
+# The fixed set of HTTP methods OpenAPI represents as first-class path-item
+# operation fields in 3.0/3.1 (RFC 7231 verbs plus TRACE). Methods outside this
+# set cannot be expressed as ordinary path-item operations; under OpenAPI 3.2
+# they are emitted through the ``additionalOperations`` map instead (#471), and
+# under 3.0/3.1 they are dropped with a warning because the format cannot
+# represent them.
+STANDARD_OPENAPI_METHODS: frozenset[str] = frozenset(
+    {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+)
+
 
 def normalize_route_prefix(route_prefix: str) -> str:
     """Canonicalize a user-supplied prefix.
