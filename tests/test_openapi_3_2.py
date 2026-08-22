@@ -283,3 +283,39 @@ class TestStreamingItemSchema3_2:
         ]
         assert media["schema"] == {"$ref": "#/components/schemas/Body"}
         assert "itemSchema" not in media
+
+    def test_item_schema_gets_3_1_conversion(self) -> None:
+        """Regression: itemSchema is subject to the same 3.1/3.2 JSON Schema
+        conversions (nullable -> type union, example -> examples) as schema."""
+        from azure_functions_openapi.registry import OpenAPIRegistry
+
+        registry = OpenAPIRegistry()
+        self._register(
+            {
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {
+                            "itemSchema": {
+                                "type": "string",
+                                "nullable": True,
+                                "example": "hello",
+                            }
+                        }
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=registry, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "text/event-stream"
+        ]
+        item = media["itemSchema"]
+        assert "nullable" not in item
+        assert item["type"] == ["string", "null"]
+        assert "example" not in item
+        assert item["examples"] == ["hello"]

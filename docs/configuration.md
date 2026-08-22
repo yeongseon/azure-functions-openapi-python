@@ -165,10 +165,11 @@ json_spec = get_openapi_json(
 - `example` values are normalized to `examples`
 
 3.2.0 is a backward-compatible superset of 3.1.0 and reuses the same JSON
-Schema 2020-12 conversions. This library emits a valid 3.2.0 document; it does
-not yet add 3.2-only constructs (querystring schemas, `additionalOperations`,
-the `query` HTTP method, or streaming media types). Note that some viewers —
-including the bundled Swagger UI — may not yet render 3.2.0 documents.
+Schema 2020-12 conversions. This library emits a valid 3.2.0 document and
+supports 3.2-only constructs (querystring schemas, `additionalOperations`,
+the `query` HTTP method, and streaming media types via `itemSchema`). Note
+that some viewers — including the bundled Swagger UI — may not yet render
+3.2.0 documents.
 
 ## Spec generation options
 
