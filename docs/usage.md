@@ -396,6 +396,29 @@ json_spec = get_openapi_json(title="Orders API", version="2026.03")
 yaml_spec = get_openapi_yaml(title="Orders API", version="2026.03")
 ```
 
+### Non-standard HTTP methods (OpenAPI 3.2)
+
+OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
+`post`, `delete`, `options`, `head`, `patch`, `trace`). OpenAPI 3.2 adds an
+`additionalOperations` map for methods outside that set (for example `PURGE`
+or `LINK`). When you document a handler bound to a non-standard method and
+generate a **3.2** spec, the operation is emitted under `additionalOperations`
+keyed by the uppercased method name:
+
+```python
+from azure_functions_openapi import OPENAPI_VERSION_3_2, generate_openapi_spec
+from azure_functions_openapi.decorator import register_openapi_metadata
+
+register_openapi_metadata("/api/cache", "purge", summary="Purge cache")
+
+spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
+# spec["paths"]["/api/cache"]["additionalOperations"]["PURGE"] -> Operation
+```
+
+Standard methods are unaffected — they stay first-class path-item fields. When
+you target 3.0/3.1, a non-standard method cannot be represented, so it is
+dropped from the spec with a warning (and raises under `strict=True`).
+
 ## Swagger UI route
 
 ```python

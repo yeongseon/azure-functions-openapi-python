@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from http import HTTPStatus
 import logging
+import re
 from typing import Any, Callable, Literal, TypeGuard, TypeVar, cast, get_origin
 import warnings
 
@@ -735,6 +736,11 @@ def register_openapi_metadata(
 
 _VALID_HTTP_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"})
 
+# RFC 7230 §3.2.6 token: the grammar an HTTP method name must satisfy. Used to
+# accept non-standard methods (e.g. ``PURGE``, ``QUERY``) for documentation-only
+# emission (#471) while still rejecting garbage like whitespace or ``"GET POST"``.
+_HTTP_TOKEN_RE = re.compile(r"^[-!#$%&'*+.^_`|~0-9A-Za-z]+$")
+
 
 def _validate_method(method: str | None, func_name: str) -> str | None:
     """Validate and normalize HTTP method.
@@ -755,10 +761,11 @@ def _validate_method(method: str | None, func_name: str) -> str | None:
         raise ValueError(f"method must be a non-empty string for function '{func_name}'")
 
     normalized = method.strip().upper()
-    if normalized not in _VALID_HTTP_METHODS:
+    if not _HTTP_TOKEN_RE.match(normalized):
         raise ValueError(
             f"Invalid HTTP method: {method!r} for function '{func_name}'. "
-            f"Must be one of {sorted(_VALID_HTTP_METHODS)}"
+            "Method names must be a valid HTTP token (RFC 7230): letters, digits, "
+            "or the characters !#$%&'*+-.^_`|~ with no whitespace."
         )
 
     return normalized.lower()
