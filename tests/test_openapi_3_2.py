@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 import yaml
@@ -116,16 +117,22 @@ class TestQueryMethod3_2:
 
         assert "requestBody" in spec["paths"]["/api/search"]["query"]
 
-    def test_query_dropped_with_warning_on_3_1(self) -> None:
+    def test_query_dropped_with_warning_on_3_1(self, caplog: pytest.LogCaptureFixture) -> None:
         from azure_functions_openapi.decorator import clear_openapi_registry
 
         self._register_query()
         try:
-            spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1)
+            with caplog.at_level(logging.WARNING, logger="azure_functions_openapi.spec"):
+                spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1)
         finally:
             clear_openapi_registry()
 
         assert "query" not in spec["paths"]["/api/search"]
+        assert any(
+            "query" in record.getMessage().lower()
+            for record in caplog.records
+            if record.levelno == logging.WARNING
+        ), "expected a WARNING log noting the dropped 'query' operation"
 
     def test_query_on_3_1_strict_raises(self) -> None:
         from azure_functions_openapi.decorator import clear_openapi_registry
