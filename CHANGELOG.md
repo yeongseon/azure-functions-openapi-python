@@ -1,7 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.24.0] - 2026-08-22
+
+### Bug Fixes
+
+- *(decorator)* Harden typed path=/headers= param expansion edge cases (#487) 
+
+### Features
+
+- *(decorator)* Add typed path=/headers= parameters for @openapi (#485) 
+
+### Other
+
+- Bump version to 0.24.0 
 ## [0.23.0] - 2026-08-22
+
+### Documentation
+
+- Update changelog 
 
 ### Features
 
