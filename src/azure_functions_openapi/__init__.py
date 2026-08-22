@@ -21,7 +21,7 @@ from azure_functions_openapi.spec import (
 from azure_functions_openapi.swagger_ui import render_swagger_ui
 from azure_functions_openapi.types import OpenAPIOperationMetadata
 
-__version__ = "0.21.2"
+__version__ = "0.22.0"
 scan_endpoint_metadata = _bridge.scan_endpoint_metadata
 scan_validation_metadata = _bridge.scan_validation_metadata
 
