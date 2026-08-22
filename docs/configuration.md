@@ -166,10 +166,10 @@ json_spec = get_openapi_json(
 
 3.2.0 is a backward-compatible superset of 3.1.0 and reuses the same JSON
 Schema 2020-12 conversions. This library emits a valid 3.2.0 document and
-supports the 3.2-only **querystring** parameter (see below); it does not yet
-add other 3.2-only constructs (`additionalOperations`, the `query` HTTP method,
-or streaming media types). Note that some viewers — including the bundled
-Swagger UI — may not yet render 3.2.0 documents.
+supports 3.2-only constructs (the **querystring** parameter — see below — and
+streaming media types via `itemSchema`); it does not yet add other 3.2-only
+constructs (`additionalOperations` or the `query` HTTP method). Note that some
+viewers — including the bundled Swagger UI — may not yet render 3.2.0 documents.
 
 ### Querystring parameters (3.2 only)
 

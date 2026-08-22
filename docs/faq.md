@@ -8,9 +8,11 @@ Use 3.1.0 if your tooling supports it and you want newer JSON Schema alignment.
 
 Use 3.2.0 if you specifically need to advertise a 3.2 document. It is a
 backward-compatible superset of 3.1.0 and shares the same JSON Schema 2020-12
-dialect. This library emits a valid 3.2.0 document but does not yet add
-3.2-only constructs, and some viewers (including the bundled Swagger UI) may
-not render 3.2.0 yet — prefer 3.1.0 unless you have a concrete 3.2 requirement.
+dialect. This library emits a valid 3.2.0 document and supports 3.2-only
+constructs (querystring schemas and streaming media types via `itemSchema`).
+Some viewers (including the bundled Swagger UI) may not render 3.2.0 yet —
+prefer 3.1.0 unless you need one of those constructs or a concrete 3.2
+requirement.
 
 ```python
 from azure_functions_openapi import OPENAPI_VERSION_3_1, get_openapi_json
