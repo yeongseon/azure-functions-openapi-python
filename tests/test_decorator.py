@@ -665,6 +665,27 @@ def test_openapi_responses_dict_rejects_invalid_value() -> None:
     assert "Invalid 'responses' entry for status 200" in str(exc_info.value)
 
 
+def test_openapi_responses_accepts_none_as_body_less_response() -> None:
+    """``None`` is shorthand for a body-less response (e.g. 204 No Content):
+    it expands to a description-only Response Object with no ``content`` key."""
+    _clear_registry()
+
+    @openapi(
+        summary="Delete item",
+        route="/api/items/{item_id}",
+        method="delete",
+        responses={204: None, "default": None},
+    )
+    def delete_item_func() -> None:
+        pass
+
+    spec = generate_openapi_spec(route_prefix="")
+    responses = spec["paths"]["/api/items/{item_id}"]["delete"]["responses"]
+    assert responses["204"] == {"description": "No Content"}
+    assert "content" not in responses["204"]
+    assert responses["default"] == {"description": "Response"}
+
+
 def test_openapi_responses_accepts_non_dict_mapping() -> None:
     """A non-dict Mapping (e.g. MappingProxyType) is accepted, matching the
     advertised Mapping[...] type contract rather than requiring a concrete dict."""
