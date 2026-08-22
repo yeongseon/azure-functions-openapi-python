@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
-from typing import Optional
+import json
+from typing import Literal, Optional, Union
 
 import azure.functions as func
 from pydantic import BaseModel, Field
 import pytest
 
 from azure_functions_openapi.decorator import (
-    _expand_model_parameters,
+_expand_model_parameters,
     _merge_typed_parameters,
+    _schema_is_object,
     clear_openapi_registry,
     openapi,
 )
@@ -98,6 +101,137 @@ class TestExpandModelParameters:
 
         with pytest.raises(OpenAPISpecConfigError, match="object schema"):
             _expand_model_parameters(Q, "header", "h")
+
+
+class TestEdgeCaseHardening:
+    def test_optional_header_strips_null_branch(self) -> None:
+        class H(BaseModel):
+            x: Optional[str] = None
+
+        params = _expand_model_parameters(H, "header", "h")
+        assert params[0]["required"] is False
+        assert params[0]["schema"] == {"type": "string"}
+
+    def test_optional_header_preserves_description(self) -> None:
+        class H(BaseModel):
+            y: Optional[int] = Field(default=None, description="opt count")
+
+        params = _expand_model_parameters(H, "header", "h")
+        assert params[0]["description"] == "opt count"
+        assert params[0]["schema"] == {"type": "integer"}
+
+    def test_optional_path_is_rejected(self) -> None:
+        class P(BaseModel):
+            id: Optional[int] = None
+
+        with pytest.raises(OpenAPISpecConfigError, match="Optional/nullable"):
+            _expand_model_parameters(P, "path", "h")
+
+    def test_dict_field_is_rejected(self) -> None:
+        class D(BaseModel):
+            m: dict[str, int]
+
+        with pytest.raises(OpenAPISpecConfigError, match="object schema"):
+            _expand_model_parameters(D, "header", "h")
+
+    def test_titles_are_stripped_recursively(self) -> None:
+        class Q(BaseModel):
+            colors: list[Color]
+
+        params = _expand_model_parameters(Q, "header", "h")
+        assert "title" not in json.dumps(params)
+        assert params[0]["schema"]["items"]["enum"] == ["red", "blue"]
+
+    def test_literal_and_datetime_fields(self) -> None:
+        class M(BaseModel):
+            mode: Literal["a", "b"]
+            when: datetime
+
+        params = _expand_model_parameters(M, "header", "h")
+        by_name = {p["name"]: p for p in params}
+        assert by_name["mode"]["schema"]["enum"] == ["a", "b"]
+        assert by_name["when"]["schema"]["format"] == "date-time"
+
+    def test_union_of_scalars_keeps_both_branches(self) -> None:
+
+        class H(BaseModel):
+            v: Union[int, str]
+
+        params = _expand_model_parameters(H, "header", "h")
+        branches = params[0]["schema"]["anyOf"]
+        types = {b.get("type") for b in branches}
+        assert types == {"integer", "string"}
+
+    def test_optional_union_of_scalars_strips_null_keeps_rest(self) -> None:
+
+        class H(BaseModel):
+            v: Optional[Union[int, str]] = None
+
+        params = _expand_model_parameters(H, "header", "h")
+        branches = params[0]["schema"]["anyOf"]
+        types = {b.get("type") for b in branches}
+        assert "null" not in types
+        assert types == {"integer", "string"}
+        assert params[0]["required"] is False
+
+    def test_union_with_object_branch_is_rejected(self) -> None:
+        class Nested(BaseModel):
+            a: int
+
+        class H(BaseModel):
+            v: Union[int, Nested]
+
+        with pytest.raises(OpenAPISpecConfigError, match="object schema"):
+            _expand_model_parameters(H, "header", "h")
+
+    def test_enum_reuse_across_two_fields_is_independent(self) -> None:
+        class Two(BaseModel):
+            a: Color
+            b: Color
+
+        params = _expand_model_parameters(Two, "path", "h")
+        assert params[0]["schema"] == params[1]["schema"]
+        assert params[0]["schema"] is not params[1]["schema"]
+
+    def test_aliased_fields_colliding_on_wire_name_are_rejected(self) -> None:
+        class H(BaseModel):
+            a: str = Field(alias="X-Id")
+            b: str = Field(alias="X-Id")
+
+        with pytest.raises(OpenAPISpecConfigError, match="map to parameter name"):
+            _expand_model_parameters(H, "header", "h")
+
+    def test_nullable_array_element_strips_nested_null_branch(self) -> None:
+        class H(BaseModel):
+            tags: list[Optional[int]] = Field(default_factory=list)
+
+        params = _expand_model_parameters(H, "header", "h")
+        items = params[0]["schema"]["items"]
+        assert "null" not in json.dumps(items)
+        assert items == {"type": "integer"}
+
+    def test_schema_is_object_detects_array_form_type(self) -> None:
+        assert _schema_is_object({"type": ["object", "null"]}) is True
+
+    def test_schema_is_object_detects_prefix_items(self) -> None:
+        assert _schema_is_object({"prefixItems": [{"type": "integer"}]}) is True
+
+    def test_schema_is_object_allows_scalar(self) -> None:
+        assert _schema_is_object({"type": "string"}) is False
+
+    def test_tuple_field_is_rejected(self) -> None:
+        class T(BaseModel):
+            pair: tuple[int, str]
+
+        with pytest.raises(OpenAPISpecConfigError, match="object schema"):
+            _expand_model_parameters(T, "header", "h")
+
+    def test_strip_titles_preserves_example_payload(self) -> None:
+        class H(BaseModel):
+            v: str = Field(json_schema_extra={"example": {"title": "keep me"}})
+
+        params = _expand_model_parameters(H, "header", "h")
+        assert params[0]["schema"]["example"] == {"title": "keep me"}
 
 
 class TestMergeTypedParameters:

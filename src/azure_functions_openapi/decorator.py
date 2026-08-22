@@ -844,6 +844,22 @@ def _inline_param_defs(node: Any, defs: dict[str, Any], seen: frozenset[str]) ->
     return node
 
 
+def _schema_is_object(schema: dict[str, Any]) -> bool:
+    """Return True when a schema describes an object (invalid for path/header).
+
+    Covers the plain ``type: object`` case plus array-form ``type: ["object",
+    ...]`` and the marker keys pydantic emits for dicts/models/tuples
+    (``properties``, ``additionalProperties``, ``prefixItems``) even when an
+    explicit ``type`` is absent.
+    """
+    schema_type = schema.get("type")
+    if schema_type == "object":
+        return True
+    if isinstance(schema_type, list) and "object" in schema_type:
+        return True
+    return any(key in schema for key in ("properties", "additionalProperties", "prefixItems"))
+
+
 def _assert_param_schema_scalar(
     schema: dict[str, Any], location: str, field: str, func_name: str
 ) -> None:
@@ -853,7 +869,7 @@ def _assert_param_schema_scalar(
     arrays of primitives. Nested models (objects) are invalid, so an explicit,
     early error is raised instead of emitting a malformed spec.
     """
-    if schema.get("type") == "object" or "properties" in schema:
+    if _schema_is_object(schema):
         raise OpenAPISpecConfigError(
             f"Field '{field}' of the '{location}' model for '{func_name}' maps to "
             f"an object schema, which is invalid for '{location}' parameters. "
@@ -867,6 +883,78 @@ def _assert_param_schema_scalar(
         for sub in schema.get(combinator, []):
             if isinstance(sub, dict) and sub.get("type") != "null":
                 _assert_param_schema_scalar(sub, location, field, func_name)
+
+
+# Keys whose values are user data (examples/defaults), not nested schemas: do
+# not recurse into them when stripping ``title`` so caller-supplied payloads that
+# happen to contain a ``title`` field are preserved verbatim.
+_SCHEMA_OPAQUE_KEYS = frozenset({"example", "examples", "default"})
+
+
+def _strip_titles(node: Any) -> Any:
+    """Recursively drop pydantic-injected ``title`` keys from a schema.
+
+    Pydantic adds ``title`` to every field and to nested ``items`` / combinator
+    branches. They are noise in a generated parameter schema, so remove them at
+    every level rather than only at the top.
+    """
+    if isinstance(node, dict):
+        return {
+            k: (v if k in _SCHEMA_OPAQUE_KEYS else _strip_titles(v))
+            for k, v in node.items()
+            if k != "title"
+        }
+    if isinstance(node, list):
+        return [_strip_titles(item) for item in node]
+    return node
+
+
+def _strip_null_branches(schema: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Remove JSON-Schema ``null`` branches from ``anyOf``/``oneOf``.
+
+    ``Optional[T]`` renders as ``anyOf: [T, {type: null}]``. Absence is already
+    modelled by ``required: false`` on the parameter, and a literal ``type:
+    null`` branch is invalid under OpenAPI 3.0, so the null branch is dropped.
+    When a single non-null branch remains it is flattened up into the schema.
+    Returns the cleaned schema and whether a null branch was present.
+    """
+    result = dict(schema)
+    was_nullable = False
+    for combinator in ("anyOf", "oneOf"):
+        branches = result.get(combinator)
+        if not isinstance(branches, list):
+            continue
+        non_null = [
+            b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")
+        ]
+        if len(non_null) < len(branches):
+            was_nullable = True
+        if len(non_null) == 1:
+            del result[combinator]
+            sole = non_null[0]
+            if isinstance(sole, dict):
+                for key, value in sole.items():
+                    result.setdefault(key, value)
+        elif non_null:
+            result[combinator] = non_null
+        else:
+            del result[combinator]
+    # Nested schemas carry their own Optional encodings — e.g. ``list[Optional[T]]``
+    # renders the null branch under ``items`` — which are equally invalid under
+    # OpenAPI 3.0, so clean surviving children recursively. Their nullability does
+    # not affect the parameter's own presence, so ``was_nullable`` stays top-level.
+    if isinstance(result.get("items"), dict):
+        result["items"], _ = _strip_null_branches(result["items"])
+    for combinator in ("anyOf", "oneOf", "allOf"):
+        subs = result.get(combinator)
+        if isinstance(subs, list):
+            result[combinator] = [
+                _strip_null_branches(s)[0] if isinstance(s, dict) else s for s in subs
+            ]
+    # A leftover ``default: null`` only encoded the now-removed null branch.
+    if "default" in result and result["default"] is None:
+        del result["default"]
+    return result, was_nullable
 
 
 def _expand_model_parameters(
@@ -886,6 +974,20 @@ def _expand_model_parameters(
     if not (isinstance(model, type) and issubclass(model, BaseModel)):
         raise ValueError(f"'{location}' must be a Pydantic BaseModel subclass.")
 
+    # ``model_json_schema()`` keys properties by wire name, so two fields sharing
+    # an alias collapse into one property and one parameter would be silently
+    # dropped. Inspect the declared fields first and fail fast on the collision.
+    seen_wire: dict[str, str] = {}
+    for field_name, field_info in model.model_fields.items():
+        wire = field_info.alias or field_name
+        if wire in seen_wire:
+            raise OpenAPISpecConfigError(
+                f"Fields '{seen_wire[wire]}' and '{field_name}' of the '{location}' "
+                f"model for '{func_name}' both map to parameter name '{wire}'. "
+                f"Use distinct field names or aliases."
+            )
+        seen_wire[wire] = field_name
+
     schema = model.model_json_schema()
     defs = schema.get("$defs", {})
     properties: dict[str, Any] = schema.get("properties", {})
@@ -894,9 +996,17 @@ def _expand_model_parameters(
     params: list[dict[str, Any]] = []
     for name, raw_field_schema in properties.items():
         field_schema = _inline_param_defs(raw_field_schema, defs, frozenset())
+        field_schema = _strip_titles(field_schema)
+        field_schema, was_nullable = _strip_null_branches(field_schema)
         _assert_param_schema_scalar(field_schema, location, name, func_name)
 
-        field_schema.pop("title", None)
+        if location == "path" and was_nullable:
+            raise OpenAPISpecConfigError(
+                f"Path field '{name}' of the 'path' model for '{func_name}' is "
+                f"Optional/nullable, but path parameters must always be present. "
+                f"Make the field required (non-Optional)."
+            )
+
         description = field_schema.pop("description", None)
 
         param: dict[str, Any] = {"name": name, "in": location}
