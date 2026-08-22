@@ -247,8 +247,17 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
 
             # parameters
             for param in operation.get("parameters", []):
-                if isinstance(param, dict) and "schema" in param:
+                if not isinstance(param, dict):
+                    continue
+                if "schema" in param:
                     param["schema"] = _convert_schema_to_3_1(param["schema"])
+                # querystring parameters (OpenAPI 3.2) carry a content map
+                # instead of a bare schema.
+                param_content = param.get("content")
+                if isinstance(param_content, dict):
+                    for _media, media_obj in param_content.items():
+                        if isinstance(media_obj, dict) and "schema" in media_obj:
+                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
 
     return paths
 
@@ -430,6 +439,69 @@ def generate_openapi_spec(
                         for param in parameters
                     ]
 
+                # querystring (OpenAPI 3.2 only) ---------------------------------
+                qs_model = meta.get("querystring_model")
+                qs_schema = meta.get("querystring_schema")
+                has_querystring = qs_model is not None or qs_schema is not None
+
+                # Count querystring entries supplied through the raw
+                # ``parameters`` escape hatch so gating/validation covers both
+                # the dedicated ``querystring=`` surface and manual parameters.
+                raw_querystring_count = sum(
+                    1
+                    for p in (op_parameters or [])
+                    if isinstance(p, dict) and p.get("in") == "querystring"
+                )
+                total_querystring = raw_querystring_count + (1 if has_querystring else 0)
+
+                if total_querystring and openapi_version != OPENAPI_VERSION_3_2:
+                    raise OpenAPISpecConfigError(
+                        f"querystring parameters require openapi_version="
+                        f"'{OPENAPI_VERSION_3_2}', got '{openapi_version}' "
+                        f"(function '{logical_name}')."
+                    )
+
+                if has_querystring:
+                    qs_media_type = meta.get(
+                        "querystring_media_type", "application/x-www-form-urlencoded"
+                    )
+                    if qs_model is not None:
+                        qs_resolved = model_to_schema(qs_model, components)
+                    else:
+                        qs_resolved = hoist_inline_defs(
+                            qs_schema, components, hoist_flat=hoist_flat_schemas
+                        )
+                    qs_param = {
+                        "in": "querystring",
+                        "content": {qs_media_type: {"schema": qs_resolved}},
+                    }
+                    if op_parameters is None:
+                        op_parameters = []
+                    op_parameters.append(qs_param)
+
+                # Validation: querystring must not coexist with 'query' params,
+                # and at most one querystring parameter may appear per operation.
+                if op_parameters:
+                    has_query_param = any(
+                        isinstance(p, dict) and p.get("in") == "query"
+                        for p in op_parameters
+                    )
+                    qs_total = sum(
+                        1
+                        for p in op_parameters
+                        if isinstance(p, dict) and p.get("in") == "querystring"
+                    )
+                    if qs_total > 1:
+                        raise OpenAPISpecConfigError(
+                            f"Operation for '{logical_name}' declares multiple "
+                            f"'querystring' parameters; at most one is allowed."
+                        )
+                    if qs_total and has_query_param:
+                        raise OpenAPISpecConfigError(
+                            f"Operation for '{logical_name}' mixes 'query' and "
+                            f"'querystring' parameters, which OpenAPI 3.2 forbids."
+                        )
+
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
 
@@ -507,6 +579,10 @@ def generate_openapi_spec(
                         _dup_registry.add_duplicate_operation(method, path)
                     path_item[method] = op
 
+            except OpenAPISpecConfigError:
+                # Configuration contract violations (e.g. querystring misuse)
+                # must always surface, regardless of strict mode.
+                raise
             except (KeyError, TypeError, ValueError):
                 if strict:
                     logger.error("Failed to process function %s (strict mode)", func_name)

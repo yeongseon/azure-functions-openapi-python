@@ -137,6 +137,36 @@ def raw(req: func.HttpRequest) -> func.HttpResponse:
     ...
 ```
 
+### Querystring parameter (OpenAPI 3.2)
+
+OpenAPI 3.2 adds a `querystring` parameter location that describes the entire
+query string with a single schema. Pass a Pydantic model or raw JSON Schema via
+`querystring=`; it is emitted only when generating a `3.2.0` document.
+
+```python
+class SearchQuery(BaseModel):
+    q: str
+    limit: int = 10
+
+@openapi(
+    summary="Search",
+    method="get",
+    querystring=SearchQuery,
+    # querystring_media_type defaults to "application/x-www-form-urlencoded"
+)
+@app.route(route="search", methods=["GET"])
+def search(req: func.HttpRequest) -> func.HttpResponse:
+    ...
+```
+
+!!! note
+    `querystring` requires `openapi_version="3.2.0"` (raises
+    `OpenAPISpecConfigError` under 3.0/3.1). At most one querystring parameter is
+    allowed per operation, and it cannot coexist with any `in: query` parameter.
+    See [Configuration](configuration.md#querystring-parameters-32-only) for
+    details.
+
+
 ### Expose OpenAPI + Swagger routes
 
 ```python
