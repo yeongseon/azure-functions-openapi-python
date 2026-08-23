@@ -404,6 +404,7 @@ def generate_openapi_spec(
         # here (#393).
         _diag_registry = registry if registry is not None else _default_registry
         _diag_registry.clear_duplicate_operations()
+        _diag_registry.clear_downgrade_drops()
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
@@ -756,12 +757,15 @@ def generate_openapi_spec(
         # operations, then relocated: under 3.2 into each path item's
         # ``additionalOperations`` map, and under 3.0/3.1 dropped (the format has
         # no way to express them) with a warning.
-        validation_warnings.extend(
-            _restructure_additional_operations(spec, openapi_version)
-        )
-        # ``query`` is a first-class operation field only in OpenAPI 3.2; under
-        # 3.0/3.1 it cannot be represented, so drop it with a warning.
-        validation_warnings.extend(_drop_unsupported_query(spec, openapi_version))
+        # Custom-method restructuring and query removal are the two constructs
+        # that vanish on a pre-3.2 downgrade. Record them on the registry's
+        # downgrade-drop channel so ``collect_spec_warnings`` / ``--fail-on-warnings``
+        # can observe silent API-contract loss (#479), in addition to logging.
+        downgrade_drops = _restructure_additional_operations(spec, openapi_version)
+        downgrade_drops.extend(_drop_unsupported_query(spec, openapi_version))
+        validation_warnings.extend(downgrade_drops)
+        for drop in downgrade_drops:
+            _diag_registry.add_downgrade_drop(drop)
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
 
@@ -1254,6 +1258,31 @@ def _collect_duplicate_operation_warnings(
     ]
 
 
+def _collect_downgrade_drop_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive version-downgrade-drop warnings from the registry's recorded drops.
+
+    When a spec is generated for a pre-3.2 target, custom-method operations and
+    ``query`` operations cannot be represented and are removed (#471, #472);
+    :meth:`OpenAPIRegistry.add_downgrade_drop` records each removal during
+    generation. This turns each recorded drop into a structured
+    :class:`WarningCode.VERSION_DOWNGRADE_DROP` so ``--fail-on-warnings`` can
+    observe silently lost API contract instead of it only appearing in the logs
+    (#479). When ``registry`` is provided its records are used, keeping warnings
+    isolated to the same registry the spec was built from.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.VERSION_DOWNGRADE_DROP,
+            message=message,
+            function_name=None,
+        )
+        for message in reg.downgrade_drops
+    ]
+
+
 def _collect_binding_mismatch_warnings(
     registry: OpenAPIRegistry | None = None,
 ) -> list[SpecWarning]:
@@ -1351,6 +1380,7 @@ def collect_spec_warnings(
     warnings_list.extend(_collect_discovery_warnings(registry))
     warnings_list.extend(_collect_empty_discovery_warnings(registry))
     warnings_list.extend(_collect_duplicate_operation_warnings(registry))
+    warnings_list.extend(_collect_downgrade_drop_warnings(registry))
     warnings_list.extend(_collect_binding_mismatch_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))

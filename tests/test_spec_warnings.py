@@ -27,6 +27,8 @@ from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.registry import registry as default_registry
 from azure_functions_openapi.spec import (
+    OPENAPI_VERSION_3_1,
+    OPENAPI_VERSION_3_2,
     collect_spec_warnings,
     generate_openapi_report,
     generate_openapi_spec,
@@ -732,3 +734,103 @@ class TestCliIsolateApp:
         spec = json.loads(out.read_text(encoding="utf-8"))
         assert "/api/a/one" in spec["paths"]
         assert "/api/b/one" not in spec["paths"]
+
+
+
+class TestDowngradeDropWarnings:
+    """Constructs that cannot survive a pre-3.2 downgrade -- custom-method
+    operations (#471) and the ``query`` operation (#472) -- are removed from the
+    generated spec. Each removal must surface a structured VERSION_DOWNGRADE_DROP
+    warning so ``--fail-on-warnings`` observes the silent API-contract loss that
+    previously only reached the logs (#479)."""
+
+    def _custom_method_registry(self) -> OpenAPIRegistry:
+        reg = OpenAPIRegistry()
+        register_openapi_metadata(
+            path="/api/cache", method="purge", summary="Purge cache", registry=reg
+        )
+        return reg
+
+    def _query_registry(self) -> OpenAPIRegistry:
+        reg = OpenAPIRegistry()
+        register_openapi_metadata(
+            path="/api/search",
+            method="query",
+            summary="Query search",
+            request_body={"type": "object", "properties": {"q": {"type": "string"}}},
+            registry=reg,
+        )
+        return reg
+
+    def test_custom_method_drop_surfaces_structured_warning(self) -> None:
+        reg = self._custom_method_registry()
+        spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, registry=reg)
+        drops = [
+            w
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert len(drops) == 1
+        assert "PURGE" in drops[0].message
+        # The dropped operation really is gone from the spec.
+        assert "purge" not in spec["paths"]["/api/cache"]
+
+    def test_query_drop_surfaces_structured_warning(self) -> None:
+        reg = self._query_registry()
+        spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, registry=reg)
+        drops = [
+            w
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert len(drops) == 1
+        assert "query" in drops[0].message.lower()
+        assert "query" not in spec["paths"]["/api/search"]
+
+    def test_no_drop_warning_under_3_2(self) -> None:
+        reg = self._custom_method_registry()
+        spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2, registry=reg)
+        codes = {w.code for w in collect_spec_warnings(spec, registry=reg)}
+        assert WarningCode.VERSION_DOWNGRADE_DROP not in codes
+
+    def test_drop_warnings_are_deterministic_and_sorted(self) -> None:
+        reg = OpenAPIRegistry()
+        register_openapi_metadata(path="/api/r", method="purge", summary="a", registry=reg)
+        register_openapi_metadata(path="/api/r", method="link", summary="b", registry=reg)
+        spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, registry=reg)
+        drops = [
+            w.message
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert len(drops) == 2
+        assert drops == sorted(drops)
+
+    def test_resolved_drop_not_carried_to_next_generation(self) -> None:
+        # Run-scoped like DUPLICATE_OPERATION (#393): a drop observed while
+        # targeting 3.1 must not linger on the reused registry and resurface
+        # when the same registry is regenerated at 3.2.
+        reg = self._custom_method_registry()
+        first = collect_spec_warnings(
+            generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, registry=reg),
+            registry=reg,
+        )
+        assert any(w.code == WarningCode.VERSION_DOWNGRADE_DROP for w in first)
+        second = collect_spec_warnings(
+            generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2, registry=reg),
+            registry=reg,
+        )
+        assert not any(w.code == WarningCode.VERSION_DOWNGRADE_DROP for w in second)
+
+    def test_report_surfaces_downgrade_drop(self) -> None:
+        reg = self._custom_method_registry()
+        report = generate_openapi_report(openapi_version=OPENAPI_VERSION_3_1, registry=reg)
+        assert any(
+            w.code == WarningCode.VERSION_DOWNGRADE_DROP for w in report.warnings
+        )
+
+    def test_fail_on_warnings_catches_downgrade_drop(self) -> None:
+        # The global CLI path must exit non-zero: a silently dropped operation on
+        # a pre-3.2 target is exactly what --fail-on-warnings exists to catch.
+        register_openapi_metadata(path="/api/cache", method="purge", summary="Purge cache")
+        assert handle_generate(_args(fail_on_warnings=True, openapi_version="3.1")) == 2
