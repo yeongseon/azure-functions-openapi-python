@@ -38,6 +38,7 @@ class OpenAPIRegistry:
         self._discovery_warnings: list[tuple[str | None, str]] = []
         self._empty_discoveries: list[str] = []
         self._duplicate_operations: list[str] = []
+        self._downgrade_drops: list[str] = []
         self._lock = threading.RLock()
 
     @property
@@ -126,6 +127,7 @@ class OpenAPIRegistry:
             self._discovery_warnings.clear()
             self._empty_discoveries.clear()
             self._duplicate_operations.clear()
+            self._downgrade_drops.clear()
 
     def clear_duplicate_operations(self) -> None:
         """Clear only the duplicate-operation channel, under :attr:`lock`.
@@ -137,6 +139,18 @@ class OpenAPIRegistry:
         """
         with self._lock:
             self._duplicate_operations.clear()
+
+    def clear_downgrade_drops(self) -> None:
+        """Clear only the version-downgrade-drop channel, under :attr:`lock`.
+
+        Downgrade drops are fully recomputed on every
+        :func:`generate_openapi_spec` pass (they depend on the requested target
+        ``openapi_version``), so that generator clears this channel at entry to
+        avoid reporting a drop that a prior generation observed but the current
+        target version no longer produces.
+        """
+        with self._lock:
+            self._downgrade_drops.clear()
 
     def find_by_function_id(
         self, function_id: str, method: str | None = None
@@ -260,6 +274,28 @@ class OpenAPIRegistry:
         """Return the recorded ``METHOD path`` collisions, deduplicated and sorted."""
         with self._lock:
             return sorted(self._duplicate_operations)
+
+    def add_downgrade_drop(self, message: str) -> None:
+        """Record that a construct was dropped when downgrading the spec version.
+
+        When generating a spec for an *older* target ``openapi_version``, the
+        generator restructures or removes constructs the older version cannot
+        express (unsupported query parameters, ``additionalOperations``, and the
+        3.2 ``itemSchema`` media key). Historically those drops were only logged,
+        so ``--fail-on-warnings`` could not observe silently vanished API
+        contract. Recording them here lets the generator surface a structured
+        ``version-downgrade-drop`` warning. Identical messages are deduplicated,
+        mirroring :meth:`add_duplicate_operation`.
+        """
+        with self._lock:
+            if message not in self._downgrade_drops:
+                self._downgrade_drops.append(message)
+
+    @property
+    def downgrade_drops(self) -> list[str]:
+        """Return the recorded downgrade-drop messages, deduplicated and sorted."""
+        with self._lock:
+            return sorted(self._downgrade_drops)
 
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import

@@ -33,6 +33,7 @@ class WarningCode(str, Enum):
     DISCOVERY_SKIPPED = "discovery-skipped"
     EMPTY_DISCOVERY = "empty-discovery"
     METHOD_BINDING_MISMATCH = "method-binding-mismatch"
+    VERSION_DOWNGRADE_DROP = "version-downgrade-drop"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.value
