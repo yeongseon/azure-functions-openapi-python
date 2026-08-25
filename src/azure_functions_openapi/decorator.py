@@ -1,11 +1,13 @@
 # src/azure_functions_openapi/decorator.py
 from __future__ import annotations
 
+import collections.abc as _cabc
 from collections.abc import Mapping
 from http import HTTPStatus
 import logging
 import re
-from typing import Any, Callable, Literal, TypeGuard, TypeVar, cast, get_origin
+import types
+from typing import Any, Callable, Literal, TypeGuard, TypeVar, Union, cast, get_origin
 import warnings
 
 from pydantic import BaseModel
@@ -147,6 +149,44 @@ def _coerce_status_key(status: Any, func_name: str) -> int | Literal["default"]:
     )
 
 
+# Container generics accepted as a response-body shorthand (issue #493). Only
+# these origins have a well-defined JSON Schema projection via
+# ``TypeAdapter``; other generics (``Callable``, ``Iterator``, coroutines, ...)
+# either fail late during spec generation or produce nonsensical schemas, so
+# they are rejected at decoration time with an actionable error.
+_SHORTHAND_CONTAINER_ORIGINS: frozenset[Any] = frozenset(
+    {
+        list,
+        tuple,
+        set,
+        frozenset,
+        dict,
+        _cabc.Sequence,
+        _cabc.Mapping,
+        _cabc.Set,
+        _cabc.MutableSequence,
+        _cabc.MutableMapping,
+        _cabc.MutableSet,
+    }
+)
+
+
+def _is_supported_shorthand_generic(value: Any) -> bool:
+    """Return ``True`` if *value* is a generic alias usable as a body shorthand.
+
+    Accepts container generics (``list[...]``, ``dict[...]``, their
+    ``collections.abc`` equivalents, etc.) and unions/``Optional`` (both
+    ``typing.Union`` and PEP 604 ``X | Y``). Everything else — most notably
+    ``Callable`` — is rejected so misuse fails fast at decoration time.
+    """
+    origin = get_origin(value)
+    if origin is None:
+        return False
+    if origin in _SHORTHAND_CONTAINER_ORIGINS:
+        return True
+    return origin is Union or origin is types.UnionType
+
+
 def _normalize_unified_responses(
     responses: Mapping[Any, Any], func_name: str
 ) -> dict[int | str, dict[str, Any]]:
@@ -159,7 +199,11 @@ def _normalize_unified_responses(
       {"application/json": {"schema": Model}}}`` (the model class is resolved to
       a schema at spec-generation time, where the ``components`` registry lives), or
     * a generic collection alias such as ``list[Model]`` — the same bare-shorthand
-      treatment, resolved to an array schema at spec-generation time, or
+      treatment, resolved to an array schema at spec-generation time. Only
+      container generics (``list``/``tuple``/``set``/``frozenset``/``dict`` and
+      their ``collections.abc`` equivalents) and unions/``Optional`` are accepted;
+      any other generic (e.g. ``Callable``) raises ``ValueError`` at decoration
+      time (#493), or
     * an OpenAPI Response Object mapping (unchanged; a Pydantic model may also appear
       in its ``content.<media>.schema`` position and is resolved the same way), or
     * ``None`` — shorthand for a body-less response (e.g. ``204 No Content``),
@@ -176,7 +220,30 @@ def _normalize_unified_responses(
         status = _coerce_status_key(raw_status, func_name)
         if value is None:
             normalized[status] = {"description": _default_response_description(status)}
-        elif _is_pydantic_model(value) or get_origin(value) is not None:
+        elif _is_pydantic_model(value):
+            normalized[status] = {
+                "description": _default_response_description(status),
+                "content": {"application/json": {"schema": value}},
+            }
+        elif get_origin(value) is not None:
+            # A generic alias shorthand (e.g. ``list[Model]``). Only container
+            # generics and unions project cleanly to a JSON body schema (#493);
+            # reject anything else (``Callable``, iterators, coroutines, ...)
+            # here so the failure is at decoration time with a clear message,
+            # not a late/garbled schema during spec generation.
+            if not _is_supported_shorthand_generic(value):
+                origin = get_origin(value)
+                origin_name = getattr(origin, "__name__", str(origin))
+                raise ValueError(
+                    f"Invalid 'responses' entry for status {status} in function "
+                    f"'{func_name}': {value!r} uses the unsupported generic "
+                    f"origin '{origin_name}'. Only container generics "
+                    f"(list, tuple, set, frozenset, dict and their "
+                    f"collections.abc equivalents) and unions/Optional are "
+                    f"accepted as a response-body shorthand. To describe this "
+                    f"response, pass an explicit OpenAPI Response Object mapping "
+                    f"as the value instead."
+                )
             normalized[status] = {
                 "description": _default_response_description(status),
                 "content": {"application/json": {"schema": value}},
