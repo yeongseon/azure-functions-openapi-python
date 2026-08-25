@@ -23,7 +23,7 @@ Source: `examples/report_jobs/function_app.py`
 - Path parameters (`{job_id}`)
 - `generate_openapi_spec()` with `OPENAPI_VERSION_3_1`
 - `render_swagger_ui()` with `custom_csp` and `enable_client_logging=True`
-- `requests` for the request model (plus `response_model` for the typed success body)
+- `requests` for the request model (plus `responses` for the typed success body)
 - Multiple response codes per endpoint (200, 202, 400, 401, 404)
 
 ## Data models
@@ -80,9 +80,11 @@ _BEARER_SECURITY = [{"BearerAuth": []}]
     description="Queue a new report generation job. Returns a job ID for status polling.",
     tags=["reports"],
     requests=ReportRequest,
-    response_model=ReportJobResponse,
-    response={
-        202: {"description": "Report job queued"},
+    responses={
+        202: {
+            "description": "Report job queued",
+            "content": {"application/json": {"schema": ReportJobResponse}},
+        },
         400: {"description": "Invalid request"},
         401: {"description": "Unauthorized"},
     },

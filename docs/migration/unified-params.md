@@ -25,8 +25,9 @@ styles](../usage.md#request-and-response-schema-styles).
   [#410] / [#418]).
 - One consistent surface (`requests` / `responses`) is easier to learn,
   document, and evolve than four interacting parameters.
-- The discrete parameters will eventually be removed; migrating now avoids a
-  future breaking change (see [Alias-retention policy](#alias-retention-policy)).
+- The discrete parameters were removed from `@openapi`; migrating to the unified
+  surface is required for decorator-based registration (see
+  [Removal policy](#removal-policy)).
 
 ## Before / after recipes
 
@@ -179,7 +180,8 @@ alongside `requests=`:
 
 ## Mixing rules
 
-You cannot pass both a unified parameter and its discrete equivalent:
+On `register_openapi_metadata()`, you cannot pass both a unified parameter and
+its discrete equivalent:
 
 - `requests=` together with `request_model=` or `request_body=` raises
   `ValueError`.
@@ -188,22 +190,20 @@ You cannot pass both a unified parameter and its discrete equivalent:
 
 Migrate each operation fully to the unified form in one step.
 
-## Alias-retention policy
+## Removal policy
 
 On a package with this level of adoption, removing public-API parameters is a
-generational change and must come with an explicit, published window rather than
-an open-ended "a future release".
+generational change and came with an explicit, published deprecation window.
 
-- The discrete parameters (`request_model=`, `request_body=`, `response_model=`,
-  `response=`) remain **accepted** — emitting a `DeprecationWarning` — for **at
-  least two minor releases** after the deprecation was introduced.
 - The `DeprecationWarning` shipped in **0.20.0** ([#286]).
-- Therefore the discrete parameters will **not be removed before 0.23.0**, and
-  removal will be announced in the CHANGELOG for the release that performs it.
+- The discrete parameters (`request_model=`, `request_body=`, `response_model=`,
+  `response=`) were **removed from `@openapi`** after the two-minor-release
+  window elapsed; the removal is announced in the CHANGELOG.
+- They remain **available on `register_openapi_metadata()`**, the stable
+  programmatic registration API.
 
-The [actual removal](https://github.com/yeongseon/azure-functions-openapi-python/issues/285)
-is tracked separately; this policy only fixes the earliest removal boundary so
-downstream users have a dependable window to migrate.
+The removal is tracked in
+[#285](https://github.com/yeongseon/azure-functions-openapi-python/issues/285).
 
 ## `responses=` generic shorthand is restricted to containers (#493)
 

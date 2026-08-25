@@ -92,8 +92,12 @@ class ItemResponse(BaseModel):
     method="post",
     route="/api/items",
     requests=CreateItemRequest,
-    response_model=ItemResponse,
-    response={201: {"description": "Created"}},
+    responses={
+        201: {
+            "description": "Created",
+            "content": {"application/json": {"schema": ItemResponse}},
+        },
+    },
     )
 @app.route(route="items", methods=["POST"])
 def create_item(req: func.HttpRequest) -> func.HttpResponse:
@@ -101,11 +105,10 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
 ```
 
 !!! note
-    Here `response_model` supplies the schema while `response={201: ...}` sets the
-    status and description; the model schema is attached to the `201` response (the
-    first `2xx` status present), so this pairing keeps the discrete parameters — the
-    unified `responses=` cannot yet put a model schema on a non-`200` success status
-    (issue #410). The request side uses the preferred `requests=` parameter.
+    Here the `201` entry carries the model schema in `content.schema` while also
+    setting the status description, so a single unified `responses=` map puts a
+    model schema on a non-`200` success status. The request side uses the
+    `requests=` parameter.
 
 ### With raw schema dictionaries
 

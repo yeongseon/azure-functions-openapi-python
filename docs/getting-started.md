@@ -65,9 +65,11 @@ class HelloResponse(BaseModel):
             "description": "Name to greet",
         }
     ],
-    response_model=HelloResponse,
-    response={
-        200: {"description": "Successful greeting"},
+    responses={
+        200: {
+            "description": "Successful greeting",
+            "content": {"application/json": {"schema": HelloResponse}},
+        },
         400: {"description": "Missing name"},
     },
     )
@@ -86,11 +88,9 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 !!! note "Response parameters here"
     This example pairs a model-derived `200` schema with a manual `400`
-    response, so it uses the discrete `response_model=` + `response=`
-    parameters. That combination still emits a `DeprecationWarning` and cannot
-    yet be expressed with the unified `responses=` parameter (tracked in issue
-    #410). For request bodies and single-form responses, prefer the unified
-    `requests=` / `responses=` parameters — see [Usage](usage.md#migrating-to-requests-responses).
+    response, expressed with a single unified `responses=` map: the `200` entry
+    carries the model in `content.schema` while `400` is a plain Response Object.
+    See [Usage](usage.md#migrating-to-requests-responses).
 
 ## Add spec endpoints
 

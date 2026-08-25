@@ -16,6 +16,7 @@ from azure_functions_openapi.decorator import (
     _validate_tags,
     get_openapi_registry,
     openapi,
+    register_openapi_metadata,
 )
 
 
@@ -115,24 +116,22 @@ class TestOpenAPIDecoratorEnhanced:
     def test_openapi_decorator_with_invalid_request_model(self) -> None:
         """Test decorator with invalid request model."""
         with pytest.raises(ValueError):
-
-            @openapi(
+            register_openapi_metadata(
+                path="/invalid-request-model-enhanced",
+                method="post",
                 request_model=cast(Any, str),  # Not a BaseModel subclass
                 summary="Test",
             )
-            def test_func() -> None:
-                pass
 
     def test_openapi_decorator_with_invalid_response_model(self) -> None:
         """Test decorator with invalid response model."""
         with pytest.raises(ValueError):
-
-            @openapi(
+            register_openapi_metadata(
+                path="/invalid-response-model-enhanced",
+                method="get",
                 response_model=cast(Any, int),  # Not a BaseModel subclass
                 summary="Test",
             )
-            def test_func() -> None:
-                pass
 
     def test_openapi_decorator_success(self) -> None:
         """Test successful decorator application."""
@@ -147,8 +146,8 @@ class TestOpenAPIDecoratorEnhanced:
             parameters=[
                 {"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}
             ],
-            request_model=SampleModel,
-            response_model=SampleModel,
+            requests=SampleModel,
+            responses=SampleModel,
         )
         def test_func() -> None:
             pass

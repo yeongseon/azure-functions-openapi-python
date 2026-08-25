@@ -43,8 +43,13 @@ class EchoResponse(BaseModel):
     route="/api/echo",
     method="post",
     requests=EchoRequest,
-    response_model=EchoResponse,
-    response={200: {"description": "Echoed message"}, 400: {"description": "Invalid body"}},
+    responses={
+        200: {
+            "description": "Echoed message",
+            "content": {"application/json": {"schema": EchoResponse}},
+        },
+        400: {"description": "Invalid body"},
+    },
     )
 @app.route(route="echo", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def echo(req: func.HttpRequest) -> func.HttpResponse:
@@ -116,11 +121,12 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 `responses` — each of which accepts *either* a Pydantic model class *or* a raw
 schema dict. Prefer these over the older discrete parameters.
 
-!!! warning "Discrete parameters are deprecated (issue #285)"
-    `response_model` / `response` still work but now emit a
-    `DeprecationWarning`. New code should use `requests` and `responses`. See
+!!! warning "Discrete parameters were removed from `@openapi` (issue #285)"
+    `request_model` / `request_body` / `response_model` / `response` were
+    **removed** from `@openapi`; use `requests` and `responses` instead. The
+    discrete parameters remain available on `register_openapi_metadata()`. See
     the [migration guide](migration/unified-params.md) for before/after recipes
-    (every discrete case now migrates) and the alias-retention policy.
+    (every discrete case now migrates).
 
 ### Style A: Pydantic models
 
@@ -185,9 +191,7 @@ Best when you do not use Pydantic. Pass a raw requestBody schema dict to
 !!! note
     `requests` decides its meaning by type: a `BaseModel` subclass is treated
     like the old `request_model`, and a `dict` is treated like the old
-    `request_body`. `responses` behaves the same way. You cannot pass both
-    `requests` and `request_model`/`request_body` (or both `responses` and
-    `response_model`/`response`) — doing so raises `ValueError`.
+    `request_body`. `responses` behaves the same way.
 
 ### Optional request bodies
 
@@ -205,7 +209,7 @@ defaults to `True`):
 
 ### Migrating to `requests` / `responses`
 
-| Old (deprecated) | New |
+| Old (removed from `@openapi`) | New |
 | --- | --- |
 | `request_model=Model` | `requests=Model` |
 | `request_body={...}` | `requests={...}` |
@@ -220,7 +224,7 @@ defaults to `True`):
     single map, e.g. `responses={202: AcceptedModel, 422: {"description": ...}}`
     (unblocked by issue #410 / #418). See the [migration
     guide](migration/unified-params.md) for full before/after recipes and the
-    alias-retention policy.
+    removal policy.
 
 ## Streaming responses (OpenAPI 3.2)
 
