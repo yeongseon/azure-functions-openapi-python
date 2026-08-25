@@ -443,6 +443,15 @@ components:
   trigger binding, so no `auth_level` is available there.
 - User-supplied values always win: inference injects `security` / `security_scheme`
   only for operations that have none.
+- **`ADMIN` = host master key.** `FUNCTION` accepts a per-function or host key,
+  while `ADMIN` requires the host-wide **master key** — both are sent in the
+  `x-functions-key` header, so they share the single `AzureFunctionKey` apiKey
+  scheme. The distinction is the key's scope/privilege, not the header.
+- **APIM subscription keys are a separate concern.** If the app sits behind Azure
+  API Management, callers present an APIM **subscription key** (typically the
+  `Ocp-Apim-Subscription-Key` header), which is unrelated to Functions
+  function/host keys. This inference does not model APIM keys; declare them
+  explicitly via `@openapi(security=...)` / `security_schemes` if needed.
 
 
 ## Multiple endpoints and tags
