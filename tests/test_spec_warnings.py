@@ -834,3 +834,85 @@ class TestDowngradeDropWarnings:
         # a pre-3.2 target is exactly what --fail-on-warnings exists to catch.
         register_openapi_metadata(path="/api/cache", method="purge", summary="Purge cache")
         assert handle_generate(_args(fail_on_warnings=True, openapi_version="3.1")) == 2
+
+
+class TestItemSchemaDowngradeDrop:
+    """``itemSchema`` is an OpenAPI 3.2-only media key. On a pre-3.2 target its
+    streaming semantics cannot be expressed, so the downgrade must surface
+    through the same structured VERSION_DOWNGRADE_DROP channel as operation-level
+    drops (#492) -- not only as a bare RuntimeWarning. The field itself is still
+    emitted as-is (out of scope: 3.2 emission semantics)."""
+
+    def _register(self, registry: OpenAPIRegistry) -> None:
+        register_openapi_metadata(
+            "/api/events",
+            "get",
+            response={
+                200: {
+                    "description": "Event stream",
+                    "content": {
+                        "text/event-stream": {"itemSchema": {"type": "object"}}
+                    },
+                }
+            },
+            registry=registry,
+        )
+
+    def test_item_schema_pre_3_2_surfaces_structured_warning(self) -> None:
+        reg = OpenAPIRegistry()
+        self._register(reg)
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_1, registry=reg, route_prefix=""
+        )
+        drops = [
+            w
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert len(drops) == 1
+        assert "itemSchema" in drops[0].message
+        assert OPENAPI_VERSION_3_1 in drops[0].message
+
+    def test_item_schema_still_emitted_on_pre_3_2(self) -> None:
+        # Out of scope for #492: itemSchema emission is unchanged; the field is
+        # retained as-is so existing consumers are not silently broken. Only the
+        # structured observability is added.
+        reg = OpenAPIRegistry()
+        self._register(reg)
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_1, registry=reg, route_prefix=""
+        )
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"][
+            "content"
+        ]["text/event-stream"]
+        assert "itemSchema" in media
+
+    def test_item_schema_no_drop_under_3_2(self) -> None:
+        reg = OpenAPIRegistry()
+        self._register(reg)
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_2, registry=reg, route_prefix=""
+        )
+        codes = {w.code for w in collect_spec_warnings(spec, registry=reg)}
+        assert WarningCode.VERSION_DOWNGRADE_DROP not in codes
+
+    def test_item_schema_drop_and_runtime_warning_share_one_message(self) -> None:
+        # "avoid a second, divergent warning path": the user-facing RuntimeWarning
+        # and the structured drop must carry the identical message string.
+        reg = OpenAPIRegistry()
+        self._register(reg)
+        with pytest.warns(RuntimeWarning, match="itemSchema") as caught:
+            spec = generate_openapi_spec(
+                openapi_version=OPENAPI_VERSION_3_1, registry=reg, route_prefix=""
+            )
+        runtime_messages = [
+            str(w.message)
+            for w in caught.list
+            if issubclass(w.category, RuntimeWarning)
+        ]
+        drop_messages = [
+            w.message
+            for w in collect_spec_warnings(spec, registry=reg)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert runtime_messages == drop_messages

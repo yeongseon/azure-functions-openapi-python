@@ -457,15 +457,33 @@ def generate_openapi_spec(
                                     "itemSchema" in new_media_obj
                                     and openapi_version != OPENAPI_VERSION_3_2
                                 ):
+                                    # itemSchema is an OpenAPI 3.2-only media
+                                    # key; on a pre-3.2 target its streaming
+                                    # semantics are lost. Route this through the
+                                    # same structured downgrade-drop channel used
+                                    # for operation-level drops (#479/#492) so
+                                    # ``collect_spec_warnings`` /
+                                    # ``--fail-on-warnings`` can observe the lost
+                                    # 3.2 contract, and preserve the user-facing
+                                    # RuntimeWarning using the *same* message
+                                    # string (single source, no divergent text).
+                                    downgrade_message = (
+                                        f"Response media type '{media}' for "
+                                        f"function '{func_name}' uses "
+                                        f"'itemSchema', which is an OpenAPI 3.2 "
+                                        f"feature for sequential/streaming media "
+                                        f"types, but the target openapi_version "
+                                        f"is {openapi_version}. The field is "
+                                        f"emitted as-is but may not be understood "
+                                        f"by 3.0/3.1 tooling. Use "
+                                        f"openapi_version='3.2.0' for streaming "
+                                        f"responses."
+                                    )
+                                    _diag_registry.add_downgrade_drop(
+                                        downgrade_message
+                                    )
                                     warnings.warn(
-                                        f"Response media type '{media}' for function "
-                                        f"'{func_name}' uses 'itemSchema', which is an "
-                                        f"OpenAPI 3.2 feature for sequential/streaming "
-                                        f"media types, but the target openapi_version is "
-                                        f"{openapi_version}. The field is emitted as-is "
-                                        f"but may not be understood by 3.0/3.1 tooling. "
-                                        f"Use openapi_version='3.2.0' for streaming "
-                                        f"responses.",
+                                        downgrade_message,
                                         RuntimeWarning,
                                         stacklevel=2,
                                     )
