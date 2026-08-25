@@ -347,6 +347,11 @@ def generate_openapi_spec(
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
     infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Compile an OpenAPI specification from the registry.
@@ -381,6 +386,15 @@ def generate_openapi_spec(
             Requires the FunctionApp-scan path (e.g. CLI ``module:variable``);
             a plain ``@openapi``-only registry carries no ``auth_level``.
             Defaults to ``False`` for full backward compatibility.
+        servers: Optional list of OpenAPI Server Objects emitted at the
+            document's top-level ``servers`` field (#494). When ``None``, no
+            ``servers`` key is added.
+        contact: Optional Contact Object merged into ``info.contact`` (#494).
+        license: Optional License Object merged into ``info.license`` (#494).
+        external_docs: Optional External Documentation Object emitted at the
+            document's top-level ``externalDocs`` field (#494).
+        tags: Optional list of top-level Tag Objects emitted at the document's
+            ``tags`` field (#494). Distinct from per-operation ``tags``.
 
     Returns:
         OpenAPI specification dictionary
@@ -723,6 +737,20 @@ def generate_openapi_spec(
         if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
             spec["info"]["summary"] = title
             _convert_operation_schemas_to_3_1(paths)
+
+        # Top-level and info metadata passthrough (#494). Each field is emitted
+        # only when supplied; contact/license nest under ``info`` while
+        # servers/externalDocs/tags sit at the document root.
+        if contact is not None:
+            spec["info"]["contact"] = contact
+        if license is not None:
+            spec["info"]["license"] = license
+        if servers is not None:
+            spec["servers"] = servers
+        if external_docs is not None:
+            spec["externalDocs"] = external_docs
+        if tags is not None:
+            spec["tags"] = tags
 
         # Merge security schemes: explicit param + per-operation schemes from registry.
         # Raises OpenAPISpecConfigError on collision (same name, different definition).
