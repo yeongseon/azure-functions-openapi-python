@@ -10,13 +10,15 @@ parameters are hoisted into ``components.schemas`` and referenced via ``$ref``
 (itemSchema downgrade-channel unification, top-level passthrough) cannot
 silently regress them.
 
-Sequenced before #492 (``feat/itemSchema downgrade``) and #493
-(``get_origin`` shorthand restriction); see the cross-repo backlog review.
+Sequenced before #492 (``itemSchema`` downgrade channel), #493 (``get_origin``
+shorthand restriction), and #494 (top-level passthrough); see the cross-repo
+backlog review.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+import re
 from typing import Any, cast
 import warnings
 
@@ -134,9 +136,11 @@ def test_legacy_request_and_response_share_one_hoisted_nested_component() -> Non
     spec = generate_openapi_spec()
     schemas = spec["components"]["schemas"]
 
-    # Exactly one Address component is registered even though both the request
-    # and the response model embed it.
-    address_keys = [name for name in schemas if name == "Address"]
+    # Exactly one Address-derived component is registered even though both the
+    # request and the response model embed it. Matching the ``Address_<n>``
+    # collision-alias pattern (not just the exact key) ensures a duplicate hoist
+    # under an aliased name would fail this assertion.
+    address_keys = sorted(name for name in schemas if re.fullmatch(r"Address(_\d+)?", name))
     assert address_keys == ["Address"]
 
     assert (
