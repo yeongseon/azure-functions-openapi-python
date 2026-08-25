@@ -489,6 +489,25 @@ spec = generate_openapi_spec(
 )
 ```
 
+### Top-level and info metadata
+
+`generate_openapi_spec` accepts optional passthrough parameters for document
+metadata that would otherwise require post-processing the returned dict (#494).
+`contact` and `license` are merged into `info`; `servers`, `external_docs`, and
+the top-level `tags` list are emitted at the document root. Each field is added
+only when supplied.
+
+```python
+spec = generate_openapi_spec(
+    title="Orders API",
+    servers=[{"url": "https://api.example.com", "description": "prod"}],
+    contact={"name": "DX Toolkit", "email": "dx@example.com"},
+    license={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+    external_docs={"url": "https://docs.example.com", "description": "Guide"},
+    tags=[{"name": "orders", "description": "Order operations"}],
+)
+```
+
 ### Generate JSON/YAML strings
 
 ```python
