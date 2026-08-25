@@ -205,6 +205,63 @@ The [actual removal](https://github.com/yeongseon/azure-functions-openapi-python
 is tracked separately; this policy only fixes the earliest removal boundary so
 downstream users have a dependable window to migrate.
 
+## `responses=` generic shorthand is restricted to containers (#493)
+
+The `responses=` mapping accepts a **generic collection alias** as a bare
+response-body shorthand — for example:
+
+```python
+@openapi(route="items", method="get", responses={200: list[Item]})
+def list_items(req): ...
+```
+
+Previously **any** generic alias with a non-`None` `typing.get_origin(...)` was
+accepted and only resolved at spec-generation time, so an unsupported generic
+such as `Callable[[int], str]` was not rejected up front — it either failed
+late or produced a nonsensical schema.
+
+As of **#493**, only container generics are accepted as a shorthand:
+
+- `list[...]`, `tuple[...]`, `set[...]`, `frozenset[...]`, `dict[...]` and their
+  `collections.abc` equivalents (`Sequence`, `Mapping`, `Set`, and the
+  `Mutable*` variants).
+- Unions / `Optional` — both `typing.Union[...]` and PEP 604 `X | Y`.
+
+Any other generic (most notably `Callable`, iterators, coroutines, ...) now
+raises a `ValueError` **at decoration time** with an actionable message:
+
+```text
+Invalid 'responses' entry for status 200 in function 'handler':
+typing.Callable[[int], str] uses the unsupported generic origin 'Callable'.
+Only container generics (list, tuple, set, frozenset, dict and their
+collections.abc equivalents) and unions/Optional are accepted as a
+response-body shorthand. To describe this response, pass an explicit OpenAPI
+Response Object mapping as the value instead.
+```
+
+**Breaking change:** if you previously relied on a non-container generic being
+silently accepted (and producing whatever schema fell out of `TypeAdapter`),
+replace it with an explicit OpenAPI Response Object mapping:
+
+```python
+# before (now raises ValueError at decoration time)
+@openapi(route="cb", method="get", responses={200: Callable[[int], str]})
+def handler(req): ...
+
+# after — describe the response explicitly
+@openapi(
+    route="cb",
+    method="get",
+    responses={
+        200: {
+            "description": "Callback descriptor",
+            "content": {"application/json": {"schema": {"type": "string"}}},
+        }
+    },
+)
+def handler(req): ...
+```
+
 ## Tracking
 
 The unified-parameter migration is tracked in [#285]. If you hit a case the
