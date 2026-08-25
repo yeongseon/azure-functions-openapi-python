@@ -23,6 +23,11 @@ classifiers = [
 ]
 
 dependencies = [
+    # Ceiling is intentional: azure-functions 2.x drops Python < 3.13 and is not
+    # yet certified against @openapi. Cap-lift criteria: (1) the non-blocking
+    # "azure-functions 2.x compat (Py 3.13)" lane in ci-test.yml is green, and
+    # (2) 2.x is certified on real Azure via e2e-azure.yml. Lifting the cap is a
+    # separate follow-up; do not raise it here. See issue #488.
     "azure-functions>=1.21.0,<2.0.0",
     "pydantic>=2.0,<3.0",
     "PyYAML",

@@ -76,3 +76,48 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_RETRIES: 3
+
+  # azure-functions 2.x compatibility proof lane (issue #488), following the
+  # sibling proof-lane pattern (azure-functions-validation #351 /
+  # azure-functions-langgraph #350). This is a SINGLE representative 2.x lane,
+  # not a matrix: it installs the package, then deliberately overrides the
+  # pyproject `<2.0.0` cap to pull `azure-functions>=2,<3` on Python 3.13 and
+  # runs the full quality suite against the 2.x SDK.
+  #
+  # Gating decision: this lane runs on every PR as a VISIBLE compatibility
+  # signal, but it is intentionally NOT a required check — the runtime cap
+  # stays `<2.0.0` until 2.x is certified on real Azure via e2e-azure.yml, so
+  # making this blocking before that certification would gate merges on an
+  # uncertified runtime. Promote it to a required check via branch protection
+  # once the cap is lifted. azure-functions 2.x declares Requires-Python
+  # >=3.13, so this lane pins Python 3.13.
+  azure-functions-2x:
+    name: azure-functions 2.x compat (Py 3.13)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Hatch and dependencies via Makefile
+        run: |
+          pip install hatch
+          make install
+
+      - name: Upgrade azure-functions to the 2.x line
+        # pyproject caps azure-functions <2.0.0 until 2.x is certified on real
+        # Azure. This lane deliberately overrides that cap to PROVE the package
+        # still builds its spec and passes its suite under 2.x. pip warns about
+        # the intentional override; that is expected.
+        run: .venv/bin/hatch run pip install --upgrade 'azure-functions>=2,<3'
+
+      - name: Show resolved versions
+        run: .venv/bin/hatch run pip show azure-functions pydantic | grep -E '^(Name|Version):'
+
+      - name: Run full quality checks against azure-functions 2.x
+        run: make check-all
+
