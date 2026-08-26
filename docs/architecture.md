@@ -84,6 +84,17 @@ sequenceDiagram
 
 The registry is consumed only when a client explicitly requests the spec (`GET /api/openapi.json`) or docs (`GET /api/docs`). Normal API requests bypass the registry entirely.
 
+## How Route Discovery Works
+
+OpenAPI path and method metadata originate from **two independent decorators** that must agree. Understanding which one the platform actually binds is key to avoiding documentation/runtime drift.
+
+- `@app.route(...)` (from `azure.functions`) is the **single source of truth for the live HTTP route**. The Azure Functions Python worker binds the handler to a path and method set based on this decorator alone. This is the platform route-binding contract — see [How the worker binds handlers](https://yeongseon.dev/azure-functions-python/platform/how-the-worker-binds-handlers/) for the underlying mechanism.
+- `@openapi(route=..., method=...)` is **metadata-only**. It records what the documentation *claims* the route is, but it has no effect on request routing. If omitted, the operation is still served by the host but is absent from the generated spec.
+
+Because the two are decoupled, this package cannot detect a mismatch at request time — it never participates in the request path (see the diagram above). The generated spec reflects only what `@openapi(...)` declares. When `@openapi(route=...)` disagrees with the handler's `@app.route(...)`, the spec documents a path the host does not serve, and clients following the docs receive a 404.
+
+**Contract:** keep `@openapi(route=...)` and `@openapi(method=...)` identical to the handler's `@app.route(...)`. The endpoint shape this package documents is governed by the [endpoint contract](https://yeongseon.dev/contracts/endpoint/); `@app.route` remains authoritative for what the platform binds.
+
 ## Module Boundaries
 
 ```mermaid
@@ -204,7 +215,7 @@ The architecture intentionally keeps bridge implementation in the *consumer* pac
 ### Operational Considerations
 
 - Missing imports can lead to empty `paths` in the generated spec.
-- Inconsistent `@app.route` vs `@openapi(route=...)` leads to documentation/runtime mismatch.
+- Inconsistent `@app.route` vs `@openapi(route=...)` leads to documentation/runtime mismatch (see [How Route Discovery Works](#how-route-discovery-works)).
 - Model schema generation is resilient, but invalid model usage raises explicit errors.
 
 ## What this package owns
