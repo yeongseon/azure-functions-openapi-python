@@ -175,7 +175,11 @@ Examples:
             "Scan the --app FunctionApp into a fresh, app-scoped registry "
             "instead of the shared global one. Requires --app 'module:variable'. "
             "Use when several apps are imported in one process to keep each "
-            "spec limited to its own routes and avoid cross-app leakage."
+            "spec limited to its own routes and avoid cross-app leakage. "
+            "Fails closed: an --isolate-app that cannot be honored exits non-zero "
+            "rather than emitting a non-isolated spec. See 'How Route Discovery "
+            "Works': "
+            "https://yeongseon.dev/azure-functions-python/openapi/architecture/#how-route-discovery-works"
         ),
     )
 
