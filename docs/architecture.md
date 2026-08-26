@@ -86,14 +86,25 @@ The registry is consumed only when a client explicitly requests the spec (`GET /
 
 ## How Route Discovery Works
 
-OpenAPI path and method metadata originate from **two independent decorators** that must agree. Understanding which one the platform actually binds is key to avoiding documentation/runtime drift.
+Discovery is how this package finds every HTTP route on a `FunctionApp` and reconciles it with `@openapi(...)` metadata. It runs at **import time** inside `function_app.py` (via `scan_endpoint_metadata`) or on demand from the CLI (`generate --app module:variable`). Route and method come **binding-first**: the Azure `@app.route(...)` binding is the source of truth, and `@openapi(...)` only enriches the operation the binding already defines. For the shared `FunctionBuilder` background this relies on, see [How the worker binds handlers §2](https://yeongseon.dev/azure-functions-python/platform/how-the-worker-binds-handlers/).
 
-- `@app.route(...)` (from `azure.functions`) is the **single source of truth for the live HTTP route**. The Azure Functions Python worker binds the handler to a path and method set based on this decorator alone. This is the platform route-binding contract — see [How the worker binds handlers](https://yeongseon.dev/azure-functions-python/platform/how-the-worker-binds-handlers/) for the underlying mechanism.
-- `@openapi(route=..., method=...)` is **metadata-only**. It records what the documentation *claims* the route is, but it has no effect on request routing. If omitted, the operation is still served by the host but is absent from the generated spec.
+### Enumerating functions without breaking boot
 
-Because the two are decoupled, this package cannot detect a mismatch at request time — it never participates in the request path (see the diagram above). The generated spec reflects only what `@openapi(...)` declares. When `@openapi(route=...)` disagrees with the handler's `@app.route(...)`, the spec documents a path the host does not serve, and clients following the docs receive a 404.
+The SDK offers no public, side-effect-free way to *list* functions. `FunctionRegister.get_functions()` is **not idempotent** — it accumulates into `functions_bindings` and raises `ValueError: Function <name> does not have a unique function name` on a second call. Since discovery runs at import time, calling `get_functions()` would poison the state the Azure worker itself later indexes, and the user's Function App would fail to boot. Discovery therefore **never calls `get_functions()`**. Instead it reads the builder list (`app._function_builders`) and calls the public, idempotent `FunctionBuilder.build()`, which returns the *same* cached `Function` on every call without touching `functions_bindings`. All SDK-private access is confined to one adapter module (`src/azure_functions_openapi/adapters/azure_functions.py:1-24`).
 
-**Contract:** keep `@openapi(route=...)` and `@openapi(method=...)` identical to the handler's `@app.route(...)`. The endpoint shape this package documents is governed by the [endpoint contract](https://yeongseon.dev/contracts/endpoint/); `@app.route` remains authoritative for what the platform binds.
+Because `build()` is idempotent, **re-scanning is safe**: repeated scans neither duplicate nor drop per-method operations (`tests/test_bridge.py:423-470`), and an isolated re-scan is byte-for-byte stable (`tests/test_spec_warnings.py:647-666`).
+
+### `@openapi` below `@app.route`
+
+Decorator order is a valid degree of freedom. When `@openapi` is applied *below* `@app.route`, the builder has no trigger yet, so `FunctionBuilder.build()` raises `ValueError` and the function is skipped by the normal built-`Function` path. The user handler still exists on the builder, so `get_unbuilt_user_handler()` reads it defensively via the public `Function.get_user_function()` accessor — a guarded, **side-effect-free** inspection that leaves a later `build()` (once the outer `@app.route` applies the trigger) valid and idempotent (`src/azure_functions_openapi/adapters/azure_functions.py:182-206`). In this ordering `@openapi` never sees the HTTP binding and registers with `method=None`; discovery then explodes that single entry into one operation per bound method rather than collapsing every method into one.
+
+### `--isolate-app` fails closed
+
+By default discovery seeds into the process-wide global registry, matching the common single-app layout. When several apps are imported in one process, `generate --isolate-app` scans the `--app` target into a fresh, app-scoped registry so each spec is limited to its own routes. Isolation **fails closed**: an explicit `--isolate-app` that cannot be honored (no `--app`, or an `--app` without a resolvable `:variable`) prints an error and exits non-zero rather than silently emitting a non-isolated spec with a success code (`src/azure_functions_openapi/cli.py:171-179,246-253`).
+
+### Mismatch consequences
+
+Because route and method are binding-first, `@openapi(route=...)` / `@openapi(method=...)` are enrichment hints, not routing controls. If they disagree with the handler's `@app.route(...)`, the binding still wins for what the host serves, but stale `@openapi` values can misdescribe the operation. Keep them identical to `@app.route(...)`; the documented endpoint shape is governed by the [endpoint contract](https://yeongseon.dev/contracts/endpoint/).
 
 ## Module Boundaries
 

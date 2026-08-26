@@ -36,7 +36,11 @@ Two SDK facts shape this module:
    that never built exposes no public name); that read is guarded and falls back
    to ``None``. See its docstring for the rationale.
 
-See issue #325 for the full rationale and empirical reproduction.
+See issue #325 for the full rationale and empirical reproduction. For the
+narrative overview of how these primitives fit together (registry scan timing,
+``build()`` idempotency, ``@openapi`` below ``@app.route``, and ``--isolate-app``)
+see the architecture doc's "How Route Discovery Works" section:
+https://yeongseon.dev/azure-functions-python/openapi/architecture/#how-route-discovery-works
 """
 
 from __future__ import annotations
