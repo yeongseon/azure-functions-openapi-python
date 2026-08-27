@@ -14,6 +14,8 @@ Hard failures (exit 1):
   * missing required keys, duplicate ``id``, malformed entry
   * declared ``image`` file does not exist
   * declared ``source.inputs`` file does not exist
+  * a high-signal secret (subscription id, storage/SAS key, function ``code=``,
+    bearer token) is detected in the manifest or a committed screenshot
 
 Soft warnings (exit 0, unless ``--strict``):
   * recomputed source hash differs from the declared hash — the inputs changed
@@ -27,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 from pathlib import Path
 import sys
 from typing import Any
@@ -37,6 +40,63 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = REPO_ROOT / "docs" / "assets" / "screenshots.yml"
 
 _REQUIRED_CAPTURED = ("package_version", "git_sha", "date", "method")
+
+# High-signal secret patterns that must never appear in a committed screenshot
+# artifact or its manifest. Kept deliberately narrow to avoid false positives on
+# ordinary docs content; reviewed, known-safe matches can be exempted via the
+# manifest-level ``secret_scan_allow`` list (substring match).
+_SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    (
+        "azure subscription id",
+        re.compile(
+            r"/subscriptions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-"
+            r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+        ),
+    ),
+    ("storage account key", re.compile(r"AccountKey=[A-Za-z0-9+/]{20,}")),
+    ("shared access key", re.compile(r"SharedAccessKey=[A-Za-z0-9+/%]{20,}")),
+    ("function key in url", re.compile(r"[?&]code=[A-Za-z0-9%._-]{20,}")),
+    ("sas signature", re.compile(r"[?&]sig=[A-Za-z0-9%]{20,}")),
+    ("bearer token", re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/]{20,}")),
+)
+
+
+def _scan_text_for_secrets(text: str, label: str, allow: list[str]) -> list[str]:
+    """Return redacted findings for ``text``; the matched secret is never echoed
+    (that would re-leak it into CI logs)."""
+    findings: list[str] = []
+    for name, pattern in _SECRET_PATTERNS:
+        for match in pattern.finditer(text):
+            if any(a in match.group(0) for a in allow):
+                continue
+            findings.append(
+                f"{label}: possible {name} detected — redact before committing "
+                f"(or add to manifest 'secret_scan_allow' if a reviewed false positive)"
+            )
+            break  # one finding per pattern per source is enough to gate
+    return findings
+
+
+def _scan_secrets(path: Path, manifest: dict[str, Any]) -> list[str]:
+    """Scan the manifest text and every referenced screenshot for leaked secrets."""
+    allow_raw = manifest.get("secret_scan_allow", [])
+    allow = (
+        [a for a in allow_raw if isinstance(a, str)]
+        if isinstance(allow_raw, list)
+        else []
+    )
+    findings: list[str] = []
+    findings.extend(
+        _scan_text_for_secrets(path.read_text(encoding="utf-8"), path.name, allow)
+    )
+    for entry in manifest["screenshots"]:
+        if not isinstance(entry, dict):
+            continue
+        image = entry.get("image")
+        if isinstance(image, str) and (REPO_ROOT / image).is_file():
+            data = (REPO_ROOT / image).read_bytes().decode("latin-1", "ignore")
+            findings.extend(_scan_text_for_secrets(data, image, allow))
+    return findings
 
 
 def _combined_source_hash(inputs: list[str]) -> str:
@@ -116,6 +176,7 @@ def _check(path: Path, strict: bool) -> int:
         return 1
 
     hard_errors: list[str] = []
+    hard_errors.extend(_scan_secrets(path, manifest))
     warnings: list[str] = []
     seen_ids: set[str] = set()
 

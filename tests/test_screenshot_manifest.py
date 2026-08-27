@@ -86,3 +86,47 @@ def test_source_drift_warns_but_passes_without_strict(tmp_path: Path) -> None:
     strict = _run("--manifest", str(manifest), "--strict")
     assert strict.returncode == 1
     assert "drift detected" in strict.stdout
+
+
+def test_secret_in_manifest_fails(tmp_path: Path) -> None:
+    sub_id = "/subscriptions/12345678-1234-1234-1234-1234567890ab"
+    manifest = tmp_path / "m.yml"
+    _write(
+        manifest,
+        f"""
+        schema_version: 1
+        note: "deployed to {sub_id}/resourceGroups/rg"
+        screenshots:
+          - id: leaky
+            image: docs/assets/webhook_receiver_swagger_ui.png
+            captured: {{package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}}
+            source: {{inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}}
+        """,
+    )
+    result = _run("--manifest", str(manifest))
+    assert result.returncode == 1
+    assert "subscription id" in result.stdout
+    # The matched secret itself must never be echoed back into CI logs.
+    assert sub_id not in result.stdout
+
+
+def test_secret_scan_allow_exempts_reviewed_match(tmp_path: Path) -> None:
+    sub_id = "/subscriptions/12345678-1234-1234-1234-1234567890ab"
+    manifest = tmp_path / "m.yml"
+    _write(
+        manifest,
+        f"""
+        schema_version: 1
+        secret_scan_allow: ["{sub_id}"]
+        note: "documented example {sub_id}"
+        screenshots:
+          - id: exempt
+            image: docs/assets/webhook_receiver_swagger_ui.png
+            captured: {{package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}}
+            source: {{inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}}
+        """,
+    )
+    result = _run("--manifest", str(manifest))
+    # Secret is allowlisted, so the only remaining signal is soft hash drift.
+    assert result.returncode == 0
+    assert "subscription id" not in result.stdout
