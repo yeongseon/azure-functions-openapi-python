@@ -161,7 +161,7 @@ def test_openapi_keeps_function_builder_chain_intact() -> None:
     assert built.get_function_name() == "hello_alias"
 
 
-def test_openapi_raises_error_for_dict_request_model() -> None:
+def test_register_openapi_metadata_raises_error_for_dict_request_model() -> None:
     """Test that passing a dict to request_model raises ValueError with helpful message."""
     import pytest
 
@@ -177,7 +177,7 @@ def test_openapi_raises_error_for_dict_request_model() -> None:
     assert "request_body" in str(exc_info.value)
 
 
-def test_openapi_raises_error_for_dict_response_model() -> None:
+def test_register_openapi_metadata_raises_error_for_dict_response_model() -> None:
     """Test that passing a dict to response_model raises ValueError with helpful message."""
     import pytest
 
@@ -193,7 +193,7 @@ def test_openapi_raises_error_for_dict_response_model() -> None:
     assert "response" in str(exc_info.value)
 
 
-def test_openapi_raises_error_for_non_basemodel_request_model() -> None:
+def test_register_openapi_metadata_raises_error_for_non_basemodel_request_model() -> None:
     """Test that passing a non-BaseModel class to request_model raises ValueError."""
     import pytest
 
@@ -211,7 +211,7 @@ def test_openapi_raises_error_for_non_basemodel_request_model() -> None:
     assert "request_model must be a Pydantic BaseModel subclass" in str(exc_info.value)
 
 
-def test_openapi_raises_error_for_non_basemodel_response_model() -> None:
+def test_register_openapi_metadata_raises_error_for_non_basemodel_response_model() -> None:
     """Test that passing a non-BaseModel class to response_model raises ValueError."""
     import pytest
 
@@ -850,3 +850,20 @@ def test_openapi_responses_default_key_preserved_in_3_0() -> None:
     spec = generate_openapi_spec(route_prefix="", openapi_version="3.0.0")
     responses = spec["paths"]["/api/items"]["get"]["responses"]
     assert responses["default"]["description"] == "Fallback"
+
+
+@pytest.mark.parametrize(
+    "removed_kwarg",
+    ["request_model", "request_body", "response_model", "response"],
+)
+def test_openapi_rejects_removed_discrete_kwargs(removed_kwarg: str) -> None:
+    """Regression: the discrete decorator kwargs retired in #496 must stay removed.
+
+    Passing any of ``request_model`` / ``request_body`` / ``response_model`` /
+    ``response`` to ``@openapi`` now raises ``TypeError`` (unexpected keyword
+    argument). This guards against accidentally reintroducing the breaking
+    change; metadata should be supplied via ``requests`` / ``responses`` or
+    ``register_openapi_metadata`` instead.
+    """
+    with pytest.raises(TypeError):
+        openapi(**{removed_kwarg: object()})  # type: ignore[arg-type]

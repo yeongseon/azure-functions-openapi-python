@@ -113,7 +113,7 @@ class TestOpenAPIDecoratorEnhanced:
             def test_func() -> None:
                 pass
 
-    def test_openapi_decorator_with_invalid_request_model(self) -> None:
+    def test_register_openapi_metadata_with_invalid_request_model(self) -> None:
         """Test decorator with invalid request model."""
         with pytest.raises(ValueError):
             register_openapi_metadata(
@@ -123,7 +123,7 @@ class TestOpenAPIDecoratorEnhanced:
                 summary="Test",
             )
 
-    def test_openapi_decorator_with_invalid_response_model(self) -> None:
+    def test_register_openapi_metadata_with_invalid_response_model(self) -> None:
         """Test decorator with invalid response model."""
         with pytest.raises(ValueError):
             register_openapi_metadata(
