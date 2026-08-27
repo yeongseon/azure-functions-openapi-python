@@ -85,8 +85,8 @@ class TestSpecValidity31:
             route="/items",
             method="post",
             summary="Create item",
-            request_model=SimpleModel,
-            response={201: {"description": "Created"}},
+            requests=SimpleModel,
+            responses={201: {"description": "Created"}},
         )
         def create_item() -> None:
             pass
@@ -102,7 +102,7 @@ class TestSpecValidity31:
             parameters=[
                 {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
             ],
-            response_model=SimpleModel,
+            responses=SimpleModel,
         )
         def get_item() -> None:
             pass
@@ -117,8 +117,8 @@ class TestSpecValidity31:
             route="/users",
             method="post",
             summary="Create user",
-            request_model=NullableModel,
-            response_model=NullableModel,
+            requests=NullableModel,
+            responses=NullableModel,
         )
         def create_user() -> None:
             pass
@@ -131,8 +131,8 @@ class TestSpecValidity31:
             route="/profiles",
             method="post",
             summary="Create profile",
-            request_model=NestedModel,
-            response_model=NestedModel,
+            requests=NestedModel,
+            responses=NestedModel,
         )
         def create_profile() -> None:
             pass
@@ -149,7 +149,7 @@ class TestSpecValidity31:
             route="/items",
             method="post",
             summary="Create item",
-            request_model=SimpleModel,
+            requests=SimpleModel,
         )
         def create_item() -> None:
             pass
@@ -161,7 +161,7 @@ class TestSpecValidity31:
             parameters=[
                 {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
             ],
-            response_model=SimpleModel,
+            responses=SimpleModel,
         )
         def get_item() -> None:
             pass
@@ -188,12 +188,12 @@ class TestSpecValidity31:
             route="/items",
             method="post",
             summary="Create item",
-            request_body={
+            requests={
                 "type": "object",
                 "properties": {"name": {"type": "string"}},
                 "required": ["name"],
             },
-            response={201: {"description": "Created"}},
+            responses={201: {"description": "Created"}},
         )
         def create_item() -> None:
             pass
@@ -228,11 +228,11 @@ class TestSpecValidity30:
             route="/items",
             method="post",
             summary="Create item",
-            request_body={
+            requests={
                 "type": "object",
                 "properties": {"name": {"type": "string"}},
             },
-            response={200: {"description": "OK"}},
+            responses={200: {"description": "OK"}},
         )
         def create_item() -> None:
             pass
@@ -285,7 +285,7 @@ class TestPydanticV2Compat30:
             route="/users",
             method="post",
             summary="Create user",
-            request_model=NullableModel,
+            requests=NullableModel,
         )
         def create_user() -> None:
             pass
@@ -306,7 +306,7 @@ class TestPydanticV2Compat30:
             route="/users",
             method="post",
             summary="Create user",
-            request_model=NullableModel,
+            requests=NullableModel,
         )
         def create_user() -> None:
             pass
@@ -330,7 +330,7 @@ class TestPydanticV2Compat30:
             route="/items",
             method="post",
             summary="Create item",
-            request_model=SimpleModel,
+            requests=SimpleModel,
         )
         def create_item() -> None:
             pass
@@ -356,13 +356,13 @@ class TestInlineSchemaConversion31:
             route="/items",
             method="post",
             summary="Create item",
-            request_body={
+            requests={
                 "type": "object",
                 "properties": {
                     "name": {"type": "string", "nullable": True},
                 },
             },
-            response={200: {"description": "OK"}},
+            responses={200: {"description": "OK"}},
         )
         def create_item() -> None:
             pass

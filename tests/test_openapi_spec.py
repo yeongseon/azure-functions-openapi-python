@@ -19,7 +19,7 @@ def _register_http_trigger() -> None:
         ),
         tags=["Example"],
         operation_id="greetUser",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def http_trigger() -> None:
         pass

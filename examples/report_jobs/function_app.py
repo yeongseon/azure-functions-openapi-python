@@ -122,9 +122,11 @@ def _check_bearer_auth(req: func.HttpRequest) -> func.HttpResponse | None:
     description="Queue a new report generation job. Returns a job ID for status polling.",
     tags=["reports"],
     requests=ReportRequest,
-    response_model=ReportJobResponse,
-    response={
-        202: {"description": "Report job queued"},
+    responses={
+        202: {
+            "description": "Report job queued",
+            "content": {"application/json": {"schema": ReportJobResponse}},
+        },
         400: {"description": "Invalid request"},
         401: {"description": "Unauthorized"},
     },
@@ -178,9 +180,11 @@ def submit_report(req: func.HttpRequest) -> func.HttpResponse:
             "schema": {"type": "string"},
         }
     ],
-    response_model=ReportStatusResponse,
-    response={
-        200: {"description": "Job status"},
+    responses={
+        200: {
+            "description": "Job status",
+            "content": {"application/json": {"schema": ReportStatusResponse}},
+        },
         401: {"description": "Unauthorized"},
         404: {"description": "Job not found"},
     },

@@ -36,7 +36,7 @@ screenshots:
     source:
       inputs:
         - examples/report_jobs/function_app.py
-      hash: "sha256:955d8afaa73b5d5c252609b2c6395d06169a28126bf5456d50a7c0babff93fb5"
+      hash: "sha256:06a1bef69c8635a8825562e48302c694b7f9be4b037259e0d417a22e82f90d9d"
     output:
       hash: "sha256:aec622c63df0425f60a47b36551fc79853df805ff77732594340058119d78b72"
   - id: deployment_report_jobs_swagger_ui
@@ -49,7 +49,7 @@ screenshots:
     source:
       inputs:
         - examples/report_jobs/function_app.py
-      hash: "sha256:955d8afaa73b5d5c252609b2c6395d06169a28126bf5456d50a7c0babff93fb5"
+      hash: "sha256:06a1bef69c8635a8825562e48302c694b7f9be4b037259e0d417a22e82f90d9d"
     output:
       hash: "sha256:579ee7357acd04644926b7861e7129775553df4ffb1b67b9149b46384d0b4296"
   - id: notification_request_swagger_ui
@@ -88,7 +88,7 @@ screenshots:
     source:
       inputs:
         - examples/webhook_receiver/function_app.py
-      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+      hash: "sha256:e3b582c65610a9c235c8da3584ae2efd1848aee25d7056b6672742d7b1068615"
     output:
       hash: "sha256:ecb270e3c9dd74fc55c99b67776e2c5b48e65f6be019cb6265715cd54cd03900"
   - id: webhook_receiver_openapi_swagger_ui_preview
@@ -101,7 +101,7 @@ screenshots:
     source:
       inputs:
         - examples/webhook_receiver/function_app.py
-      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+      hash: "sha256:e3b582c65610a9c235c8da3584ae2efd1848aee25d7056b6672742d7b1068615"
     output:
       hash: "sha256:42658bfeeffab7caa4815a4d1588361f39ae4975434a4214ef5af5d3a281a0c8"
   - id: webhook_receiver_swagger_ui
@@ -114,7 +114,7 @@ screenshots:
     source:
       inputs:
         - examples/webhook_receiver/function_app.py
-      hash: "sha256:3795093c98af075f4add7a137745d3ab9755bde1c6be2373dff8d691019b28ff"
+      hash: "sha256:e3b582c65610a9c235c8da3584ae2efd1848aee25d7056b6672742d7b1068615"
     output:
       hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
   - id: e2e_app_swagger_ui
@@ -127,7 +127,7 @@ screenshots:
     source:
       inputs:
         - examples/e2e_app/function_app.py
-      hash: "sha256:837e68ee44be25eb1a899de37188dfce9c7c2955e35c4dfa6be8b29656dc5f7b"
+      hash: "sha256:6bd30b32f04a648e4a4f77cf39b692ceafae75d9c7b2fb22b12e9eda10643d61"
     output:
       hash: "sha256:ad9b0d3d8203823ebf3d70629b8c411e5571f2f6c993a575fbaa79e6cc011369"
   - id: e2e_app_openapi_json
@@ -140,6 +140,6 @@ screenshots:
     source:
       inputs:
         - examples/e2e_app/function_app.py
-      hash: "sha256:837e68ee44be25eb1a899de37188dfce9c7c2955e35c4dfa6be8b29656dc5f7b"
+      hash: "sha256:6bd30b32f04a648e4a4f77cf39b692ceafae75d9c7b2fb22b12e9eda10643d61"
     output:
       hash: "sha256:e6a67724fbed5b9fa3186487557cc24a7784679f9ad26bf594b30d54f1594395"

@@ -1,7 +1,7 @@
 """Webhook receiver example — representative use of @openapi.
 
 Demonstrates:
-- @openapi() with summary, description, tags, requests, response_model, response
+- @openapi() with summary, description, tags, requests, responses
 - get_openapi_json(), get_openapi_yaml()
 - render_swagger_ui()
 - Practical pattern: accept inbound webhook events and return 202 Accepted
@@ -84,9 +84,11 @@ def _verify_signature(payload: bytes, timestamp: str, signature: str, secret: st
     ),
     tags=["webhooks"],
     requests=WebhookEvent,
-    response_model=WebhookAcceptedResponse,
-    response={
-        202: {"description": "Webhook accepted for processing"},
+    responses={
+        202: {
+            "description": "Webhook accepted for processing",
+            "content": {"application/json": {"schema": WebhookAcceptedResponse}},
+        },
         400: {"description": "Invalid request payload"},
         401: {"description": "Invalid webhook signature or expired timestamp"},
         409: {"description": "Duplicate delivery (replay)"},

@@ -50,7 +50,7 @@ def _register_http_trigger() -> None:
         ),
         tags=["Example"],
         operation_id="greetUser",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def http_trigger() -> None:
         pass
@@ -61,7 +61,7 @@ def test_generate_openapi_spec_structure() -> None:
         route="/sample_func",
         summary="Sample summary",
         description="Sample description",
-        response={200: {"description": "Success"}},
+        responses={200: {"description": "Success"}},
         parameters=[
             {
                 "name": "q",
@@ -122,8 +122,8 @@ def test_generate_openapi_spec_with_request_body() -> None:
         method="post",
         summary="With Body",
         description="Endpoint with request body",
-        response={200: {"description": "OK"}},
-        request_body={
+        responses={200: {"description": "OK"}},
+        requests={
             "type": "object",
             "properties": {
                 "username": {"type": "string"},
@@ -146,7 +146,7 @@ def test_response_schema_and_examples() -> None:
         route="/greet",
         summary="Greet user",
         description="Returns a greeting message.",
-        response={
+        responses={
             200: {
                 "description": "OK",
                 "content": {
@@ -183,7 +183,7 @@ def test_generate_openapi_spec_with_route_and_method() -> None:
         route="/custom-path",
         summary="Test with custom route/method",
         description="Checks that route and method are reflected",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
         method="post",
     )
     def custom_func() -> None:
@@ -198,7 +198,7 @@ def test_generate_openapi_spec_normalizes_route_without_leading_slash() -> None:
         route="hello",
         method="post",
         summary="Route normalization",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def hello() -> None:
         pass
@@ -212,7 +212,7 @@ def test_generate_openapi_spec_normalizes_route_without_leading_slash() -> None:
 def test_generate_openapi_spec_normalizes_default_function_path() -> None:
     @openapi(
         summary="Default route normalization",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def default_path_func() -> None:
         pass
@@ -232,8 +232,8 @@ def test_generate_spec_with_pydantic_models() -> None:
     @openapi(
         summary="Login user",
         description="Authenticates a user and returns a welcome message.",
-        request_model=RequestModel,
-        response_model=ResponseModel,
+        requests=RequestModel,
+        responses=ResponseModel,
         method="post",
     )
     def login() -> None:
@@ -258,8 +258,9 @@ def test_response_200_is_preserved_when_response_model_exists() -> None:
     class MergeResponseModel(BaseModel):
         message: str
 
-    @openapi(
-        route="/merge-response",
+    register_openapi_metadata(
+        path="/merge-response",
+        method="get",
         summary="Merge response",
         response={
             200: {
@@ -276,8 +277,6 @@ def test_response_200_is_preserved_when_response_model_exists() -> None:
         },
         response_model=MergeResponseModel,
     )
-    def merge_response_func() -> None:
-        pass
 
     response_200 = generate_openapi_spec(route_prefix="")["paths"]["/merge-response"]["get"][
         "responses"
@@ -294,15 +293,13 @@ def test_response_model_uses_explicit_first_success_status_code() -> None:
     class CreatedModel(BaseModel):
         id: str
 
-    @openapi(
-        route="/created-with-model",
+    register_openapi_metadata(
+        path="/created-with-model",
         method="post",
         summary="Created with model",
         response={201: {"description": "Created"}, 400: {"description": "Bad Request"}},
         response_model=CreatedModel,
     )
-    def created_with_model_func() -> None:
-        pass
 
     responses = generate_openapi_spec(route_prefix="")["paths"]["/created-with-model"]["post"][
         "responses"
@@ -318,14 +315,13 @@ def test_response_model_defaults_to_200_when_no_success_response_declared() -> N
     class DefaultSuccessModel(BaseModel):
         ok: bool
 
-    @openapi(
-        route="/response-model-default-200",
+    register_openapi_metadata(
+        path="/response-model-default-200",
+        method="get",
         summary="Response model default 200",
         response={400: {"description": "Bad Request"}},
         response_model=DefaultSuccessModel,
     )
-    def response_model_default_200_func() -> None:
-        pass
 
     responses = generate_openapi_spec(route_prefix="")["paths"]["/response-model-default-200"][
         "get"
@@ -341,14 +337,13 @@ def test_response_model_uses_explicit_200_when_declared() -> None:
     class Explicit200Model(BaseModel):
         message: str
 
-    @openapi(
-        route="/response-model-explicit-200",
+    register_openapi_metadata(
+        path="/response-model-explicit-200",
+        method="get",
         summary="Response model explicit 200",
         response={200: {"description": "OK"}, 201: {"description": "Created"}},
         response_model=Explicit200Model,
     )
-    def response_model_explicit_200_func() -> None:
-        pass
 
     responses = generate_openapi_spec(route_prefix="")["paths"]["/response-model-explicit-200"][
         "get"
@@ -409,7 +404,7 @@ def test_generate_openapi_spec_with_security() -> None:
         route="/secure",
         summary="Secure endpoint",
         security=[{"BearerAuth": []}],
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def secure_endpoint() -> None:
         pass
@@ -423,7 +418,7 @@ def test_generate_openapi_spec_adds_default_200_response_when_missing() -> None:
         route="/default-response",
         method="post",
         summary="Default response",
-        request_body={
+        requests={
             "type": "object",
             "properties": {"name": {"type": "string"}},
         },
@@ -445,7 +440,7 @@ def test_generate_openapi_spec_keeps_explicit_non_200_responses_without_adding_2
         route="/created-response",
         method="post",
         summary="Created response",
-        response={201: {"description": "Created"}},
+        responses={201: {"description": "Created"}},
     )
     def created_response_func() -> None:
         pass
@@ -464,7 +459,7 @@ def test_generate_openapi_spec_with_security_schemes_param() -> None:
         route="/secure-param",
         summary="Secured with param",
         security=[{"BearerAuth": []}],
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def secure_param_endpoint() -> None:
         pass
@@ -491,7 +486,7 @@ def test_generate_openapi_spec_with_decorator_security_scheme() -> None:
         summary="Secured with decorator scheme",
         security=[{"ApiKeyAuth": []}],
         security_scheme={"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}},
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def secure_decorator_endpoint() -> None:
         pass
@@ -524,7 +519,7 @@ def test_generate_openapi_spec_merges_security_schemes() -> None:
                 },
             }
         },
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def secure_merged_endpoint() -> None:
         pass
@@ -546,7 +541,7 @@ def test_security_schemes_in_json_output() -> None:
         summary="Secured JSON",
         security=[{"BearerAuth": []}],
         security_scheme={"BearerAuth": {"type": "http", "scheme": "bearer"}},
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def secure_json_endpoint() -> None:
         pass
@@ -564,8 +559,9 @@ def test_response_model_with_content_not_dict() -> None:
     class ContentModel(BaseModel):
         msg: str
 
-    @openapi(
-        route="/content-not-dict",
+    register_openapi_metadata(
+        path="/content-not-dict",
+        method="get",
         summary="Content not dict",
         response={
             200: {
@@ -575,8 +571,6 @@ def test_response_model_with_content_not_dict() -> None:
         },
         response_model=ContentModel,
     )
-    def content_not_dict_func() -> None:
-        pass
 
     spec = generate_openapi_spec(route_prefix="")
     resp_200 = spec["paths"]["/content-not-dict"]["get"]["responses"]["200"]
@@ -593,8 +587,9 @@ def test_response_model_with_json_content_not_dict() -> None:
     class JsonContentModel(BaseModel):
         msg: str
 
-    @openapi(
-        route="/json-content-not-dict",
+    register_openapi_metadata(
+        path="/json-content-not-dict",
+        method="get",
         summary="JSON content not dict",
         response={
             200: {
@@ -606,8 +601,6 @@ def test_response_model_with_json_content_not_dict() -> None:
         },
         response_model=JsonContentModel,
     )
-    def json_content_not_dict_func() -> None:
-        pass
 
     spec = generate_openapi_spec(route_prefix="")
     resp_200 = spec["paths"]["/json-content-not-dict"]["get"]["responses"]["200"]
@@ -625,7 +618,7 @@ def test_response_model_schema_generation_failure_no_200() -> None:
     @openapi(
         route="/schema-fail-no-200",
         summary="Schema fail no 200",
-        response_model=FailModel,
+        responses=FailModel,
     )
     def schema_fail_no_200_func() -> None:
         pass
@@ -648,14 +641,13 @@ def test_response_model_schema_generation_failure_with_200() -> None:
     class FailModel2(BaseModel):
         x: int
 
-    @openapi(
-        route="/schema-fail-with-200",
+    register_openapi_metadata(
+        path="/schema-fail-with-200",
+        method="get",
         summary="Schema fail with 200",
         response={200: {"description": "Custom 200"}},
         response_model=FailModel2,
     )
-    def schema_fail_with_200_func() -> None:
-        pass
 
     with patch.object(
         OPENAPI_MODULE,
@@ -676,7 +668,7 @@ def test_malformed_registry_entry_skipped() -> None:
     @openapi(
         route="/valid-endpoint",
         summary="Valid",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def valid_func() -> None:
         pass
@@ -714,7 +706,7 @@ def test_malformed_registry_entry_raises_in_strict_mode() -> None:
     @openapi(
         route="/valid-strict",
         summary="Valid",
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def valid_strict_func() -> None:
         pass
@@ -762,7 +754,7 @@ def test_security_scheme_collision_raises_value_error() -> None:
         summary="First",
         security=[{"SharedAuth": []}],
         security_scheme={"SharedAuth": {"type": "http", "scheme": "bearer"}},
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def collision_func_a() -> None:
         pass
@@ -806,8 +798,8 @@ def test_generate_openapi_spec_with_delete_request_body() -> None:
         route="/items/{id}",
         method="delete",
         summary="Delete item with body",
-        request_body={"type": "object", "properties": {"reason": {"type": "string"}}},
-        response={204: {"description": "No Content"}},
+        requests={"type": "object", "properties": {"reason": {"type": "string"}}},
+        responses={204: {"description": "No Content"}},
     )
     def delete_with_body_func() -> None:
         pass
@@ -827,9 +819,9 @@ def test_generate_openapi_spec_request_body_required_false() -> None:
         route="/optional-body-spec",
         method="post",
         summary="Optional body spec",
-        request_body={"type": "object"},
+        requests={"type": "object"},
         request_body_required=False,
-        response={200: {"description": "OK"}},
+        responses={200: {"description": "OK"}},
     )
     def optional_body_spec_func() -> None:
         pass

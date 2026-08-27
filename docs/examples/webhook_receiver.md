@@ -18,8 +18,8 @@ Source: `examples/webhook_receiver/function_app.py`
 ## Features demonstrated
 
 - `@openapi()` with `summary`, `description`, `tags`
-- `requests` for Pydantic request schema generation (plus `response_model` for the typed success body)
-- `response` dict for documenting multiple status codes (202, 400, 401, 409)
+- `requests` for Pydantic request schema generation (plus `responses` for the typed success body)
+- `responses` dict for documenting multiple status codes (202, 400, 401, 409)
 - `get_openapi_json()`, `get_openapi_yaml()`
 - `render_swagger_ui()`
 
@@ -55,9 +55,11 @@ class WebhookAcceptedResponse(BaseModel):
     ),
     tags=["webhooks"],
     requests=WebhookEvent,
-    response_model=WebhookAcceptedResponse,
-    response={
-        202: {"description": "Webhook accepted for processing"},
+    responses={
+        202: {
+            "description": "Webhook accepted for processing",
+            "content": {"application/json": {"schema": WebhookAcceptedResponse}},
+        },
         400: {"description": "Invalid request payload"},
         401: {"description": "Invalid webhook signature or expired timestamp"},
         409: {"description": "Duplicate delivery (replay)"},

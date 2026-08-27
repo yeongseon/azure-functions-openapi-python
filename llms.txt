@@ -47,7 +47,7 @@ app = func.FunctionApp()
 @openapi(
     summary="Greet a person",
     description="Returns a personalized greeting",
-    request_model=GreetRequest,
+    requests=GreetRequest,
 )
 def greet(req: func.HttpRequest) -> func.HttpResponse:
     body = GreetRequest.model_validate_json(req.get_body())

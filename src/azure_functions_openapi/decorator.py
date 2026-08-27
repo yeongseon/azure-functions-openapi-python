@@ -8,7 +8,6 @@ import logging
 import re
 import types
 from typing import Any, Callable, Literal, TypeGuard, TypeVar, Union, cast, get_origin
-import warnings
 
 from pydantic import BaseModel
 
@@ -277,12 +276,8 @@ def openapi(
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
     # ── request / response schema ───────────────────────────────
-    request_model: type[BaseModel] | None = None,
-    request_body: dict[str, Any] | None = None,
     requests: type[BaseModel] | dict[str, Any] | None = None,
     request_body_required: bool = True,
-    response_model: type[BaseModel] | None = None,
-    response: dict[int, dict[str, Any]] | None = None,
     responses: type[BaseModel] | Mapping[int | Literal["default"], Any] | None = None,
     # ── querystring (OpenAPI 3.2 only) ───────────────────────
     querystring: type[BaseModel] | dict[str, Any] | None = None,
@@ -321,8 +316,8 @@ def openapi(
         description="Update a todo and return the updated document.",
         tags=["Todo"],
         parameters=[{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}],
-        request_model=TodoRequest,
-        response_model=TodoResponse,
+        requests=TodoRequest,
+        responses=TodoResponse,
         operation_id="updateTodo",
     )
     @app.route(route="todos/{id}", methods=["PUT"])
@@ -376,34 +371,23 @@ def openapi(
     security_scheme:
         Security scheme definitions to include in components.securitySchemes.
         Example: {"BearerAuth": {"type": "http", "scheme": "bearer"}}
-    request_model:
-        Pydantic model used to derive requestBody schema.
-    request_body:
-        Raw requestBody schema (if you don't use Pydantic).
     requests:
-        Unified request parameter that accepts either a Pydantic model class
-        (equivalent to `request_model`) or a raw requestBody schema dict
-        (equivalent to `request_body`).
+        Request parameter that accepts either a Pydantic model class (used to
+        derive the requestBody schema) or a raw requestBody schema dict.
     request_body_required:
         Whether the request body is required. Defaults to True.
-    response_model:
-        Pydantic model used to derive 200-response schema.
-    response:
-        Manual responses dict keyed by status code.
     responses:
-        Unified response parameter. Accepts either:
+        Response parameter. Accepts either:
 
-        * a Pydantic model class (equivalent to `response_model`; its schema is
-          injected into the first 2xx response), or
-        * a dict keyed by status code whose values are OpenAPI Response Objects
-          (equivalent to `response`). Each value may additionally be a bare
-          Pydantic model class as shorthand for a JSON body of that schema, and
-          a model class may also appear in the `content.<media>.schema` position
-          of a Response Object. This lets a single operation express a typed
-          success body together with several documented status codes — e.g.
-          ``responses={202: AcceptedModel, 422: {"description": "Validation error"}}``
-          — which previously required combining the discrete `response_model` and
-          `response` parameters.
+        * a Pydantic model class (its schema is injected into the first 2xx
+          response), or
+        * a dict keyed by status code whose values are OpenAPI Response Objects.
+          Each value may additionally be a bare Pydantic model class as shorthand
+          for a JSON body of that schema, and a model class may also appear in the
+          `content.<media>.schema` position of a Response Object. This lets a
+          single operation express a typed success body together with several
+          documented status codes — e.g.
+          ``responses={202: AcceptedModel, 422: {"description": "Validation error"}}``.
     querystring:
         OpenAPI 3.2 querystring parameter schema. Accepts either a Pydantic
         model class or a raw JSON Schema dict, emitted as an ``in: querystring``
@@ -412,16 +396,6 @@ def openapi(
     querystring_media_type:
         Media type used to encode the querystring content. Defaults to
         ``application/x-www-form-urlencoded``.
-
-    .. deprecated::
-       This decorator currently exposes two parallel parameter styles: the
-       discrete pairs (``request_model``/``request_body`` and
-       ``response_model``/``response``) and the unified parameters
-       (``requests`` and ``responses``). The unified ``requests``/``responses``
-       parameters are the intended survivors; passing any of the discrete
-       parameters now emits a :class:`DeprecationWarning`. They will be removed
-       in a future release after a deprecation window. New code should prefer
-       ``requests``/``responses``. Tracking: issue #285.
 
     Returns
     -------
@@ -477,18 +451,12 @@ def openapi(
             )
             validated_tags = _validate_tags(tags, metadata_func.__name__)
 
-            resolved_request_model = request_model
-            resolved_request_body = request_body
-            resolved_response_model = response_model
-            resolved_response: dict[int | str, dict[str, Any]] | None = cast(
-                "dict[int | str, dict[str, Any]] | None", response
-            )
+            resolved_request_model: type[BaseModel] | None = None
+            resolved_request_body: dict[str, Any] | None = None
+            resolved_response_model: type[BaseModel] | None = None
+            resolved_response: dict[int | str, dict[str, Any]] | None = None
 
             if requests is not None:
-                if request_model is not None or request_body is not None:
-                    raise ValueError(
-                        "Cannot provide both 'requests' and 'request_model'/'request_body'."
-                    )
                 if isinstance(requests, dict):
                     resolved_request_body = requests
                 elif isinstance(requests, type) and issubclass(requests, BaseModel):
@@ -499,10 +467,6 @@ def openapi(
                     )
 
             if responses is not None:
-                if response_model is not None or response is not None:
-                    raise ValueError(
-                        "Cannot provide both 'responses' and 'response_model'/'response'."
-                    )
                 if isinstance(responses, Mapping):
                     resolved_response = _normalize_unified_responses(
                         responses, metadata_func.__name__
@@ -526,30 +490,6 @@ def openapi(
                         "'querystring' must be either a Pydantic BaseModel subclass "
                         "or a dictionary."
                     )
-
-            # Emit the deprecation warning only after mixed-style validation
-            # has passed, so callers hitting a ValueError above are not also
-            # warned about a config they were told is invalid.
-            _deprecated_used = [
-                name
-                for name, value in (
-                    ("request_model", request_model),
-                    ("request_body", request_body),
-                    ("response_model", response_model),
-                    ("response", response),
-                )
-                if value is not None
-            ]
-            if _deprecated_used:
-                warnings.warn(
-                    "The discrete @openapi parameter(s) "
-                    f"{', '.join(_deprecated_used)} are "
-                    "deprecated in favor of the unified 'requests='/'responses=' "
-                    "parameters and will be removed in a future release. "
-                    "See https://github.com/yeongseon/azure-functions-openapi-python/issues/285.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
 
             # Validate request/response models
             _validate_models(
@@ -773,8 +713,7 @@ def register_openapi_metadata(
             resolved_querystring_model = querystring
         else:
             raise ValueError(
-                "'querystring' must be either a Pydantic BaseModel subclass "
-                "or a dictionary."
+                "'querystring' must be either a Pydantic BaseModel subclass or a dictionary."
             )
 
     reg = registry if registry is not None else _registry
@@ -818,7 +757,6 @@ def register_openapi_metadata(
         )
 
     logger.debug("Registered programmatic OpenAPI metadata for '%s %s'", validated_method, path)
-
 
 
 # RFC 7230 §3.2.6 token: the grammar an HTTP method name must satisfy. Used to
@@ -991,9 +929,7 @@ def _strip_null_branches(schema: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         branches = result.get(combinator)
         if not isinstance(branches, list):
             continue
-        non_null = [
-            b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")
-        ]
+        non_null = [b for b in branches if not (isinstance(b, dict) and b.get("type") == "null")]
         if len(non_null) < len(branches):
             was_nullable = True
         if len(non_null) == 1:
@@ -1103,11 +1039,7 @@ def _merge_typed_parameters(
         return base
 
     merged = list(base)
-    seen = {
-        (p.get("name"), p.get("in"))
-        for p in merged
-        if isinstance(p, dict) and "name" in p
-    }
+    seen = {(p.get("name"), p.get("in")) for p in merged if isinstance(p, dict) and "name" in p}
     for param in typed:
         key = (param["name"], param["in"])
         if key in seen:
@@ -1148,9 +1080,7 @@ def _validate_parameters(
             required_fields = ["name", "in"]
             for field in required_fields:
                 if field not in param:
-                    raise ValueError(
-                        f"Parameter at index {i} missing required field: {field}"
-                    )
+                    raise ValueError(f"Parameter at index {i} missing required field: {field}")
 
         validated_params.append(param)
 

@@ -370,7 +370,7 @@ def test_spec_expanded_methods_omit_body_on_get_head_delete() -> None:
     # to all methods but must not attach requestBody to GET/HEAD/DELETE.
     app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-    @openapi(route="/api/thing", request_model=DemoRequestModel)
+    @openapi(route="/api/thing", requests=DemoRequestModel)
     @app.route(route="thing")
     def thing(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
         return func.HttpResponse("OK", status_code=200)

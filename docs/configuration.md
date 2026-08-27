@@ -47,12 +47,13 @@ a Pydantic model class or a raw schema dict.
 | `request_body_required` | `bool` | Whether the request body is required; defaults to `True` |
 | `responses` | `type[BaseModel] \| dict[int, dict] \| None` | Unified responses — model (typed `200` schema) or a status-code map (like `response`) |
 
-#### Deprecated (issue #285)
+#### Removed from `@openapi` (issue #285)
 
-These discrete parameters still work but emit a `DeprecationWarning`. Migrate to
-`requests` / `responses`.
+These discrete parameters were **removed** from `@openapi`. Use the unified
+`requests` / `responses` parameters instead. They remain available on
+`register_openapi_metadata()` for programmatic registration.
 
-| Deprecated parameter | Type | Replacement |
+| Removed parameter | Type | Replacement |
 | --- | --- | --- |
 | `request_model` | `type[BaseModel] \| None` | `requests=Model` |
 | `request_body` | `dict \| None` | `requests={...}` |
@@ -61,15 +62,13 @@ These discrete parameters still work but emit a `DeprecationWarning`. Migrate to
 
 !!! warning
     A model passed to `requests` / `responses` must be a Pydantic `BaseModel`
-    class; pass a `dict` for raw schemas. You cannot combine `requests` with
-    `request_model`/`request_body`, nor `responses` with
-    `response_model`/`response` — doing so raises `ValueError`.
+    class; pass a `dict` for raw schemas.
 
-!!! note "One response case cannot migrate yet (issue #410)"
-    `responses=` accepts a model **or** a status-code map, but not both. An
-    operation that needs a model-derived `200` schema *and* extra status codes
-    must keep the discrete `response_model=` + `response=` pair for now (still
-    emits a `DeprecationWarning`). Tracked in issue #410.
+!!! note "Typed success body plus extra status codes"
+    A model-derived success schema *and* extra status codes are expressed with a
+    single `responses=` map: give each status either a Pydantic model or an
+    explicit Response Object (with `content.schema`). See the
+    [migration guide](migration/unified-params.md).
 
 ## Parameter examples
 
@@ -130,14 +129,18 @@ class ProductResponse(BaseModel):
 )
 
 
-# Model-derived 200 plus extra status codes — keep the discrete response
-# parameters until issue #410 lands (still emits a DeprecationWarning):
+# Model-derived 200 plus extra status codes — one unified `responses=` map:
 @openapi(
     summary="Create product",
     method="post",
     requests=ProductCreate,
-    response_model=ProductResponse,
-    response={201: {"description": "Created"}, 400: {"description": "Bad request"}},
+    responses={
+        201: {
+            "description": "Created",
+            "content": {"application/json": {"schema": ProductResponse}},
+        },
+        400: {"description": "Bad request"},
+    },
 )
 ```
 

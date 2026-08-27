@@ -20,8 +20,8 @@ Source: `examples/notification_request/function_app.py`
 
 - `@openapi` and `@validate_http` stacked on the same handler
 - `requests=` parameter for request model (unified param)
-- `response_model=` for response schema
-- `response` dict for multi-status documentation (202, 404, 422)
+- `responses=` for response schema (unified param)
+- `responses` map for multi-status documentation (202, 404, 422)
 - Shared Pydantic models between OpenAPI and validation decorators
 
 ## Data models
@@ -63,9 +63,11 @@ Both decorators share the same Pydantic model:
     description="Validate and queue an email notification for delivery.",
     tags=["notifications"],
     requests=EmailNotificationRequest,
-    response_model=NotificationAcceptedResponse,
-    response={
-        202: {"description": "Notification queued for delivery"},
+    responses={
+        202: {
+            "description": "Notification queued for delivery",
+            "content": {"application/json": {"schema": NotificationAcceptedResponse}},
+        },
         422: {"description": "Validation error"},
     },
     )
@@ -95,9 +97,11 @@ The status endpoint uses query parameter validation:
             "schema": {"type": "string"},
         }
     ],
-    response_model=NotificationStatusResponse,
-    response={
-        200: {"description": "Notification status"},
+    responses={
+        200: {
+            "description": "Notification status",
+            "content": {"application/json": {"schema": NotificationStatusResponse}},
+        },
         404: {"description": "Notification not found"},
     },
 )

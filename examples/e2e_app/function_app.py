@@ -48,7 +48,7 @@ def version(req: func.HttpRequest) -> func.HttpResponse:
     route="/api/items",
     summary="List items",
     tags=["items"],
-    response={200: {"description": "OK", "content": {"application/json": {}}}},
+    responses={200: {"description": "OK", "content": {"application/json": {}}}},
 )
 @app.route(route="items", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def list_items(req: func.HttpRequest) -> func.HttpResponse:
