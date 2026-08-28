@@ -4,6 +4,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Let freshly-published versions age before Dependabot proposes them, so a
+    # compromised release has time to be yanked/flagged (supply-chain hardening).
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+      include:
+        - "*"
     commit-message:
       prefix: "chore(deps)"
     labels:
@@ -21,6 +30,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # Let freshly-published versions age before Dependabot proposes them, so a
+    # compromised release has time to be yanked/flagged (supply-chain hardening).
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+      include:
+        - "*"
     commit-message:
       prefix: "chore(deps)"
     labels:
