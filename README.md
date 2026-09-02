@@ -235,6 +235,8 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 > **Want runtime validation too? (optional)** `@openapi` documents your Pydantic models — it does not parse or validate requests at runtime. If you also want automatic request parsing, consistent `400`/`422` error responses, and response-model enforcement, layer [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)'s `@validate_http` on the **same** Pydantic models. It is an optional companion, not a dependency — this package works fully on its own. See the [validation README](https://github.com/yeongseon/azure-functions-validation-python#readme) for details, or a full runnable example that pairs both on one resource: [Full Stack CRUD API](https://github.com/yeongseon/azure-functions-cookbook-python/tree/main/examples/apis-and-ingress/full_stack_crud_api).
 
+> **Want structured logging too? (optional)** Pair your documented endpoints with [`azure-functions-logging`](https://github.com/yeongseon/azure-functions-logging-python) for structured, correlation-aware logs and observability. It attaches request/response context to every log line without changing your `@openapi` contracts. Like validation, it is an optional companion, not a dependency — this package works fully on its own. See the [logging README](https://github.com/yeongseon/azure-functions-logging-python#readme) for details.
+
 <details>
 <summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
 
