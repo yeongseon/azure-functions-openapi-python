@@ -103,21 +103,35 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install Hatch and dependencies via Makefile
+      - name: Build wheel
+        # Prove 2.x against a WHEEL-installed build, not an editable/source
+        # tree, mirroring the sibling proof lanes (azure-functions-validation
+        # #351 / azure-functions-langgraph #350). Building the distribution
+        # artifact also avoids hatch's default env, which is pinned to Python
+        # 3.10 in pyproject and cannot install azure-functions 2.x (Requires-
+        # Python >=3.13).
         run: |
-          pip install hatch
-          make install
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+
+      - name: Install wheel with dev extras
+        run: pip install "$(ls dist/azure_functions_openapi-*.whl)[dev]"
 
       - name: Upgrade azure-functions to the 2.x line
         # pyproject caps azure-functions <2.0.0 until 2.x is certified on real
         # Azure. This lane deliberately overrides that cap to PROVE the package
-        # still builds its spec and passes its suite under 2.x. pip warns about
-        # the intentional override; that is expected.
-        run: .venv/bin/hatch run pip install --upgrade 'azure-functions>=2,<3'
+        # (route discovery adapter, spec generation) still builds and passes its
+        # suite under 2.x. pip warns about the intentional override; expected.
+        run: pip install "azure-functions>=2,<3"
 
       - name: Show resolved versions
-        run: .venv/bin/hatch run pip show azure-functions pydantic | grep -E '^(Name|Version):'
+        run: pip show azure-functions pydantic | grep -E '^(Name|Version):'
 
-      - name: Run full quality checks against azure-functions 2.x
-        run: make check-all
+      - name: Run compat suite against the wheel + azure-functions 2.x
+        # Compatibility smoke only: `--no-cov` disables the coverage gate for
+        # this pinned run (a separate job from the coverage-enforcing matrix).
+        # The repo pytest config sets `pythonpath = ["src", "."]`, which would
+        # shadow the installed wheel with the source tree; `-o pythonpath=`
+        # clears it so the suite genuinely exercises the wheel-installed package.
+        run: pytest tests/ --no-cov -q -o "pythonpath="
 
