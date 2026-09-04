@@ -2,19 +2,20 @@
 
 After the adapter isolation (#325), all Azure Functions SDK discovery flows
 through :mod:`azure_functions_openapi.adapters.azure_functions`. This module
-pins that contract against the *installed* SDK so the CI matrix
-(``azure-functions`` 1.21 → latest ``<2.0``, Python 3.10–3.14) proves the
-package works on every supported line before the ``<2.0.0`` ceiling is ever
-relaxed.
+pins that contract against the *installed* SDK so the CI matrix proves the
+package works on every supported line: ``azure-functions`` 1.21 → latest 1.x
+on Python 3.10–3.12, and the 2.x line on Python 3.13+ (the wheel-based compat
+matrix in ci-test.yml).
 
-Verified support matrix (enforced by CI; see ``pyproject.toml`` pin
-``azure-functions>=1.21.0,<2.0.0`` and the README "SDK Compatibility" table):
+Verified support matrix (enforced by CI; see the interpreter-aware
+``pyproject.toml`` pin and the README "SDK Compatibility" table):
 
     azure-functions | Python
     --------------- | ----------------------------
     1.21.0 (floor)  | 3.10
     1.24.0          | 3.10
-    latest (<2.0)   | 3.10, 3.11, 3.12, 3.13, 3.14
+    latest (<2.0)   | 3.10, 3.11, 3.12
+    2.x (>=2,<3)    | 3.13, 3.14
 
 Three guarantees are asserted here:
 
@@ -34,6 +35,7 @@ Three guarantees are asserted here:
 from __future__ import annotations
 
 import importlib.metadata as _metadata
+import sys
 from typing import Any
 from unittest import mock
 
@@ -60,7 +62,12 @@ def _make_app() -> Any:
 
 
 def test_installed_sdk_is_within_supported_matrix() -> None:
-    """The installed SDK must satisfy the ``>=1.21.0,<2.0.0`` pin."""
+    """The installed SDK must satisfy the interpreter-aware pin.
+
+    Below Python 3.13 the pin is ``>=1.21.0,<2.0.0``. On Python 3.13+ the
+    ``<2.0.0`` ceiling is lifted (issue #528) and the wheel-based 2.x compat
+    matrix proves the adapter holds, so only the ``>=1.21.0`` floor is enforced.
+    """
     installed = _metadata.version("azure-functions")
     major_minor = tuple(int(p) for p in installed.split(".")[:2])
     assert major_minor >= (1, 21), (
@@ -68,10 +75,12 @@ def test_installed_sdk_is_within_supported_matrix() -> None:
         "pyproject.toml. The floor exists because earlier releases return None "
         "from FunctionBuilder.__call__. See issue #327."
     )
-    assert major_minor < (2, 0), (
-        f"azure-functions {installed} is above the <2.0.0 ceiling. The ceiling "
-        "is only widened after the #327 compatibility matrix is green."
-    )
+    if sys.version_info < (3, 13):
+        assert major_minor < (2, 0), (
+            f"azure-functions {installed} is above the <2.0.0 ceiling on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}. The ceiling is "
+            "only lifted on Python 3.13+ (issue #528)."
+        )
 
 
 # ---------------------------------------------------------------------------
