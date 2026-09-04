@@ -131,7 +131,8 @@ jobs:
         # Compatibility smoke only: `--no-cov` disables the coverage gate for
         # this pinned run (a separate job from the coverage-enforcing matrix).
         # The repo pytest config sets `pythonpath = ["src", "."]`, which would
-        # shadow the installed wheel with the source tree; `-o pythonpath=`
-        # clears it so the suite genuinely exercises the wheel-installed package.
-        run: pytest tests/ --no-cov -q -o "pythonpath="
+        # shadow the installed wheel with the source tree. We drop `src` (so the
+        # wheel-installed package is genuinely exercised) but keep the repo root
+        # `.` on the path, because several tests import the `examples` package.
+        run: pytest tests/ --no-cov -q -o "pythonpath=."
 
