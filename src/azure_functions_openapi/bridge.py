@@ -674,14 +674,20 @@ def scan_endpoint_metadata(
                         _tag_skew(canonical_target, entry_skew)
                         continue
                     if not entry_skew:
-                        if inferred_response_model is None and inferred_response is None:
+                        if (
+                            inferred_response_model is None
+                            and inferred_response is None
+                            and not inferred_summary
+                            and not inferred_description
+                        ):
                             # Plain binding with neither @openapi nor enrichment
-                            # nor skew nor an inferable return type: nothing to
-                            # register.
+                            # nor skew nor an inferable return type nor a
+                            # docstring: nothing to register.
                             continue
-                        # Return-type inference (P1-A): fall through past the
-                        # lock to register the inferred response as a standalone
-                        # binding-derived operation below.
+                        # Return-type / docstring inference (P1-A): fall through
+                        # past the lock to register the inferred response and/or
+                        # summary/description as a standalone binding-derived
+                        # operation below.
                     # Endpoint namespace present but rejected (skew) with no
                     # canonical @openapi entry: fall through to register a bare
                     # binding-derived operation below and tag the skew, so the
@@ -744,7 +750,17 @@ def scan_endpoint_metadata(
                     parameters=discovered.get("parameters") or None,
                     registry=reg,
                 )
-            elif inferred_response_model is not None or inferred_response is not None:
+            elif (
+                inferred_response_model is not None
+                or inferred_response is not None
+                or inferred_summary
+                or inferred_description
+            ):
+                # Standalone operation materialized purely from return-type
+                # and/or docstring inference (P1-A). When a response was inferred,
+                # tag it ``_response_inferred`` so a later scan carrying
+                # validation/explicit metadata supersedes it. A docstring-only
+                # entry (no inferred response) carries no such tag.
                 # Standalone operation materialized purely from return-type
                 # inference (P1-A). Tag it ``_response_inferred`` so a later scan
                 # carrying validation/explicit metadata supersedes it.
@@ -757,10 +773,11 @@ def scan_endpoint_metadata(
                     response=cast("dict[int, dict[str, Any]] | None", inferred_response or None),
                     registry=reg,
                 )
-                with reg.lock:
-                    inferred_entry = reg.get(endpoint_key)
-                    if inferred_entry is not None:
-                        inferred_entry["_response_inferred"] = True
+                if inferred_response_model is not None or inferred_response is not None:
+                    with reg.lock:
+                        inferred_entry = reg.get(endpoint_key)
+                        if inferred_entry is not None:
+                            inferred_entry["_response_inferred"] = True
             else:
                 # Bare binding-derived operation for an endpoint-skew handler: no
                 # enrichment was consumed, but the operation is materialized so

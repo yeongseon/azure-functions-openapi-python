@@ -323,6 +323,7 @@ def _infer_response_from_return(
     # scalars, unsupported generics): leave the response undocumented.
     return None, None
 
+
 def _infer_doc_metadata(func: Callable[..., Any]) -> tuple[str, str]:
     """Infer ``(summary, description)`` from a handler's docstring (P1-A Phase 2).
 

@@ -1,8 +1,8 @@
 """Docstring inference (P1-A Phase 2).
 
 Covers inferring ``summary``/``description`` from a handler's docstring at both
-decorator-time (``@openapi``) and scan-time (bare ``@app.route`` that also has a
-documentable return annotation). Docstring inference is per-field and the
+decorator-time (``@openapi``) and scan-time (bare ``@app.route``, with or
+without a documentable return annotation). Docstring inference is per-field and
 lowest-precedence source: an explicit ``summary=``/``description=`` always wins,
 and a missing/blank docstring infers nothing.
 """
@@ -213,3 +213,40 @@ def test_scan_bare_route_without_docstring_has_empty_metadata() -> None:
     entry = get_openapi_registry()["get::/api/users"]
     assert entry["summary"] == ""
     assert entry["description"] == ""
+
+
+def test_scan_infers_docstring_for_bare_route_without_documentable_return() -> None:
+    # Regression (#534): a bare route whose return type is NOT documentable
+    # (a scalar here) still has a docstring — its summary/description must be
+    # registered, not silently dropped because no response was inferred.
+    def get_user(req: Any) -> str:  # pragma: no cover
+        """Get a user.
+
+        Docstring-only description.
+        """
+        raise NotImplementedError
+
+    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+
+    entry = get_openapi_registry()["get::/api/users"]
+    assert entry["summary"] == "Get a user."
+    assert entry["description"] == "Docstring-only description."
+    # No response was inferred, so the private supersession tag must be absent.
+    assert "_response_inferred" not in entry
+    assert not entry.get("response")
+    assert entry.get("response_model") is None
+
+
+def test_scan_infers_docstring_for_unannotated_bare_route() -> None:
+    # Regression (#534): a bare route with no return annotation at all but a
+    # docstring must still register its summary/description.
+    def get_user(req: Any):  # type: ignore[no-untyped-def]  # pragma: no cover
+        """Ping."""
+        raise NotImplementedError
+
+    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+
+    entry = get_openapi_registry()["get::/api/users"]
+    assert entry["summary"] == "Ping."
+    assert entry["description"] == ""
+    assert "_response_inferred" not in entry
