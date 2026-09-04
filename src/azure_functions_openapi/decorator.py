@@ -273,7 +273,7 @@ def _normalize_unified_responses(
 def _infer_response_from_return(
     func: Callable[..., Any],
 ) -> tuple[type[BaseModel] | None, dict[int | str, dict[str, Any]] | None]:
-    """Infer a 200 response from a handler's return annotation (P1-A, #TBD).
+    """Infer a 200 response from a handler's return annotation (P1-A).
 
     Gap-filling only. Returns ``(model, None)`` when the return annotation is a
     Pydantic ``BaseModel`` subclass, or ``(None, {200: <Response Object>})`` when
@@ -302,9 +302,9 @@ def _infer_response_from_return(
 
     hint = hints.get("return")
     if hint is None:
-        # No return annotation, or annotated as ``None`` (``get_type_hints``
-        # maps a bare ``None`` return to ``type(None)``, handled by the
-        # not-documentable fall-through below).
+        # No return annotation at all. (An explicit ``-> None`` annotation is
+        # instead resolved to ``type(None)`` by ``get_type_hints`` and falls
+        # through to the not-documentable branch below.)
         return None, None
 
     if _is_pydantic_model(hint):
