@@ -1,9 +1,11 @@
 # tests/test_sdk_compat.py
 """SDK shape sanity tests for azure-functions.
 
-These tests assert that the azure-functions SDK internals we depend on —
-namely ``FunctionBuilder._function._func`` and ``FunctionBuilder._function._bindings``
-— are present and usable in the currently installed SDK.
+These tests assert that the azure-functions SDK internals we depend on are
+present and usable in the currently installed SDK. The adapter and decorator
+now reach binding/handler metadata through the public ``FunctionBuilder`` /
+``Function`` accessors, but the tripwires below still pin the private
+``FunctionBuilder._function`` shape as an early break-glass signal.
 
 They act as an early-warning tripwire in CI: any SDK release that removes,
 renames, or restructures these private attributes will fail here loudly
@@ -16,6 +18,7 @@ Companion issue: https://github.com/yeongseon/azure-functions-openapi-python/iss
 from __future__ import annotations
 
 import importlib.metadata as _metadata
+import sys
 
 import azure.functions as func
 from azure.functions.decorators.function_app import FunctionBuilder
@@ -27,10 +30,12 @@ from azure_functions_openapi.decorator import (
 
 
 def test_installed_azure_functions_version_meets_pin() -> None:
-    """The installed SDK must satisfy the ``>=1.19.0,<2.0.0`` pin from pyproject.toml.
+    """The installed SDK must satisfy the interpreter-aware pin from pyproject.toml.
 
-    This catches accidental downgrades in dev environments and confirms that
-    the CI matrix installed the version it intended to.
+    Below Python 3.13 the pin caps ``azure-functions`` at ``<2.0.0`` (the 2.x
+    line drops those interpreters). On Python 3.13+ the ``<2.0.0`` cap is lifted
+    (issue #528), so only the ``>=1.19.0`` floor is enforced. This catches
+    accidental downgrades and confirms the CI matrix installed what it intended.
     """
     installed = _metadata.version("azure-functions")
     major_minor = tuple(int(p) for p in installed.split(".")[:2])
@@ -38,18 +43,24 @@ def test_installed_azure_functions_version_meets_pin() -> None:
         f"azure-functions {installed} is below the >=1.19.0 pin declared in "
         "pyproject.toml. Update the pin or bump the installed version."
     )
-    assert major_minor < (2, 0), (
-        f"azure-functions {installed} is above the <2.0.0 pin declared in "
-        "pyproject.toml. See issue #258 before widening the ceiling."
-    )
+    if sys.version_info < (3, 13):
+        assert major_minor < (2, 0), (
+            f"azure-functions {installed} reached the 2.x line on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}, but the pin caps "
+            "it at <2.0.0 below Python 3.13. See issue #528 before widening the "
+            "ceiling on older interpreters."
+        )
 
 
 def test_function_builder_exposes_private_attributes_we_depend_on() -> None:
     """Direct existence assertion for ``FunctionBuilder._function._func``
     and ``._bindings``.
 
-    ``decorator._resolve_metadata_target`` reads ``_function._func`` and
-    ``decorator._extract_binding_hints`` reads ``_function._bindings``.
+    Historically ``decorator._resolve_metadata_target`` read ``_function._func``
+    and ``decorator._extract_binding_hints`` read ``_function._bindings``
+    directly. Both now route through the public adapter accessors, so this test
+    is a pure break-glass tripwire: it keeps watching the private
+    ``_function._func`` / ``._bindings`` shape so any SDK reshuffle is caught
     If the SDK renames/removes either attribute, this test fails immediately
     with an actionable message pointing at issue #258.
     """

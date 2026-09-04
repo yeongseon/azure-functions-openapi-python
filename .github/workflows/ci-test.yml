@@ -77,31 +77,38 @@ jobs:
         env:
           CODECOV_RETRIES: 3
 
-  # azure-functions 2.x compatibility proof lane (issue #488), following the
-  # sibling proof-lane pattern (azure-functions-validation #351 /
-  # azure-functions-langgraph #350). This is a SINGLE representative 2.x lane,
-  # not a matrix: it installs the package, then deliberately overrides the
-  # pyproject `<2.0.0` cap to pull `azure-functions>=2,<3` on Python 3.13 and
-  # runs the full quality suite against the 2.x SDK.
+  # azure-functions 2.x compatibility proof lane (issues #488 / #528),
+  # following the sibling proof-lane pattern (azure-functions-validation #351 /
+  # azure-functions-langgraph #350). It installs the package from a WHEEL, then
+  # pulls `azure-functions>=2,<3` and runs the full quality suite against the
+  # 2.x SDK on real Python 3.13 AND 3.14 interpreters.
   #
-  # Gating decision: this lane runs on every PR as a VISIBLE compatibility
-  # signal, but it is intentionally NOT a required check — the runtime cap
-  # stays `<2.0.0` until 2.x is certified on real Azure via e2e-azure.yml, so
-  # making this blocking before that certification would gate merges on an
-  # uncertified runtime. Promote it to a required check via branch protection
-  # once the cap is lifted. azure-functions 2.x declares Requires-Python
-  # >=3.13, so this lane pins Python 3.13.
+  # Why a wheel + dedicated job (not the main matrix): the hatch `default` env is
+  # pinned to Python 3.10 in pyproject, so every cell of the `test` matrix runs
+  # Python 3.10 at runtime regardless of its `python-version`. Only this
+  # non-hatch, wheel-installed lane genuinely exercises 3.13/3.14, which is
+  # exactly where azure-functions 2.x (Requires-Python >=3.13) is installable.
+  #
+  # Gating: this lane runs on every PR as a VISIBLE compatibility signal. The
+  # pyproject cap is interpreter-aware (2.x is allowed on Python 3.13+), and the
+  # two version-pin guard tests are likewise interpreter-aware, so they run
+  # (not deselected) and actively prove 2.x is permitted on 3.13+. Promote to a
+  # required check via branch protection once real-Azure certification lands.
   azure-functions-2x:
-    name: azure-functions 2.x compat (Py 3.13)
+    name: azure-functions 2.x compat (Py ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14"]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python 3.13
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
 
       - name: Build wheel
         # Prove 2.x against a WHEEL-installed build, not an editable/source
@@ -134,14 +141,11 @@ jobs:
         # shadow the installed wheel with the source tree. We drop `src` (so the
         # wheel-installed package is genuinely exercised) but keep the repo root
         # `.` on the path, because several tests import the `examples` package.
-        #
-        # Two version-pin POLICY guards are deselected: they assert the SDK is
-        # `<2.0.0` and therefore fail by design under this deliberate 2.x
-        # override. Every other test — including the `FunctionBuilder._function`
-        # private-attribute tripwires in these same files — still runs, which is
-        # exactly what proves the adapter surface holds under azure-functions 2.x.
+        # All version-pin guards are now interpreter-aware: on Python 3.13+ they
+        # assert only the >=1.21.0 floor (the <2.0.0 ceiling is lifted per issue
+        # #528), so they RUN here and actively prove 2.x is permitted. The
+        # `FunctionBuilder._function` private-attribute tripwires also run,
+        # proving the adapter surface holds under azure-functions 2.x.
         run: |
-          pytest tests/ --no-cov -q -o "pythonpath=." \
-            --deselect tests/test_sdk_compat.py::test_installed_azure_functions_version_meets_pin \
-            --deselect tests/test_sdk_compat_adapter.py::test_installed_sdk_is_within_supported_matrix
+          pytest tests/ --no-cov -q -o "pythonpath=."
 

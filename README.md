@@ -176,13 +176,25 @@ azure-functions-openapi
 
 This package discovers routes, methods, and handlers from the `azure-functions` SDK through a single isolated adapter (`azure_functions_openapi.adapters`). Discovery is **public-API-first**: it enumerates via the public, idempotent `FunctionBuilder.build()` and reads everything else through public `Function` accessors (`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`). The adapter never calls the non-idempotent `FunctionApp.get_functions()`. The **one** unavoidable private token — `app._function_builders`, which has no public substitute for enumeration — lives exclusively in the adapter and is covered by a mandatory guard test. We validate the package against an explicit matrix in CI. See [issue #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) and [issue #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327) for background.
 
-| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
-| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
-| `1.21.0` (floor)  | ✅ tested   |             |             |             |             |
-| `1.24.0`          | ✅ tested   |             |             |             |             |
-| `latest` (`<2.0`) | ✅ tested   | ✅ tested   | ✅ tested   | ✅ tested   | ✅ tested   |
+| `azure-functions`  | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ------------------ | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0` (floor)   | ✅ tested   |             |             |             |             |
+| `1.24.0`           | ✅ tested   |             |             |             |             |
+| `latest 1.x`       | ✅ tested   | ✅ tested   | ✅ tested   |             |             |
+| `2.x` (`>=2,<3`)   |             |             |             | ✅ tested   | ✅ tested   |
 
-The version pin in `pyproject.toml` is `azure-functions>=1.21.0,<2.0.0`. The floor is `1.21.0` because earlier releases return `None` from `FunctionBuilder.__call__` (breaking direct invocation of decorated handlers in tests and CLI extraction). If you need a newer SDK, please open an issue — the ceiling is intentional because `azure-functions` 2.x drops support for Python < 3.13 and has not yet been validated against `@openapi`.
+The version pin in `pyproject.toml` is interpreter-aware:
+`azure-functions>=1.21.0,<2.0.0` on Python < 3.13, and `azure-functions>=1.21.0`
+(no upper cap) on Python 3.13+. The floor is `1.21.0` because earlier releases
+return `None` from `FunctionBuilder.__call__` (breaking direct invocation of
+decorated handlers in tests and CLI extraction). The split exists because
+`azure-functions` 2.x drops support for Python < 3.13, so the 2.x line is only
+installable — and only offered — on Python 3.13+. The 2.x path is proven by a
+dedicated wheel-based compatibility matrix in CI (real Python 3.13 and 3.14
+interpreters) and is being certified on real Azure. See
+[issue #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528)
+and [issue #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488)
+for the cap-lift work.
 
 ## Quick Start
 
