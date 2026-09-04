@@ -14,6 +14,7 @@ from azure_functions_openapi._endpoint_contract import (
 )
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import (
+    _infer_doc_metadata,
     _infer_response_from_return,
     register_openapi_metadata,
 )
@@ -607,8 +608,11 @@ def scan_endpoint_metadata(
         # method.
         inferred_response_model: Any = None
         inferred_response: dict[int | str, dict[str, Any]] | None = None
+        inferred_summary = ""
+        inferred_description = ""
         if canonical_target is None and endpoint_hints is None and not endpoint_skew:
             inferred_response_model, inferred_response = _infer_response_from_return(handler)
+            inferred_summary, inferred_description = _infer_doc_metadata(handler)
 
         for method in methods:
             endpoint_key = f"{method}::{path}"
@@ -747,6 +751,8 @@ def scan_endpoint_metadata(
                 register_openapi_metadata(
                     path=path,
                     method=method,
+                    summary=inferred_summary,
+                    description=inferred_description,
                     response_model=inferred_response_model,
                     response=cast("dict[int, dict[str, Any]] | None", inferred_response or None),
                     registry=reg,

@@ -4,6 +4,7 @@ from __future__ import annotations
 import collections.abc as _cabc
 from collections.abc import Mapping
 from http import HTTPStatus
+import inspect
 import logging
 import re
 import types
@@ -322,6 +323,22 @@ def _infer_response_from_return(
     # scalars, unsupported generics): leave the response undocumented.
     return None, None
 
+def _infer_doc_metadata(func: Callable[..., Any]) -> tuple[str, str]:
+    """Infer ``(summary, description)`` from a handler's docstring (P1-A Phase 2).
+
+    Gap-filling only and lowest precedence: the first non-empty line of the
+    (dedented) docstring becomes the ``summary`` and the remainder becomes the
+    ``description``. Callers apply each field only when the user supplied no
+    explicit value. A missing or blank docstring yields ``("", "")``.
+    """
+    doc = inspect.getdoc(func)
+    if not doc or not doc.strip():
+        return "", ""
+    lines = doc.strip().split("\n")
+    summary = lines[0].strip()
+    description = "\n".join(lines[1:]).strip()
+    return summary, description
+
 
 def openapi(
     # ── basic metadata ───────────────────────────────────────────
@@ -556,6 +573,17 @@ def openapi(
                     resolved_response = inferred_response
                     response_inferred = True
 
+            # ── docstring inference (P1-A Phase 2) ───────────────────────
+            # Lowest-precedence gap-fill, per field: only when the user gave
+            # no explicit ``summary=`` / ``description=``. The handler docstring's
+            # first line becomes the summary and the remainder the description.
+            effective_summary = summary
+            effective_description = description
+            if not summary or not description:
+                inferred_summary, inferred_description = _infer_doc_metadata(metadata_func)
+                effective_summary = summary or inferred_summary
+                effective_description = description or inferred_description
+
             resolved_querystring_model: type[BaseModel] | None = None
             resolved_querystring_schema: dict[str, Any] | None = None
             if querystring is not None:
@@ -591,8 +619,8 @@ def openapi(
                     registry_key,
                     {
                         # ── basic metadata ────────────────────────────────────────
-                        "summary": summary,
-                        "description": description,
+                        "summary": effective_summary,
+                        "description": effective_description,
                         "tags": validated_tags,
                         "operation_id": sanitized_operation_id,
                         # ── routing info ─────────────────────────────────────────
