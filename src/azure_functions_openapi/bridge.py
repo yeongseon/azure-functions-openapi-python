@@ -13,7 +13,10 @@ from azure_functions_openapi._endpoint_contract import (
     SUPPORTED_ENDPOINT_VERSIONS,
 )
 from azure_functions_openapi._warnings import WarningCode
-from azure_functions_openapi.decorator import register_openapi_metadata
+from azure_functions_openapi.decorator import (
+    _infer_response_from_return,
+    register_openapi_metadata,
+)
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import (
     OpenAPIRegistry,
@@ -146,10 +149,15 @@ def _merge_parameters(
 
 
 def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bool:
+    # An inferred response (P1-A return-type inference) is the lowest-precedence
+    # source, so it never conflicts with discovered validation metadata — the
+    # latter simply supersedes it in :func:`_merge_into_existing`.
+    response_inferred = bool(existing.get("_response_inferred"))
     existing_response = existing.get("response_model")
     discovered_response = discovered.get("response_model")
     if (
-        existing_response is not None
+        not response_inferred
+        and existing_response is not None
         and discovered_response is not None
         and existing_response is not discovered_response
     ):
@@ -171,7 +179,11 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
 
     existing_response = existing.get("response") or {}
     discovered_response = discovered.get("response") or {}
-    if isinstance(existing_response, dict) and isinstance(discovered_response, dict):
+    if (
+        not response_inferred
+        and isinstance(existing_response, dict)
+        and isinstance(discovered_response, dict)
+    ):
         for status, detail in discovered_response.items():
             if status in existing_response and existing_response[status] != detail:
                 return True
@@ -182,6 +194,16 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
 def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -> None:
     if _models_conflict(existing, discovered):
         raise OpenAPISpecConfigError("Conflicting validation and OpenAPI models for endpoint")
+
+    # Return-type inference (P1-A) is the lowest-precedence response source. When
+    # discovered validation/explicit metadata carries any response, it supersedes
+    # the inferred one entirely rather than gap-filling around it.
+    if existing.get("_response_inferred") and (
+        discovered.get("response_model") or discovered.get("response")
+    ):
+        existing["response_model"] = None
+        existing["response"] = {}
+        existing.pop("_response_inferred", None)
 
     if not existing.get("request_body") and discovered.get("request_body"):
         existing["request_body"] = discovered["request_body"]
@@ -576,6 +598,18 @@ def scan_endpoint_metadata(
             ) or function_name
             path = _normalize_path(entry_route or raw_route, entry_name, route_prefix)
 
+        # Return-type inference (P1-A): for a bare ``@app.route`` handler with no
+        # ``@openapi`` entry and no validation enrichment, infer the 200 response
+        # from the handler's return annotation. Gated off when a canonical entry
+        # exists (decorator-time inference already ran), when validation
+        # enrichment is present (higher precedence), or under version skew (keep
+        # the degraded bare op observable). Computed once — it does not vary per
+        # method.
+        inferred_response_model: Any = None
+        inferred_response: dict[int | str, dict[str, Any]] | None = None
+        if canonical_target is None and endpoint_hints is None and not endpoint_skew:
+            inferred_response_model, inferred_response = _infer_response_from_return(handler)
+
         for method in methods:
             endpoint_key = f"{method}::{path}"
             entry_skew: set[WarningCode] = {WarningCode.VERSION_SKEW} if endpoint_skew else set()
@@ -636,9 +670,14 @@ def scan_endpoint_metadata(
                         _tag_skew(canonical_target, entry_skew)
                         continue
                     if not entry_skew:
-                        # Plain binding with neither @openapi nor enrichment nor
-                        # skew: nothing to register.
-                        continue
+                        if inferred_response_model is None and inferred_response is None:
+                            # Plain binding with neither @openapi nor enrichment
+                            # nor skew nor an inferable return type: nothing to
+                            # register.
+                            continue
+                        # Return-type inference (P1-A): fall through past the
+                        # lock to register the inferred response as a standalone
+                        # binding-derived operation below.
                     # Endpoint namespace present but rejected (skew) with no
                     # canonical @openapi entry: fall through to register a bare
                     # binding-derived operation below and tag the skew, so the
@@ -701,6 +740,21 @@ def scan_endpoint_metadata(
                     parameters=discovered.get("parameters") or None,
                     registry=reg,
                 )
+            elif inferred_response_model is not None or inferred_response is not None:
+                # Standalone operation materialized purely from return-type
+                # inference (P1-A). Tag it ``_response_inferred`` so a later scan
+                # carrying validation/explicit metadata supersedes it.
+                register_openapi_metadata(
+                    path=path,
+                    method=method,
+                    response_model=inferred_response_model,
+                    response=cast("dict[int, dict[str, Any]] | None", inferred_response or None),
+                    registry=reg,
+                )
+                with reg.lock:
+                    inferred_entry = reg.get(endpoint_key)
+                    if inferred_entry is not None:
+                        inferred_entry["_response_inferred"] = True
             else:
                 # Bare binding-derived operation for an endpoint-skew handler: no
                 # enrichment was consumed, but the operation is materialized so

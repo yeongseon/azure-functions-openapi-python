@@ -7,7 +7,17 @@ from http import HTTPStatus
 import logging
 import re
 import types
-from typing import Any, Callable, Literal, TypeGuard, TypeVar, Union, cast, get_origin
+from typing import (
+    Any,
+    Callable,
+    Literal,
+    TypeGuard,
+    TypeVar,
+    Union,
+    cast,
+    get_origin,
+    get_type_hints,
+)
 
 from pydantic import BaseModel
 
@@ -260,6 +270,59 @@ def _normalize_unified_responses(
     return normalized
 
 
+def _infer_response_from_return(
+    func: Callable[..., Any],
+) -> tuple[type[BaseModel] | None, dict[int | str, dict[str, Any]] | None]:
+    """Infer a 200 response from a handler's return annotation (P1-A, #TBD).
+
+    Gap-filling only. Returns ``(model, None)`` when the return annotation is a
+    Pydantic ``BaseModel`` subclass, or ``(None, {200: <Response Object>})`` when
+    it is a supported container/union shorthand (e.g. ``list[User]``,
+    ``Optional[User]``) — the raw type is stored and resolved to a schema at
+    spec-generation time, exactly like an explicit ``responses=`` shorthand.
+
+    Returns ``(None, None)`` when the return annotation is absent, unresolved, or
+    not a documentable schema type (``None``/``NoneType``, ``Any``,
+    ``func.HttpResponse``, bare ``str``/``int``, ...). Inference is the
+    lowest-precedence source: callers apply it only when the user supplied no
+    explicit ``responses=``, and validation/explicit metadata supersedes it
+    during scan-time reconciliation.
+
+    All annotation introspection is wrapped so a handler with unresolved forward
+    references (e.g. under ``from __future__ import annotations``) never breaks
+    decoration or spec generation — on any failure inference simply yields
+    nothing.
+    """
+    try:
+        hints = get_type_hints(func, include_extras=True)
+    except Exception:
+        # Unresolved forward refs / stringized annotations / exotic objects:
+        # never let inference raise. Emit nothing instead.
+        return None, None
+
+    hint = hints.get("return")
+    if hint is None:
+        # No return annotation, or annotated as ``None`` (``get_type_hints``
+        # maps a bare ``None`` return to ``type(None)``, handled by the
+        # not-documentable fall-through below).
+        return None, None
+
+    if _is_pydantic_model(hint):
+        return hint, None
+
+    if _is_supported_shorthand_generic(hint):
+        return None, {
+            200: {
+                "description": _default_response_description(200),
+                "content": {"application/json": {"schema": hint}},
+            }
+        }
+
+    # Not a documentable schema type (NoneType, Any, func.HttpResponse, bare
+    # scalars, unsupported generics): leave the response undocumented.
+    return None, None
+
+
 def openapi(
     # ── basic metadata ───────────────────────────────────────────
     summary: str = "",
@@ -478,6 +541,21 @@ def openapi(
                         "'responses' must be either a Pydantic BaseModel subclass or a dictionary."
                     )
 
+            # ── return-type inference (P1-A) ─────────────────────────────
+            # Lowest-precedence gap-fill: only when the user supplied no
+            # explicit ``responses=``. An inferred response is marked so that
+            # scan-time validation/explicit metadata can supersede it (Oracle
+            # precedence: explicit > validation > inference).
+            response_inferred = False
+            if responses is None:
+                inferred_model, inferred_response = _infer_response_from_return(metadata_func)
+                if inferred_model is not None:
+                    resolved_response_model = inferred_model
+                    response_inferred = True
+                elif inferred_response is not None:
+                    resolved_response = inferred_response
+                    response_inferred = True
+
             resolved_querystring_model: type[BaseModel] | None = None
             resolved_querystring_schema: dict[str, Any] | None = None
             if querystring is not None:
@@ -534,6 +612,10 @@ def openapi(
                         "request_body_required": request_body_required,
                         "response_model": resolved_response_model,
                         "response": resolved_response or {},
+                        # Marks ``response``/``response_model`` as return-type
+                        # inferred (P1-A) so scan-time reconciliation lets
+                        # validation/explicit metadata supersede it.
+                        "_response_inferred": response_inferred,
                         # ── querystring (OpenAPI 3.2) ────────────────────────
                         "querystring_model": resolved_querystring_model,
                         "querystring_schema": resolved_querystring_schema,
