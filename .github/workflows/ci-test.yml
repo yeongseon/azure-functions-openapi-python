@@ -134,5 +134,14 @@ jobs:
         # shadow the installed wheel with the source tree. We drop `src` (so the
         # wheel-installed package is genuinely exercised) but keep the repo root
         # `.` on the path, because several tests import the `examples` package.
-        run: pytest tests/ --no-cov -q -o "pythonpath=."
+        #
+        # Two version-pin POLICY guards are deselected: they assert the SDK is
+        # `<2.0.0` and therefore fail by design under this deliberate 2.x
+        # override. Every other test — including the `FunctionBuilder._function`
+        # private-attribute tripwires in these same files — still runs, which is
+        # exactly what proves the adapter surface holds under azure-functions 2.x.
+        run: |
+          pytest tests/ --no-cov -q -o "pythonpath=." \
+            --deselect tests/test_sdk_compat.py::test_installed_azure_functions_version_meets_pin \
+            --deselect tests/test_sdk_compat_adapter.py::test_installed_sdk_is_within_supported_matrix
 
