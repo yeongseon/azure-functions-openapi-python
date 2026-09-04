@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from _scan_helpers import _app_for
 from pydantic import BaseModel
 import pytest
 
@@ -164,50 +165,6 @@ def test_no_annotation_infers_nothing() -> None:
 # ---------------------------------------------------------------------------
 # Scan-time inference (zero-decorator @app.route)
 # ---------------------------------------------------------------------------
-
-
-class _MockBinding:
-    def __init__(self, route: str, methods: list[str]) -> None:
-        self.route = route
-        self.methods = methods
-        self.type = "httpTrigger"
-
-
-class _MockFunction:
-    def __init__(self, name: str, func: Any, bindings: list[Any]) -> None:
-        self._name = name
-        self._func = func
-        self._bindings = bindings
-
-    def get_function_name(self) -> str:
-        return self._name
-
-    def get_user_function(self) -> Any:
-        return self._func
-
-    def get_bindings(self) -> list[Any]:
-        return self._bindings
-
-    def is_http_function(self) -> bool:
-        return True
-
-
-class _MockBuilder:
-    def __init__(self, function: _MockFunction) -> None:
-        self._function = function
-
-    def build(self, auth_level: Any = None) -> _MockFunction:
-        return self._function
-
-
-class _MockApp:
-    def __init__(self, builders: list[_MockBuilder]) -> None:
-        self._function_builders = builders
-
-
-def _app_for(handler: Any, *, name: str, route: str, methods: list[str]) -> _MockApp:
-    fn = _MockFunction(name=name, func=handler, bindings=[_MockBinding(route, methods)])
-    return _MockApp([_MockBuilder(fn)])
 
 
 def test_scan_infers_array_response_for_bare_route() -> None:
