@@ -51,7 +51,7 @@ class Other(BaseModel):
 
 def test_infer_basemodel_return() -> None:
     def handler(req: Any) -> User:  # pragma: no cover - body never executed
-        ...
+        raise NotImplementedError
 
     model, response = _infer_response_from_return(handler)
     assert model is User
@@ -60,7 +60,7 @@ def test_infer_basemodel_return() -> None:
 
 def test_infer_container_generic_return() -> None:
     def handler(req: Any) -> list[User]:  # pragma: no cover - body never executed
-        ...
+        raise NotImplementedError
 
     model, response = _infer_response_from_return(handler)
     assert model is None
@@ -70,7 +70,7 @@ def test_infer_container_generic_return() -> None:
 
 def test_infer_optional_return_is_union_shorthand() -> None:
     def handler(req: Any) -> Optional[User]:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     model, response = _infer_response_from_return(handler)
     assert model is None
@@ -85,9 +85,8 @@ def test_infer_optional_return_is_union_shorthand() -> None:
 def test_infer_non_documentable_returns_nothing(annotation: str | None) -> None:
     ns: dict[str, Any] = {"Any": Any}
     if annotation is None:
-
-        def handler(req: Any):  # pragma: no cover
-            ...
+        exec("def handler(req):\n    raise NotImplementedError", ns)  # noqa: S102
+        handler = ns["handler"]
     else:
         src = f"def handler(req):\n    ...\nhandler.__annotations__ = {{'return': {annotation}}}"
         exec(src, ns)  # noqa: S102 - constructs a handler with a scalar return
@@ -102,8 +101,8 @@ def test_infer_forward_ref_never_raises() -> None:
     # Simulate ``from __future__ import annotations`` leaving an unresolved
     # stringized forward reference: get_type_hints() raises NameError, which the
     # helper must swallow and yield nothing rather than break spec generation.
-    def handler(req: Any):  # pragma: no cover
-        ...
+    def handler(req: Any) -> Any:  # pragma: no cover
+        raise NotImplementedError
 
     handler.__annotations__ = {"return": "ThisTypeDoesNotExistAnywhere"}
 
@@ -120,7 +119,7 @@ def test_infer_forward_ref_never_raises() -> None:
 def test_decorator_infers_response_model_from_return() -> None:
     @openapi(summary="Get a user")
     def get_user(req: Any) -> User:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     entry = get_openapi_registry()["get_user"]
     assert entry["response_model"] is User
@@ -130,7 +129,7 @@ def test_decorator_infers_response_model_from_return() -> None:
 def test_decorator_infers_array_response_from_return() -> None:
     @openapi(summary="List users")
     def list_users(req: Any) -> list[User]:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     entry = get_openapi_registry()["list_users"]
     assert entry["response_model"] is None
@@ -144,7 +143,7 @@ def test_explicit_responses_win_over_inference() -> None:
     # responses= must never be overridden by the return annotation.
     @openapi(summary="Create", responses=Other)
     def create(req: Any) -> User:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     entry = get_openapi_registry()["create"]
     assert entry["response_model"] is Other
@@ -153,8 +152,8 @@ def test_explicit_responses_win_over_inference() -> None:
 
 def test_no_annotation_infers_nothing() -> None:
     @openapi(summary="Bare")
-    def bare(req: Any):  # pragma: no cover
-        ...
+    def bare(req: Any) -> Any:  # pragma: no cover
+        raise NotImplementedError
 
     entry = get_openapi_registry()["bare"]
     assert entry["response_model"] is None
@@ -213,7 +212,7 @@ def _app_for(handler: Any, *, name: str, route: str, methods: list[str]) -> _Moc
 
 def test_scan_infers_array_response_for_bare_route() -> None:
     def list_users(req: Any) -> list[User]:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     scan_endpoint_metadata(_app_for(list_users, name="list_users", route="users", methods=["GET"]))
 
@@ -225,7 +224,7 @@ def test_scan_infers_array_response_for_bare_route() -> None:
 
 def test_scan_infers_response_model_for_bare_route() -> None:
     def get_user(req: Any) -> User:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
 
@@ -235,8 +234,8 @@ def test_scan_infers_response_model_for_bare_route() -> None:
 
 
 def test_scan_bare_route_without_annotation_registers_nothing() -> None:
-    def ping(req: Any):  # pragma: no cover
-        ...
+    def ping(req: Any) -> Any:  # pragma: no cover
+        raise NotImplementedError
 
     scan_endpoint_metadata(_app_for(ping, name="ping", route="ping", methods=["GET"]))
 
@@ -247,7 +246,7 @@ def test_scan_endpoint_enrichment_supersedes_inference() -> None:
     # A handler carrying validation/enrichment metadata AND a return annotation:
     # the enrichment (higher precedence) is used; inference is gated off.
     def create_user(req: Any) -> User:  # pragma: no cover
-        ...
+        raise NotImplementedError
 
     setattr(
         create_user,
