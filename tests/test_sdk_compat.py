@@ -34,13 +34,13 @@ def test_installed_azure_functions_version_meets_pin() -> None:
 
     Below Python 3.13 the pin caps ``azure-functions`` at ``<2.0.0`` (the 2.x
     line drops those interpreters). On Python 3.13+ the ``<2.0.0`` cap is lifted
-    (issue #528), so only the ``>=1.19.0`` floor is enforced. This catches
+    (issue #528), so only the ``>=1.21.0`` floor is enforced. This catches
     accidental downgrades and confirms the CI matrix installed what it intended.
     """
     installed = _metadata.version("azure-functions")
     major_minor = tuple(int(p) for p in installed.split(".")[:2])
-    assert major_minor >= (1, 19), (
-        f"azure-functions {installed} is below the >=1.19.0 pin declared in "
+    assert major_minor >= (1, 21), (
+        f"azure-functions {installed} is below the >=1.21.0 pin declared in "
         "pyproject.toml. Update the pin or bump the installed version."
     )
     if sys.version_info < (3, 13):
@@ -60,7 +60,7 @@ def test_function_builder_exposes_private_attributes_we_depend_on() -> None:
     and ``decorator._extract_binding_hints`` read ``_function._bindings``
     directly. Both now route through the public adapter accessors, so this test
     is a pure break-glass tripwire: it keeps watching the private
-    ``_function._func`` / ``._bindings`` shape so any SDK reshuffle is caught
+    ``_function._func`` / ``._bindings`` shape so any SDK reshuffle is caught.
     If the SDK renames/removes either attribute, this test fails immediately
     with an actionable message pointing at issue #258.
     """

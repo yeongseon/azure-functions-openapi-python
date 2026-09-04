@@ -27,8 +27,9 @@ dependencies = [
     # interpreter: Python < 3.13 stays capped at <2.0.0 (2.x is uninstallable
     # there), while Python >= 3.13 is allowed onto the 2.x line. The 2.x path is
     # proven by the wheel-based "azure-functions 2.x compat" matrix in
-    # ci-test.yml (real Python 3.13/3.14 interpreters) and certified on real
-    # Azure via e2e-azure.yml. See issue #528 (cap-lift) and #488 (compat lane).
+    # ci-test.yml (real Python 3.13/3.14 interpreters). Real-Azure certification
+    # of the 2.x path (via e2e-azure.yml) is a required follow-up, tracked by
+    # issue #528 (cap-lift); see also #488 (compat lane).
     "azure-functions>=1.21.0,<2.0.0; python_version < '3.13'",
     "azure-functions>=1.21.0; python_version >= '3.13'",
     "pydantic>=2.0,<3.0",
