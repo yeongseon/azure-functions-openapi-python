@@ -342,8 +342,8 @@ def _infer_doc_metadata(func: Callable[..., Any]) -> tuple[str, str]:
 
 def openapi(
     # ── basic metadata ───────────────────────────────────────────
-    summary: str = "",
-    description: str = "",
+    summary: str | None = None,
+    description: str | None = None,
     tags: list[str] | None = None,
     operation_id: str | None = None,
     # ── routing information ─────────────────────────────────────
@@ -420,9 +420,13 @@ def openapi(
     Parameters
     ----------
     summary:
-        Short description shown in Swagger UI.
+        Short description shown in Swagger UI. Defaults to ``None`` (unset),
+        in which case it is inferred from the handler docstring's first line;
+        pass ``""`` to explicitly suppress that inference.
     description:
-        Longer Markdown-enabled description.
+        Longer Markdown-enabled description. Defaults to ``None`` (unset), in
+        which case it is inferred from the handler docstring body; pass ``""``
+        to explicitly suppress that inference.
     tags:
         List of group tags.
     operation_id:
@@ -575,14 +579,19 @@ def openapi(
 
             # ── docstring inference (P1-A Phase 2) ───────────────────────
             # Lowest-precedence gap-fill, per field: only when the user gave
-            # no explicit ``summary=`` / ``description=``. The handler docstring's
-            # first line becomes the summary and the remainder the description.
-            effective_summary = summary
-            effective_description = description
-            if not summary or not description:
+            # no explicit ``summary=`` / ``description=``. ``None`` is the
+            # "unset" sentinel, so an explicit ``summary=""`` / ``description=""``
+            # is an intentional override and suppresses inference for that field.
+            # The handler docstring's first line becomes the summary and the
+            # remainder the description.
+            effective_summary = summary or ""
+            effective_description = description or ""
+            if summary is None or description is None:
                 inferred_summary, inferred_description = _infer_doc_metadata(metadata_func)
-                effective_summary = summary or inferred_summary
-                effective_description = description or inferred_description
+                if summary is None:
+                    effective_summary = inferred_summary
+                if description is None:
+                    effective_description = inferred_description
 
             resolved_querystring_model: type[BaseModel] | None = None
             resolved_querystring_schema: dict[str, Any] | None = None
