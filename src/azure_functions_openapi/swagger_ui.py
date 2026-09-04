@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 _SWAGGER_UI_DIST_VERSION = "5.32.4"
 _SWAGGER_UI_CDN_BASE = f"https://cdn.jsdelivr.net/npm/swagger-ui-dist@{_SWAGGER_UI_DIST_VERSION}"
 
+# Subresource Integrity (SRI) hashes for the pinned CDN assets. The browser
+# refuses to execute/apply a resource whose content does not match, so a CDN
+# compromise or a repointed version tag cannot serve altered assets.
+#
+# Regenerate on every ``_SWAGGER_UI_DIST_VERSION`` bump, e.g.:
+#   curl -sSL "$BASE/swagger-ui.css" | openssl dgst -sha384 -binary | openssl base64 -A
+#   curl -sSL "$BASE/swagger-ui-bundle.js" | openssl dgst -sha384 -binary | openssl base64 -A
+_SWAGGER_UI_CSS_SRI = "sha384-AHNbXeU7DPcgcihnwKYc3FOT0hTfhEwVFc2JRxxF5S/mplUdt/7G1g6nIblzENrX"
+_SWAGGER_UI_BUNDLE_SRI = "sha384-FgJpbEfGqpFeiFJh0+HNvyohx84XMd+IwgPyxJxjuDFMHVYmoFqrDEJNrVFexwA0"
+
 
 def render_swagger_ui(
     title: str = "API Documentation",
@@ -87,11 +97,15 @@ def render_swagger_ui(
         <title>{safe_title}</title>
         <link rel="stylesheet"
               type="text/css"
+              integrity="{_SWAGGER_UI_CSS_SRI}"
+              crossorigin="anonymous"
               href="{_SWAGGER_UI_CDN_BASE}/swagger-ui.css" />
       </head>
       <body>
         <div id="swagger-ui"></div>
-        <script src="{_SWAGGER_UI_CDN_BASE}/swagger-ui-bundle.js"></script>
+        <script src="{_SWAGGER_UI_CDN_BASE}/swagger-ui-bundle.js"
+                integrity="{_SWAGGER_UI_BUNDLE_SRI}"
+                crossorigin="anonymous"></script>
         <script nonce="{nonce}">
           // Enhanced security configuration
           const ui = SwaggerUIBundle({{
