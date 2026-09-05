@@ -74,6 +74,15 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 
 When splitting a large piece of work into focused issues, keep the umbrella open as a tracker that links each child issue with a checkbox; close it once every child is closed or explicitly deferred.
 
+### Project management model
+
+This repository is **issue-based, not milestone-based**. Track and group work using issues plus the existing label taxonomy — do **not** introduce parallel structures.
+
+- Plan and group multi-issue efforts with an **umbrella tracker issue** (see above) plus the existing `priority:p0` / `priority:p1` / `priority:p2` labels. Do **not** create GitHub Milestones — none exist by design, and their absence is an intentional signal, not an oversight.
+- Do **not** invent new label taxonomies (e.g. `epic:*`, `vNext`, release-tag labels) to group work. Reuse `priority:*`, `area:*` (only where they already exist), and the umbrella issue. Propose any new label in discussion and wait for explicit approval before creating it.
+- Treat optional or tentative suggestions ("we could…", "it might be nice to…", "~해도 괜찮아") as **discussion, not a directive**. Confirm intent before making any structural change to how work is tracked (milestones, labels, project boards, issue hierarchies).
+- Before adding any organizational structure, check whether the repository already has an established convention. A category being empty or unused (zero milestones, no `epic:*` labels) is evidence to follow the existing pattern, not to introduce a new one.
+
 ## Validation
 - `make test`
 - `make lint`
