@@ -142,9 +142,10 @@ azure-functions-openapi
 | ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
 | `1.21.0`（下限）  | ✅ 検証済 |             |             |             |             |
 | `1.24.0`          | ✅ 検証済 |             |             |             |             |
-| `latest` (`<2.0`) | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 |
+| `latest 1.x`      | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 |             |             |
+| `2.x` (`>=2,<3`)  |           |           |           | ✅ 検証済 | ✅ 検証済 |
 
-`pyproject.toml` のバージョンピンは `azure-functions>=1.21.0,<2.0.0` です。下限が `1.21.0` なのは、それ以前のリリースが `FunctionBuilder.__call__` から `None` を返すためです（テストと CLI 抽出でデコレートされたハンドラーの直接呼び出しが壊れる）。より新しい SDK が必要な場合はイシューを開いてください。上限を設けているのは、`azure-functions` 2.x が Python < 3.13 のサポートを廃止し、まだ `@openapi` で検証されていないためです。
+`pyproject.toml` のバージョンピンはインタプリタに依存します: Python < 3.13 では `azure-functions>=1.21.0,<2.0.0`、Python 3.13+ では `azure-functions>=1.21.0`（上限なし）です。下限が `1.21.0` なのは、それ以前のリリースが `FunctionBuilder.__call__` から `None` を返すためです（テストと CLI 抽出でデコレートされたハンドラーの直接呼び出しが壊れる）。分割している理由は、`azure-functions` 2.x が Python < 3.13 のサポートを廃止するため、2.x ラインは Python 3.13+ でのみインストール・提供されるからです。2.x パスは CI の専用 wheel ベース互換性マトリックス（実際の Python 3.13 および 3.14 インタプリタ）と、実際の Azure 認証 — koreacentral の Flex Consumption プランにデプロイされた Python 3.13 Function App — によって実証されています。上限解除の作業は [イシュー #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528) と [イシュー #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488) を参照してください。
 
 ## Quick Start
 
