@@ -226,6 +226,71 @@ defaults to `True`):
     guide](migration/unified-params.md) for full before/after recipes and the
     removal policy.
 
+## Inferred metadata (return type & docstring)
+
+`@openapi` can infer parts of the operation from what the handler already
+declares, so you can shrink the decorator toward minimal. Inference is always
+**gap-fill-only, lowest-precedence, and failure-silent**: it never overrides an
+explicit value, never raises on unresolved annotations, and applies at both
+decorator-time (`@openapi`) and scan-time (a bare `@app.route` with no
+`@openapi`).
+
+**Precedence (highest to lowest):**
+
+1. Explicit `@openapi` arguments (e.g. `responses=`, `summary=`).
+2. Validation / enrichment metadata (e.g. from `@validate_http`).
+3. Inference (return type, docstring).
+
+### Return-type inference
+
+When you supply no explicit `responses=`, the handler's return annotation infers
+the `200` response:
+
+```python
+@openapi(summary="Get order")
+@app.route(route="orders/{id}", methods=["GET"])
+def get_order(req: func.HttpRequest) -> OrderResponse:  # -> 200 OrderResponse schema
+    ...
+```
+
+- `-> User` (a Pydantic `BaseModel`) → `200` response with the model schema.
+- `-> list[User]` / `Optional[User]` → the same array / union shorthand as an
+  explicit `responses=` shorthand.
+- Non-documentable returns infer **nothing** (no `200` is fabricated):
+  `-> None`, `-> Any`, `-> func.HttpResponse`, bare scalars (`-> str`,
+  `-> int`), and unsupported generics.
+- An unresolved forward reference (e.g. under
+  `from __future__ import annotations`) simply infers nothing rather than
+  failing.
+
+### Docstring inference
+
+When you omit `summary`/`description`, the handler docstring fills them: the
+first non-empty line becomes the `summary`, and the remainder becomes the
+`description`.
+
+```python
+@openapi()
+@app.route(route="ping", methods=["GET"])
+def ping(req: func.HttpRequest) -> str:
+    """Health check.
+
+    Returns 200 while the app is serving traffic.
+    """
+    ...
+# summary="Health check."
+# description="Returns 200 while the app is serving traffic."
+```
+
+Each field is inferred **independently**, and explicit always wins:
+
+- Omit `summary`/`description` (leave them unset) → inferred from the docstring.
+- Pass an explicit non-empty value → that value is used, docstring ignored for
+  that field.
+- Pass an explicit empty string (`summary=""` / `description=""`) → inference is
+  **suppressed** for that field (the empty string is treated as a deliberate
+  "leave it blank"). A missing or blank docstring also infers nothing.
+
 ## Streaming responses (OpenAPI 3.2)
 
 OpenAPI 3.2 adds first-class support for **sequential / streaming media types**
