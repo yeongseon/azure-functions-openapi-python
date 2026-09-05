@@ -315,18 +315,23 @@ jobs:
     name: Trigger cookbook e2e re-verification
     needs: [build, publish]
     runs-on: ubuntu-latest
-    env:
-      # Cross-repo repository_dispatch needs a token with contents:write on the
-      # cookbook repo (GITHUB_TOKEN cannot cross repositories). Supply a PAT or
-      # GitHub App token via the COOKBOOK_DISPATCH_TOKEN secret. When it is unset
-      # the step is skipped, so missing wiring never fails a release.
-      DISPATCH_TOKEN: ${{ secrets.COOKBOOK_DISPATCH_TOKEN }}
     steps:
       - name: Dispatch sibling-release to cookbook
-        if: ${{ env.DISPATCH_TOKEN != '' }}
         env:
           VERSION: ${{ needs.build.outputs.version }}
+          # Cross-repo repository_dispatch needs a token with contents:write on the
+          # cookbook repo (GITHUB_TOKEN cannot cross repositories). Supply a
+          # fine-grained token scoped to azure-functions-cookbook-python
+          # contents:write (or a GitHub App token) via COOKBOOK_DISPATCH_TOKEN.
+          # Scoped to this step so no other step in the job can read it; when the
+          # secret is unset the dispatch is skipped, so missing wiring never fails
+          # a release.
+          DISPATCH_TOKEN: ${{ secrets.COOKBOOK_DISPATCH_TOKEN }}
         run: |
+          if [ -z "${DISPATCH_TOKEN}" ]; then
+            echo "COOKBOOK_DISPATCH_TOKEN not set; skipping cross-repo dispatch."
+            exit 0
+          fi
           curl -sSf -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
