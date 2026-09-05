@@ -142,9 +142,10 @@ azure-functions-openapi
 | ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
 | `1.21.0` (최소)   | ✅ 테스트됨 |             |             |             |             |
 | `1.24.0`          | ✅ 테스트됨 |             |             |             |             |
-| `latest` (`<2.0`) | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 |
+| `latest 1.x`      | ✅ 테스트됨 | ✅ 테스트됨 | ✅ 테스트됨 |             |             |
+| `2.x` (`>=2,<3`)  |             |             |             | ✅ 테스트됨 | ✅ 테스트됨 |
 
-`pyproject.toml`의 버전 핀은 `azure-functions>=1.21.0,<2.0.0`입니다. 최소 버전이 `1.21.0`인 이유는 그 이전 릴리스가 `FunctionBuilder.__call__`에서 `None`을 반환하기 때문입니다(테스트와 CLI 추출에서 데코레이트된 핸들러의 직접 호출이 깨짐). 더 새로운 SDK가 필요하면 이슈를 열어 주세요. 상한을 둔 이유는 `azure-functions` 2.x가 Python < 3.13 지원을 중단하며 아직 `@openapi`로 검증되지 않았기 때문입니다.
+`pyproject.toml`의 버전 핀은 인터프리터에 따라 다릅니다: Python < 3.13에서는 `azure-functions>=1.21.0,<2.0.0`, Python 3.13+에서는 `azure-functions>=1.21.0`(상한 없음)입니다. 최소 버전이 `1.21.0`인 이유는 그 이전 릴리스가 `FunctionBuilder.__call__`에서 `None`을 반환하기 때문입니다(테스트와 CLI 추출에서 데코레이트된 핸들러의 직접 호출이 깨짐). 이렇게 나눈 이유는 `azure-functions` 2.x가 Python < 3.13 지원을 중단하므로, 2.x 라인은 Python 3.13+에서만 설치 가능하고 제공되기 때문입니다. 2.x 경로는 CI의 전용 wheel 기반 호환성 매트릭스(실제 Python 3.13 및 3.14 인터프리터)와 실제 Azure 인증 — koreacentral의 Flex Consumption 요금제에 배포된 Python 3.13 Function App — 으로 검증되었습니다. 상한 해제 작업은 [이슈 #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528)과 [이슈 #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488)을 참고하세요.
 
 ## Quick Start
 
