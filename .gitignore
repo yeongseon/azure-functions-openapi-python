@@ -38,3 +38,7 @@ site/
 # Agent orchestration state
 .sisyphus/
 .omc/
+
+
+# Compiled Bicep/ARM output (only infra/*.bicep is tracked)
+infra/*.json
