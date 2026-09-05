@@ -192,8 +192,8 @@ decorated handlers in tests and CLI extraction). The split exists because
 `azure-functions` 2.x drops support for Python < 3.13, so the 2.x line is only
 installable — and only offered — on Python 3.13+. The 2.x path is proven by a
 dedicated wheel-based compatibility matrix in CI (real Python 3.13 and 3.14
-interpreters). Real-Azure certification of the 2.x path is a required
-follow-up, not yet complete. See
+interpreters) and certified against real Azure — a Python 3.13 Function App
+deployed on a Flex Consumption plan in koreacentral. See
 [issue #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528)
 and [issue #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488)
 for the cap-lift work.
@@ -355,7 +355,7 @@ curl -s "https://<your-app>.azurewebsites.net/api/http_trigger" \
 
 The `/api/openapi.json`, `/api/openapi.yaml`, and `/api/docs` endpoints are also available in both environments.
 
-> Verified against a temporary Azure Functions deployment in koreacentral (Python 3.12, Consumption plan). Response captured and URL anonymized.
+> Verified against a temporary Azure Functions deployment in koreacentral on a Flex Consumption plan (certified on Python 3.13). Response captured and URL anonymized.
 
 ## Demo
 
