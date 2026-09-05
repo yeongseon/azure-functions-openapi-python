@@ -135,10 +135,11 @@ jobs:
         run: |
           APP="${{ steps.names.outputs.app }}"
           SCM_URL="https://${APP}.scm.azurewebsites.net"
-          # A freshly-provisioned Consumption app often returns 503 from its SCM
-          # (Kudu) endpoint for the first minute or two; publishing before it is
-          # ready fails with "503 (Site Unavailable)". Wait for SCM readiness,
-          # then retry the remote-build publish with backoff to absorb transients.
+          # A freshly-provisioned Flex Consumption app can briefly return 503 from
+          # its SCM (Kudu) endpoint for the first minute or two; publishing before
+          # it is ready fails with "503 (Site Unavailable)". Wait for SCM readiness,
+          # then retry the publish with backoff to absorb transients. Flex Consumption
+          # performs the remote build automatically, so no --build flag is passed.
           echo "Waiting for SCM endpoint to become ready: ${SCM_URL}"
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${SCM_URL}" || echo 000)
@@ -152,7 +153,7 @@ jobs:
           published=0
           for attempt in 1 2 3 4 5; do
             echo "Publish attempt ${attempt}/5..."
-            if func azure functionapp publish "${APP}" --python --build remote; then
+            if func azure functionapp publish "${APP}" --python; then
               published=1
               break
             fi
