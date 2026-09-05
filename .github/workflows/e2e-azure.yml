@@ -133,7 +133,36 @@ jobs:
       - name: Publish function app
         working-directory: examples/e2e_app
         run: |
-          func azure functionapp publish "${{ steps.names.outputs.app }}" --python --build remote
+          APP="${{ steps.names.outputs.app }}"
+          SCM_URL="https://${APP}.scm.azurewebsites.net"
+          # A freshly-provisioned Consumption app often returns 503 from its SCM
+          # (Kudu) endpoint for the first minute or two; publishing before it is
+          # ready fails with "503 (Site Unavailable)". Wait for SCM readiness,
+          # then retry the remote-build publish with backoff to absorb transients.
+          echo "Waiting for SCM endpoint to become ready: ${SCM_URL}"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${SCM_URL}" || echo 000)
+            if [ "${code}" != "503" ] && [ "${code}" != "000" ]; then
+              echo "SCM endpoint responded with HTTP ${code} (attempt ${i}); proceeding."
+              break
+            fi
+            echo "SCM not ready yet (HTTP ${code}, attempt ${i}/30); sleeping 10s..."
+            sleep 10
+          done
+          published=0
+          for attempt in 1 2 3 4 5; do
+            echo "Publish attempt ${attempt}/5..."
+            if func azure functionapp publish "${APP}" --python --build remote; then
+              published=1
+              break
+            fi
+            echo "Publish attempt ${attempt} failed; backing off before retry..."
+            sleep $((attempt * 20))
+          done
+          if [ "${published}" -ne 1 ]; then
+            echo "::error ::func publish failed after 5 attempts for ${APP}"
+            exit 1
+          fi
 
       - name: Run e2e tests
         run: pytest tests/e2e -v --no-cov --html=e2e-report/report.html --self-contained-html
