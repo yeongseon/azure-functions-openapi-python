@@ -1,6 +1,7 @@
 # src/azure_functions_openapi/spec.py
 from __future__ import annotations
 
+from collections.abc import Callable
 import copy
 from dataclasses import dataclass, field
 import json
@@ -185,6 +186,147 @@ def _convert_schemas_to_3_1(schemas: dict[str, Any]) -> dict[str, Any]:
     """Convert all schemas in components to OpenAPI 3.1 format."""
     return {name: _convert_schema_to_3_1(schema) for name, schema in schemas.items()}
 
+# Keywords whose presence on BOTH an ``anyOf`` wrapper node and its sole non-null
+# member makes an up-merge ambiguous: they constrain validation, so a conflict
+# must not be silently resolved. Annotation-only keys (description/title/...) are
+# safe to overlay and are intentionally excluded.
+_STRUCTURAL_MERGE_KEYS: frozenset[str] = frozenset(
+    {
+        "type",
+        "format",
+        "items",
+        "properties",
+        "enum",
+        "required",
+        "additionalProperties",
+        "allOf",
+        "anyOf",
+        "oneOf",
+        "pattern",
+        "minimum",
+        "maximum",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "multipleOf",
+    }
+)
+
+
+def _collapse_nullable_combinator(schema: dict[str, Any]) -> dict[str, Any]:
+    """Collapse a Pydantic ``anyOf``/``oneOf`` nullable union into OpenAPI 3.0 form.
+
+    OpenAPI 3.0 has no ``{"type": "null"}`` and cannot mark a ``$ref`` nullable
+    inline. Pydantic v2 emits ``Optional[T]`` as
+    ``{"anyOf": [<T>, {"type": "null"}]}``; this rewrites that node to the 3.0
+    ``nullable: true`` idiom (#562):
+
+    * single ``$ref`` member -> ``{"allOf": [<ref>], "nullable": true}`` (a
+      ``$ref`` must not carry sibling keys in 3.0, so it is wrapped).
+    * single inline member -> the member's keys merged up (existing node keys
+      such as ``description`` win) + ``nullable: true``.
+    * multiple members -> the combinator is kept (null member removed) with a
+      sibling ``nullable: true``.
+
+    Nodes without a null-bearing ``anyOf``/``oneOf`` are returned unchanged.
+    """
+    result = schema
+    for key in ("anyOf", "oneOf"):
+        members = result.get(key)
+        if not isinstance(members, list):
+            continue
+        if not any(isinstance(m, dict) and m.get("type") == "null" for m in members):
+            continue
+        non_null = [m for m in members if not (isinstance(m, dict) and m.get("type") == "null")]
+        result = {k: v for k, v in result.items() if k != key}
+        result["nullable"] = True
+        if len(non_null) == 1:
+            sole = non_null[0]
+            if isinstance(sole, dict) and "$ref" in sole:
+                # A $ref must not carry sibling keys in 3.0; wrap the bare ref in
+                # ``allOf`` and lift any annotation siblings up to this node.
+                result["allOf"] = [{"$ref": sole["$ref"]}]
+                for k, v in sole.items():
+                    if k != "$ref":
+                        result.setdefault(k, v)
+            elif isinstance(sole, dict):
+                conflict = any(
+                    k in result and result[k] != v
+                    for k, v in sole.items()
+                    if k in _STRUCTURAL_MERGE_KEYS
+                )
+                if conflict:
+                    # Ambiguous structural overlap: keep the (single-member)
+                    # combinator rather than silently dropping a constraint.
+                    result[key] = [sole]
+                else:
+                    for k, v in sole.items():
+                        result.setdefault(k, v)
+            else:
+                result[key] = non_null
+        elif len(non_null) > 1:
+            result[key] = non_null
+    return result
+
+
+def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively down-convert a JSON-Schema-2020-12 schema to OpenAPI 3.0.
+
+    Mirrors :func:`_convert_schema_to_3_1` in reverse: the 3.1/Pydantic
+    nullability idioms (``type: [T, "null"]`` and ``anyOf: [T, {type: null}]``)
+    are rewritten to the 3.0 ``nullable: true`` form so the emitted schema is
+    valid under OpenAPI 3.0 (#562). Non-nullable schemas pass through unchanged.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    result = dict(schema)
+
+    # ``type: [T, "null"]`` -> ``type: T`` + ``nullable: true``. OpenAPI 3.0
+    # requires ``type`` to be a single string, so a multi-type union is expressed
+    # as ``anyOf`` of single-type schemas rather than a (3.0-invalid) type array.
+    type_val = result.get("type")
+    if isinstance(type_val, list) and "null" in type_val:
+        non_null_types = [t for t in type_val if t != "null"]
+        result["nullable"] = True
+        if len(non_null_types) == 1:
+            result["type"] = non_null_types[0]
+        elif not non_null_types:
+            del result["type"]
+        else:
+            del result["type"]
+            result["anyOf"] = [{"type": t} for t in non_null_types]
+
+    # ``enum: [None, ...]`` -> drop the null member + ``nullable: true``.
+    enum_val = result.get("enum")
+    if isinstance(enum_val, list) and None in enum_val:
+        result["enum"] = [e for e in enum_val if e is not None]
+        result["nullable"] = True
+
+    # Recurse into nested structures first so inner unions are converted before
+    # the combinator at this level is collapsed.
+    if "properties" in result and isinstance(result["properties"], dict):
+        result["properties"] = {
+            k: _convert_schema_to_3_0(v) for k, v in result["properties"].items()
+        }
+    if "items" in result:
+        result["items"] = _convert_schema_to_3_0(result["items"])
+    for combinator in ("allOf", "anyOf", "oneOf"):
+        if combinator in result and isinstance(result[combinator], list):
+            result[combinator] = [_convert_schema_to_3_0(s) for s in result[combinator]]
+    if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
+        result["additionalProperties"] = _convert_schema_to_3_0(result["additionalProperties"])
+    if "$defs" in result and isinstance(result["$defs"], dict):
+        result["$defs"] = {k: _convert_schema_to_3_0(v) for k, v in result["$defs"].items()}
+
+    return _collapse_nullable_combinator(result)
+
+
+def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> dict[str, Any]:
+    """Down-convert all component schemas to OpenAPI 3.0 nullable form (#562)."""
+    return {name: _convert_schema_to_3_0(schema) for name, schema in schemas.items()}
+
 
 def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
     """Check if a schema contains constructs incompatible with OpenAPI 3.0.
@@ -249,13 +391,16 @@ def _check_schemas_3_0_compatible(schemas: dict[str, Any], strict: bool) -> list
     return warnings
 
 
-def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
-    """Apply 3.1 schema conversion to inline schemas in operations.
+def _convert_operation_schemas(
+    paths: dict[str, Any],
+    converter: Callable[[dict[str, Any]], dict[str, Any]],
+) -> dict[str, Any]:
+    """Apply *converter* to every inline schema in operations, in place.
 
     Converts schemas in:
     - requestBody.content.*.schema
     - responses.*.content.*.schema and .itemSchema
-    - parameters[].schema
+    - parameters[].schema (and querystring parameters' content.*.schema)
     """
     for _path, methods in paths.items():
         for _method, operation in methods.items():
@@ -269,7 +414,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                 if isinstance(content, dict):
                     for _media, media_obj in content.items():
                         if isinstance(media_obj, dict) and "schema" in media_obj:
-                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+                            media_obj["schema"] = converter(media_obj["schema"])
 
             # responses
             responses = operation.get("responses")
@@ -284,7 +429,7 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                                 continue
                             for _schema_key in _MEDIA_SCHEMA_KEYS:
                                 if _schema_key in media_obj:
-                                    media_obj[_schema_key] = _convert_schema_to_3_1(
+                                    media_obj[_schema_key] = converter(
                                         media_obj[_schema_key]
                                     )
 
@@ -293,16 +438,26 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(param, dict):
                     continue
                 if "schema" in param:
-                    param["schema"] = _convert_schema_to_3_1(param["schema"])
+                    param["schema"] = converter(param["schema"])
                 # querystring parameters (OpenAPI 3.2) carry a content map
                 # instead of a bare schema.
                 param_content = param.get("content")
                 if isinstance(param_content, dict):
                     for _media, media_obj in param_content.items():
                         if isinstance(media_obj, dict) and "schema" in media_obj:
-                            media_obj["schema"] = _convert_schema_to_3_1(media_obj["schema"])
+                            media_obj["schema"] = converter(media_obj["schema"])
 
     return paths
+
+
+def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
+    """Apply 3.1 schema conversion to inline schemas in operations."""
+    return _convert_operation_schemas(paths, _convert_schema_to_3_1)
+
+
+def _convert_operation_schemas_to_3_0(paths: dict[str, Any]) -> dict[str, Any]:
+    """Down-convert inline operation schemas to valid OpenAPI 3.0 form (#562)."""
+    return _convert_operation_schemas(paths, _convert_schema_to_3_0)
 
 
 # Media Type Object keys (OpenAPI 3.2 adds ``itemSchema`` for sequential/
@@ -737,6 +892,12 @@ def generate_openapi_spec(
         if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
             spec["info"]["summary"] = title
             _convert_operation_schemas_to_3_1(paths)
+        elif openapi_version == OPENAPI_VERSION_3_0:
+            # Down-convert path-level inline schemas (inferred and explicit
+            # ``responses=``/``requests=``) so nested Pydantic nullability is
+            # emitted as valid 3.0 ``nullable: true`` rather than the 3.1-only
+            # ``anyOf: [T, {type: null}]`` idiom (#562).
+            _convert_operation_schemas_to_3_0(paths)
 
         # Top-level and info metadata passthrough (#494). Each field is emitted
         # only when supplied; contact/license nest under ``info`` while
@@ -790,6 +951,11 @@ def generate_openapi_spec(
             if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
                 components["schemas"] = _convert_schemas_to_3_1(components["schemas"])
             elif openapi_version == OPENAPI_VERSION_3_0:
+                # Down-convert nullable component schemas to valid 3.0 form
+                # (#562) before the compatibility audit, so faithfully
+                # convertible nullability no longer trips the warn/strict path.
+                components["schemas"] = _convert_schemas_to_3_0(components["schemas"])
+                compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
                 compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
                 for w in compat_warnings:
                     logger.warning("OpenAPI 3.0 compatibility: %s", w)

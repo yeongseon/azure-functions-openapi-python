@@ -7,10 +7,11 @@ the interaction between hoisting and the 3.0-vs-3.1 emit path so a regression
 cannot silently leak a raw ``$defs`` block (invalid in both versions) or a
 3.1-only construct into a 3.0 document.
 
-Design note (see #215): the 3.0 path does **not** down-convert Pydantic-v2
-nullable patterns to ``nullable: true`` — it emits a *compatibility warning*
-via ``_check_schemas_3_0_compatible`` (and raises in ``strict`` mode). The 3.1
-path preserves the 2020-12 ``anyOf`` + ``{"type": "null"}`` nullable syntax.
+Design note (see #562): the 3.0 path **down-converts** Pydantic-v2 nullable
+patterns (``anyOf`` containing ``{"type": "null"}``) to valid OpenAPI 3.0
+``nullable: true`` form — it does *not* warn or leak a 3.1-only construct, and
+this holds in ``strict`` mode too. The 3.1 path preserves the 2020-12 ``anyOf``
++ ``{"type": "null"}`` nullable syntax.
 """
 
 from __future__ import annotations
@@ -185,11 +186,11 @@ def test_hoisted_defs_30_no_defs_leak_and_refs_resolve(
 
 
 # ---------------------------------------------------------------------------
-# 3.0 — nullable hoisted defs → compatibility warning, still no leak
+# 3.0 — nullable hoisted defs → down-converted to nullable:true, no leak
 # ---------------------------------------------------------------------------
 
 
-def test_hoisted_nullable_defs_30_warns_without_leak(
+def test_hoisted_nullable_defs_30_downconverts_without_leak(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     scan_endpoint_metadata(_make_app(NULLABLE_DEFS_BODY))
@@ -201,18 +202,26 @@ def test_hoisted_nullable_defs_30_warns_without_leak(
     assert not _has_defs_key(spec)
     assert "Child" in spec["components"]["schemas"]
 
-    # The nullable construct is surfaced as a 3.0 compatibility warning
-    # (design #215: warn, do not silently down-convert).
-    assert any("3.0 compatibility" in m and "Child" in m for m in caplog.messages), caplog.messages
+    # The nullable construct is down-converted to valid 3.0 ``nullable: true``
+    # form (design #562: down-convert, do not warn or leak a 3.1-only construct).
+    nickname = spec["components"]["schemas"]["Child"]["properties"]["nickname"]
+    assert nickname == {"type": "string", "nullable": True}
+    assert "anyOf" not in nickname
+    assert not any("type" in d and d.get("type") == "null" for d in _iter_dicts(spec))
+
+    # No 3.0 compatibility warning is emitted for a successfully converted schema.
+    assert not any("3.0 compatibility" in m for m in caplog.messages), caplog.messages
 
 
-def test_hoisted_nullable_defs_30_strict_raises() -> None:
-    from azure_functions_openapi.exceptions import OpenAPISpecConfigError
-
+def test_hoisted_nullable_defs_30_strict_does_not_raise() -> None:
     scan_endpoint_metadata(_make_app(NULLABLE_DEFS_BODY))
 
-    with pytest.raises(OpenAPISpecConfigError, match="3.1-only constructs"):
-        generate_openapi_spec(openapi_version="3.0.0", strict=True)
+    # strict mode must not raise: the nullable pattern is a valid, convertible
+    # 3.0 construct (design #562), not a compatibility failure.
+    spec = generate_openapi_spec(openapi_version="3.0.0", strict=True)
+
+    nickname = spec["components"]["schemas"]["Child"]["properties"]["nickname"]
+    assert nickname == {"type": "string", "nullable": True}
 
 
 # ---------------------------------------------------------------------------
