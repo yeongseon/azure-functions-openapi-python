@@ -34,8 +34,10 @@ def test_installed_azure_functions_version_meets_pin() -> None:
 
     Below Python 3.13 the pin caps ``azure-functions`` at ``<2.0.0`` (the 2.x
     line drops those interpreters). On Python 3.13+ the ``<2.0.0`` cap is lifted
-    (issue #528), so only the ``>=1.21.0`` floor is enforced. This catches
-    accidental downgrades and confirms the CI matrix installed what it intended.
+    (issue #528) but an interpreter-aware ``<3.0.0`` ceiling still applies (an
+    uncertified future 3.x major must not silently install). This catches
+    accidental downgrades and cap removals, and confirms the CI matrix
+    installed what it intended.
     """
     installed = _metadata.version("azure-functions")
     major_minor = tuple(int(p) for p in installed.split(".")[:2])
@@ -49,6 +51,13 @@ def test_installed_azure_functions_version_meets_pin() -> None:
             f"{sys.version_info.major}.{sys.version_info.minor}, but the pin caps "
             "it at <2.0.0 below Python 3.13. See issue #528 before widening the "
             "ceiling on older interpreters."
+        )
+    else:
+        assert major_minor < (3, 0), (
+            f"azure-functions {installed} reached the 3.x line on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}, but the pin caps "
+            "it at <3.0.0 on Python 3.13+ until a future 3.x major is certified. "
+            "See issue #550 before widening the ceiling."
         )
 
 
