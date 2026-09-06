@@ -16,6 +16,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    get_args,
     get_origin,
     get_type_hints,
 )
@@ -197,6 +198,35 @@ def _is_supported_shorthand_generic(value: Any) -> bool:
     return origin is Union or origin is types.UnionType
 
 
+def _flatten_optional_root(hint: Any) -> Any:
+    """Drop the ``None`` branch from a top-level ``Optional[T]`` return annotation.
+
+    Return-type inference treats an ``Optional[T]`` / ``Union[T, None]`` *return*
+    as "the handler may or may not produce a value", not as a contract promising a
+    literal JSON ``null`` 200 body. So at the response root we flatten to the
+    non-``None`` member(s) (#558): ``Optional[User]`` -> ``User``,
+    ``Union[A, B, None]`` -> ``Union[A, B]``. This keeps the inferred 200 schema
+    valid under both OpenAPI 3.0 and 3.1 (no top-level ``{"type": "null"}``) and
+    identical across versions.
+
+    Nested nullability is deliberately preserved: only the *root* union is
+    unwrapped here, so ``list[Optional[User]]`` keeps its nullable items — there
+    the ``None`` describes the real JSON shape of array elements.
+
+    A non-union hint, or a union with no ``None`` branch, is returned unchanged.
+    A union of *only* ``None`` collapses to ``NoneType`` (not documentable).
+    """
+    origin = get_origin(hint)
+    if origin is not Union and origin is not types.UnionType:
+        return hint
+    non_none = [arg for arg in get_args(hint) if arg is not type(None)]
+    if not non_none:
+        return type(None)
+    if len(non_none) == 1:
+        return non_none[0]
+    return Union[tuple(non_none)]
+
+
 def _normalize_unified_responses(
     responses: Mapping[Any, Any], func_name: str
 ) -> dict[int | str, dict[str, Any]]:
@@ -307,6 +337,11 @@ def _infer_response_from_return(
         # instead resolved to ``type(None)`` by ``get_type_hints`` and falls
         # through to the not-documentable branch below.)
         return None, None
+
+    # Flatten a top-level ``Optional[T]`` / ``Union[..., None]`` return to its
+    # non-``None`` member(s) before classifying it, so the inferred 200 body is
+    # the model itself rather than a nullable ``anyOf`` (#558).
+    hint = _flatten_optional_root(hint)
 
     if _is_pydantic_model(hint):
         return hint, None
