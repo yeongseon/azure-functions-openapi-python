@@ -1,6 +1,30 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.25.1] - 2026-09-06
+
+### Bug Fixes
+
+- *(spec)* Down-convert nested container nullability to valid OpenAPI 3.0 (#562) (#569) 
+- *(inference)* Flatten Optional[T] return to plain T at 200 root (#558) (#563) 
+- *(ci)* Run the real matrix interpreter for every test cell (#555) 
+
+### Documentation
+
+- Sync README/docs/llms + CI comments with 0.25.x (OpenAPI 3.2, Pydantic-required) (#568) 
+
+### Features
+
+- *(inference)* Add infer_return_types opt-out switch (keep default-on) (#560) 
+- *(decorator)* Friendly error for retired @openapi kwargs (#557) (#561) 
+
+### Miscellaneous Tasks
+
+- *(lint)* Flag hatch default-env pin coexisting with multi-version matrix (#564) (#565) 
+
+### Other
+
+- Bump version to 0.25.1 
 ## [0.25.0] - 2026-09-06
 
 ### Bug Fixes
@@ -11,6 +35,7 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Update changelog 
 - *(readme)* Sync translated READMEs with interpreter-aware pin and Flex/3.13 certification (#547) 
 - Codify issue-based project management convention in AGENTS.md (#543) 
 - *(readme)* Reflect completed real-Azure 3.13 certification on Flex Consumption (#545) 
