@@ -262,7 +262,7 @@ def get_order(req: func.HttpRequest) -> OrderResponse:  # -> 200 OrderResponse s
   `-> None`, `-> Any`, `-> func.HttpResponse`, bare scalars (`-> str`,
   `-> int`), and unsupported generics.
 - An unresolved forward reference (e.g. under
-`from __future__ import annotations`) simply infers nothing rather than
+  `from __future__ import annotations`) simply infers nothing rather than
   failing.
 
 To suppress return-type inference (for example, when your handler returns an
