@@ -25,13 +25,13 @@ classifiers = [
 dependencies = [
     # azure-functions 2.x drops Python < 3.13, so the constraint is split by
     # interpreter: Python < 3.13 stays capped at <2.0.0 (2.x is uninstallable
-    # there), while Python >= 3.13 is allowed onto the 2.x line. The 2.x path is
-    # proven by the wheel-based "azure-functions 2.x compat" matrix in
-    # ci-test.yml (real Python 3.13/3.14 interpreters). Real-Azure certification
-    # of the 2.x path (via e2e-azure.yml) is a required follow-up, tracked by
-    # issue #528 (cap-lift); see also #488 (compat lane).
+    # there), while Python >= 3.13 is allowed onto the 2.x line but still capped
+    # below <3.0.0 so an uncertified azure-functions 3.x is never pulled in
+    # silently. The 2.x path is proven by the wheel-based "azure-functions 2.x
+    # compat" matrix in ci-test.yml (real Python 3.13/3.14 interpreters) and
+    # certified against real Azure via e2e-azure.yml; see #528 and #488.
     "azure-functions>=1.21.0,<2.0.0; python_version < '3.13'",
-    "azure-functions>=1.21.0; python_version >= '3.13'",
+    "azure-functions>=1.21.0,<3.0.0; python_version >= '3.13'",
     "pydantic>=2.0,<3.0",
     "PyYAML",
 ]
