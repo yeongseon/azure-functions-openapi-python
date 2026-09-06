@@ -45,6 +45,42 @@ _registry_lock = registry.lock
 
 logger = logging.getLogger(__name__)
 
+# Keyword arguments retired from ``@openapi`` mapped to migration guidance.
+# The four discrete request/response params were deprecated in 0.20.0 and
+# removed from ``@openapi`` in 0.24.0 (#509) in favor of the unified
+# ``requests=`` / ``responses=`` forms. They remain available on
+# ``register_openapi_metadata`` for programmatic registration.
+_RETIRED_KWARGS: dict[str, str] = {
+    "request_model": "use 'requests=' instead",
+    "request_body": "use 'requests=' instead",
+    "response_model": "use 'responses=' instead",
+    "response": "use 'responses=' instead",
+}
+
+# Sentinel default for the retired parameters. They stay in the ``@openapi``
+# signature purely so a caller who passes one gets an actionable error — but as
+# explicit (sentinel-defaulted) parameters rather than ``**kwargs``, so static
+# type checkers still flag genuinely unknown keywords (e.g. ``summry=``) at
+# type-check time (#557).
+_RETIRED_UNSET: Any = object()
+
+
+def _reject_retired_kwargs(**candidates: Any) -> None:
+    """Raise a clear, actionable error for any retired ``@openapi`` kwarg supplied.
+
+    Each keyword maps to a retired parameter; a value other than the
+    ``_RETIRED_UNSET`` sentinel means the caller actually passed it, and gets
+    migration guidance pointing at its unified replacement (removed in 0.24.0,
+    #509). Genuinely unknown keywords never reach here — they raise Python's
+    standard unexpected-keyword ``TypeError`` at the call site.
+    """
+    for name, value in candidates.items():
+        if value is not _RETIRED_UNSET:
+            raise TypeError(
+                f"@openapi() no longer accepts '{name}' "
+                f"(removed in 0.24.0): {_RETIRED_KWARGS[name]}."
+            )
+
 
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     """Return the original decorated object and the underlying callable used for metadata."""
@@ -365,6 +401,13 @@ def openapi(
     querystring_media_type: str = "application/x-www-form-urlencoded",
     # ── inference toggles ─────────────────────────────────────────
     infer_docstring: bool = False,
+    # ── retired parameters (removed in 0.24.0, #509) ──────────────
+    # Kept only to raise an actionable error on misuse; sentinel-defaulted so
+    # unknown keywords still fail static type-checking (#557).
+    request_model: Any = _RETIRED_UNSET,
+    request_body: Any = _RETIRED_UNSET,
+    response_model: Any = _RETIRED_UNSET,
+    response: Any = _RETIRED_UNSET,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -497,6 +540,14 @@ def openapi(
     Callable
         The original function, with its name stored in `_openapi_registry`.
     """
+    # Reject any retired parameter eagerly with actionable guidance (#557)
+    # before any handler is decorated.
+    _reject_retired_kwargs(
+        request_model=request_model,
+        request_body=request_body,
+        response_model=response_model,
+        response=response,
+    )
 
     def decorator(func: F) -> F:
         target_name = getattr(func, "__qualname__", getattr(func, "__name__", "<unknown>"))
