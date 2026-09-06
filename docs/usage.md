@@ -256,8 +256,15 @@ def get_order(req: func.HttpRequest) -> OrderResponse:  # -> 200 OrderResponse s
 ```
 
 - `-> User` (a Pydantic `BaseModel`) → `200` response with the model schema.
-- `-> list[User]` / `Optional[User]` → the same array / union shorthand as an
-  explicit `responses=` shorthand.
+- `-> list[User]` → the same array shorthand as an explicit `responses=`
+  shorthand.
+- `-> Optional[User]` (i.e. `Union[User, None]`) → the bare `User` schema. A
+  nullable **return** is read as "the handler may or may not produce a value",
+  not as a `200` body that is literally JSON `null`, so the root `None` branch
+  is dropped and the emitted `200` is identical under OpenAPI 3.0 and 3.1. To
+  document a genuinely nullable body, declare it explicitly with `responses=`.
+  Nested nullability is preserved: `-> list[Optional[User]]` keeps nullable
+  array items.
 - Non-documentable returns infer **nothing** (no `200` is fabricated):
   `-> None`, `-> Any`, `-> func.HttpResponse`, bare scalars (`-> str`,
   `-> int`), and unsupported generics.

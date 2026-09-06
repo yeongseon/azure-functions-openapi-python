@@ -16,6 +16,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    get_args,
     get_origin,
     get_type_hints,
 )
@@ -44,6 +45,42 @@ _openapi_registry: dict[str, dict[str, Any]] = registry.entries
 _registry_lock = registry.lock
 
 logger = logging.getLogger(__name__)
+
+# Keyword arguments retired from ``@openapi`` mapped to migration guidance.
+# The four discrete request/response params were deprecated in 0.20.0 and
+# removed from ``@openapi`` in 0.24.0 (#509) in favor of the unified
+# ``requests=`` / ``responses=`` forms. They remain available on
+# ``register_openapi_metadata`` for programmatic registration.
+_RETIRED_KWARGS: dict[str, str] = {
+    "request_model": "use 'requests=' instead",
+    "request_body": "use 'requests=' instead",
+    "response_model": "use 'responses=' instead",
+    "response": "use 'responses=' instead",
+}
+
+# Sentinel default for the retired parameters. They stay in the ``@openapi``
+# signature purely so a caller who passes one gets an actionable error — but as
+# explicit (sentinel-defaulted) parameters rather than ``**kwargs``, so static
+# type checkers still flag genuinely unknown keywords (e.g. ``summry=``) at
+# type-check time (#557).
+_RETIRED_UNSET: Any = object()
+
+
+def _reject_retired_kwargs(**candidates: Any) -> None:
+    """Raise a clear, actionable error for any retired ``@openapi`` kwarg supplied.
+
+    Each keyword maps to a retired parameter; a value other than the
+    ``_RETIRED_UNSET`` sentinel means the caller actually passed it, and gets
+    migration guidance pointing at its unified replacement (removed in 0.24.0,
+    #509). Genuinely unknown keywords never reach here — they raise Python's
+    standard unexpected-keyword ``TypeError`` at the call site.
+    """
+    for name, value in candidates.items():
+        if value is not _RETIRED_UNSET:
+            raise TypeError(
+                f"@openapi() no longer accepts '{name}' "
+                f"(removed in 0.24.0): {_RETIRED_KWARGS[name]}."
+            )
 
 
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
@@ -197,6 +234,35 @@ def _is_supported_shorthand_generic(value: Any) -> bool:
     return origin is Union or origin is types.UnionType
 
 
+def _flatten_optional_root(hint: Any) -> Any:
+    """Drop the ``None`` branch from a top-level ``Optional[T]`` return annotation.
+
+    Return-type inference treats an ``Optional[T]`` / ``Union[T, None]`` *return*
+    as "the handler may or may not produce a value", not as a contract promising a
+    literal JSON ``null`` 200 body. So at the response root we flatten to the
+    non-``None`` member(s) (#558): ``Optional[User]`` -> ``User``,
+    ``Union[A, B, None]`` -> ``Union[A, B]``. This keeps the inferred 200 schema
+    valid under both OpenAPI 3.0 and 3.1 (no top-level ``{"type": "null"}``) and
+    identical across versions.
+
+    Nested nullability is deliberately preserved: only the *root* union is
+    unwrapped here, so ``list[Optional[User]]`` keeps its nullable items — there
+    the ``None`` describes the real JSON shape of array elements.
+
+    A non-union hint, or a union with no ``None`` branch, is returned unchanged.
+    A union of *only* ``None`` collapses to ``NoneType`` (not documentable).
+    """
+    origin = get_origin(hint)
+    if origin is not Union and origin is not types.UnionType:
+        return hint
+    non_none = [arg for arg in get_args(hint) if arg is not type(None)]
+    if not non_none:
+        return type(None)
+    if len(non_none) == 1:
+        return non_none[0]
+    return Union[tuple(non_none)]
+
+
 def _normalize_unified_responses(
     responses: Mapping[Any, Any], func_name: str
 ) -> dict[int | str, dict[str, Any]]:
@@ -308,6 +374,11 @@ def _infer_response_from_return(
         # through to the not-documentable branch below.)
         return None, None
 
+    # Flatten a top-level ``Optional[T]`` / ``Union[..., None]`` return to its
+    # non-``None`` member(s) before classifying it, so the inferred 200 body is
+    # the model itself rather than a nullable ``anyOf`` (#558).
+    hint = _flatten_optional_root(hint)
+
     if _is_pydantic_model(hint):
         return hint, None
 
@@ -366,6 +437,13 @@ def openapi(
     # ── inference toggles ─────────────────────────────────────────
     infer_docstring: bool = False,
     infer_return_types: bool = True,
+    # ── retired parameters (removed in 0.24.0, #509) ──────────────
+    # Kept only to raise an actionable error on misuse; sentinel-defaulted so
+    # unknown keywords still fail static type-checking (#557).
+    request_model: Any = _RETIRED_UNSET,
+    request_body: Any = _RETIRED_UNSET,
+    response_model: Any = _RETIRED_UNSET,
+    response: Any = _RETIRED_UNSET,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -506,6 +584,14 @@ def openapi(
     Callable
         The original function, with its name stored in `_openapi_registry`.
     """
+    # Reject any retired parameter eagerly with actionable guidance (#557)
+    # before any handler is decorated.
+    _reject_retired_kwargs(
+        request_model=request_model,
+        request_body=request_body,
+        response_model=response_model,
+        response=response,
+    )
 
     def decorator(func: F) -> F:
         target_name = getattr(func, "__qualname__", getattr(func, "__name__", "<unknown>"))
