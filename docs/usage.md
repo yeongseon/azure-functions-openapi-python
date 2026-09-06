@@ -244,7 +244,9 @@ decorator-time (`@openapi`) and scan-time (a bare `@app.route` with no
 ### Return-type inference
 
 When you supply no explicit `responses=`, the handler's return annotation infers
-the `200` response:
+the `200` response. This inference is always on — a return **type** is a
+structural declaration, not free-form prose, so publishing it needs no separate
+consent:
 
 ```python
 @openapi(summary="Get order")
@@ -263,14 +265,20 @@ def get_order(req: func.HttpRequest) -> OrderResponse:  # -> 200 OrderResponse s
   `from __future__ import annotations`) simply infers nothing rather than
   failing.
 
-### Docstring inference
+### Docstring inference (opt-in)
 
-When you omit `summary`/`description`, the handler docstring fills them: the
-first non-empty line becomes the `summary`, and the remainder becomes the
-`description`.
+Docstring inference is **opt-in** and **off by default**. A handler's docstring
+is prose written for developers, not necessarily public API documentation, so it
+is never published without your explicit consent. Enable it per handler with
+`infer_docstring=True` (decorator) or per scan with
+`scan_endpoint_metadata(..., infer_docstring=True)`.
+
+When enabled and you omit `summary`/`description`, the handler docstring fills
+them: the first non-empty line becomes the `summary`, and the remainder becomes
+the `description`.
 
 ```python
-@openapi()
+@openapi(infer_docstring=True)
 @app.route(route="ping", methods=["GET"])
 def ping(req: func.HttpRequest) -> str:
     """Health check.
@@ -282,7 +290,11 @@ def ping(req: func.HttpRequest) -> str:
 # description="Returns 200 while the app is serving traffic."
 ```
 
-Each field is inferred **independently**, and explicit always wins:
+With the default `infer_docstring=False`, the same handler registers an empty
+`summary`/`description` and the docstring is ignored.
+
+When enabled, each field is inferred **independently**, and explicit always
+wins:
 
 - Omit `summary`/`description` (leave them unset) → inferred from the docstring.
 - Pass an explicit non-empty value → that value is used, docstring ignored for
