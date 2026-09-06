@@ -836,13 +836,14 @@ def scan_validation_metadata(
     registry: OpenAPIRegistry | None = None,
     infer_docstring: bool = False,
 ) -> None:
-    """Deprecated alias for :func:`scan_endpoint_metadata`.
+    """Deprecated alias for :func:`scan_endpoint_metadata` (forwards ``infer_docstring``).
 
     The scanner now primarily consumes the namespace-neutral ``"endpoint"``
     contract (the ``"validation"`` namespace is only a fallback), so the
     ``scan_validation_metadata`` name is a misnomer. Use
     :func:`scan_endpoint_metadata` instead. This alias forwards unchanged and
-    will be removed in a future minor release.
+    will be removed in a future minor release. The opt-in ``infer_docstring``
+    flag is forwarded unchanged to :func:`scan_endpoint_metadata`.
     """
     warnings.warn(
         "scan_validation_metadata() is deprecated; use scan_endpoint_metadata() "
