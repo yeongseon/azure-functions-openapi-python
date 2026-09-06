@@ -1,11 +1,80 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.25.0] - 2026-09-06
+
+### Bug Fixes
+
+- *(deps)* Re-add <3.0.0 upper cap on azure-functions for Python 3.13+ (#552) 
+- *(decorator)* Make docstring inference opt-in before it ships (#553) 
+- *(bridge)* Register summary/description for docstring-only bare routes (#535) 
+
+### Documentation
+
+- *(readme)* Sync translated READMEs with interpreter-aware pin and Flex/3.13 certification (#547) 
+- Codify issue-based project management convention in AGENTS.md (#543) 
+- *(readme)* Reflect completed real-Azure 3.13 certification on Flex Consumption (#545) 
+- *(usage)* Document return-type and docstring inference + precedence (#537) 
+- *(readme)* Add azure-functions-logging companion callout (#522) 
+- Explain route discovery and @app.route authority (#511) 
+- *(openapi)* Clarify auth_level admin=host master key vs APIM subscription keys (#501) 
+
+### Features
+
+- *(schema)* Infer summary/description from handler docstring (#533) 
+- *(deps)* Lift azure-functions <2.0.0 cap on Python 3.13+ (#529) 
+- *(schema)* Infer 200 response from handler return type (#530) 
+- *(openapi)* Restrict responses= generic shorthand to container origins (#499) 
+- *(openapi)* Passthrough top-level servers/contact/license/externalDocs/tags (#500) 
+- *(spec)* Surface version-downgrade drops as structured warnings (#479) (#489) 
+
+### Miscellaneous Tasks
+
+- Ignore local Bicep build artifacts (infra/*.json) (#549) 
+- *(e2e)* Migrate infra to Flex Consumption for Python 3.13 certification (#541) 
+- *(release)* Scope cookbook dispatch token to the dispatch step (#539) 
+- *(e2e)* Wait for SCM readiness and retry func publish (#540) 
+- *(e2e)* Parameterize Function App Python runtime for 3.13 certification (#538) 
+- *(screenshots)* Scan committed screenshots and manifest for leaked secrets (#517) 
+- *(branch-naming)* Allow build/ branch prefix (#527) 
+- *(2x)* Fix azure-functions 2.x lane to install via wheel on Py 3.13 (#525) 
+- *(pins)* Update canonical azure/login pin to v3.0.2 (#526) 
+- *(deps)* Bump the github-actions group with 5 updates (#524) 
+- *(deps)* Bump ruff in the python-dependencies group (#523) 
+- Add non-blocking azure-functions 2.x compat lane (Py 3.13) (#508) 
+- *(deps)* Bump dependabot/fetch-metadata from 2.5.0 to 3.1.0 (#505) 
+- Notify cookbook to re-run e2e after PyPI release (#507) 
+- *(deps)* Bump the github-actions group with 2 updates (#504) 
+- *(deps)* Bump ruff in the python-dependencies group (#503) 
+- *(ci)* Group dependabot updates + auto-merge patch/minor (#490) 
+- *(deps)* Bump github/codeql-action/analyze from 4.37.5 to 4.37.7 (#466) 
+- *(deps)* Bump github/codeql-action/init from 4.37.5 to 4.37.7 (#467) 
+- *(deps)* Bump ruff from 0.16.2 to 0.16.3 (#464) 
+- *(deps)* Bump mypy from 2.3.0 to 2.3.1 (#465) 
+
+### Other
+
+- Bump version to 0.25.0 
+- *(deps)* Add Dependabot cooldown to age new releases (#518) 
+- *(swagger-ui)* Add Subresource Integrity hashes to CDN assets (#516) 
+
+### Refactor
+
+- *(openapi)* Retire 4 deprecated decorator params per 2-minor alias policy (#509) 
+- *(openapi)* Record itemSchema downgrade via VERSION_DOWNGRADE_DROP (#498) 
+
+### Testing
+
+- *(openapi)* Pin legacy request_model/response_model hoisting paths (#497) 
 ## [0.24.0] - 2026-08-22
 
 ### Bug Fixes
 
 - *(decorator)* Harden typed path=/headers= param expansion edge cases (#487) 
+
+### Documentation
+
+- Update changelog 
 
 ### Features
 
