@@ -57,23 +57,29 @@ _RETIRED_KWARGS: dict[str, str] = {
     "response": "use 'responses=' instead",
 }
 
+# Sentinel default for the retired parameters. They stay in the ``@openapi``
+# signature purely so a caller who passes one gets an actionable error — but as
+# explicit (sentinel-defaulted) parameters rather than ``**kwargs``, so static
+# type checkers still flag genuinely unknown keywords (e.g. ``summry=``) at
+# type-check time (#557).
+_RETIRED_UNSET: Any = object()
 
-def _reject_retired_kwargs(kwargs: dict[str, Any]) -> None:
-    """Raise a clear, actionable error for retired or unknown ``@openapi`` kwargs.
 
-    Retired kwargs (removed in 0.24.0, #509) get migration guidance pointing at
-    their unified replacement; any other unexpected kwarg preserves the standard
-    ``TypeError`` Python would otherwise raise for an unknown keyword argument.
+def _reject_retired_kwargs(**candidates: Any) -> None:
+    """Raise a clear, actionable error for any retired ``@openapi`` kwarg supplied.
+
+    Each keyword maps to a retired parameter; a value other than the
+    ``_RETIRED_UNSET`` sentinel means the caller actually passed it, and gets
+    migration guidance pointing at its unified replacement (removed in 0.24.0,
+    #509). Genuinely unknown keywords never reach here — they raise Python's
+    standard unexpected-keyword ``TypeError`` at the call site.
     """
-    for name in kwargs:
-        guidance = _RETIRED_KWARGS.get(name)
-        if guidance is not None:
+    for name, value in candidates.items():
+        if value is not _RETIRED_UNSET:
             raise TypeError(
-                f"@openapi() no longer accepts '{name}' (removed in 0.24.0): {guidance}."
+                f"@openapi() no longer accepts '{name}' "
+                f"(removed in 0.24.0): {_RETIRED_KWARGS[name]}."
             )
-    # Not a retired kwarg: fall back to the standard unexpected-keyword error.
-    unexpected = next(iter(kwargs))
-    raise TypeError(f"openapi() got an unexpected keyword argument '{unexpected}'")
 
 
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
@@ -395,8 +401,13 @@ def openapi(
     querystring_media_type: str = "application/x-www-form-urlencoded",
     # ── inference toggles ─────────────────────────────────────────
     infer_docstring: bool = False,
-    # ── retired kwargs guard (#557) ───────────────────────────────
-    **kwargs: Any,
+    # ── retired parameters (removed in 0.24.0, #509) ──────────────
+    # Kept only to raise an actionable error on misuse; sentinel-defaulted so
+    # unknown keywords still fail static type-checking (#557).
+    request_model: Any = _RETIRED_UNSET,
+    request_body: Any = _RETIRED_UNSET,
+    response_model: Any = _RETIRED_UNSET,
+    response: Any = _RETIRED_UNSET,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -529,11 +540,14 @@ def openapi(
     Callable
         The original function, with its name stored in `_openapi_registry`.
     """
-    # Reject retired/unknown kwargs eagerly with actionable guidance (#557)
+    # Reject any retired parameter eagerly with actionable guidance (#557)
     # before any handler is decorated.
-    if kwargs:
-        _reject_retired_kwargs(kwargs)
-
+    _reject_retired_kwargs(
+        request_model=request_model,
+        request_body=request_body,
+        response_model=response_model,
+        response=response,
+    )
 
     def decorator(func: F) -> F:
         target_name = getattr(func, "__qualname__", getattr(func, "__name__", "<unknown>"))

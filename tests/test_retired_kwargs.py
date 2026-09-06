@@ -65,9 +65,14 @@ def test_retired_map_covers_exactly_the_four_discrete_params() -> None:
 
 
 def test_unknown_kwarg_raises_standard_typeerror() -> None:
+    # A genuinely unknown keyword is not a retired param: it raises Python's
+    # standard unexpected-keyword TypeError at the call site (the signature is
+    # strict — no ``**kwargs``). Splat via a dict so the deliberate misuse is
+    # not itself flagged by static type-checking.
+    kw: dict[str, Any] = {"not_a_real_param": 123}
     with pytest.raises(TypeError) as excinfo:
 
-        @openapi(summary="x", not_a_real_param=123)
+        @openapi(summary="x", **kw)
         def handler(req: Any) -> Any:  # pragma: no cover - never registered
             raise NotImplementedError
 
