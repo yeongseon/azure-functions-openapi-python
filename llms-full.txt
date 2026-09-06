@@ -5,7 +5,7 @@
 ## Package Info
 
 - PyPI: `pip install azure-functions-openapi`
-- Version: 0.16.0
+- Version: 0.25.0
 - Python: >=3.10, <3.15
 - License: MIT
 - Docs: https://yeongseon.dev/azure-functions-python/openapi/
@@ -35,6 +35,7 @@ from azure_functions_openapi import (
     OpenAPISpecConfigError,
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    OPENAPI_VERSION_3_2,
 )
 ```
 
@@ -256,6 +257,7 @@ class OpenAPISpecConfigError(ValueError):
 ```python
 OPENAPI_VERSION_3_0 = "3.0.0"
 OPENAPI_VERSION_3_1 = "3.1.0"
+OPENAPI_VERSION_3_2 = "3.2.0"
 ```
 
 ## Common Patterns
@@ -406,7 +408,7 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
 2. **Pydantic-native**: Models = schema (Pydantic models auto-convert to JSON Schema)
 3. **Registry-based**: All metadata collected in global registry, generated on-demand
 4. **Security-first**: Swagger UI includes CSP and HSTS headers by default
-5. **OpenAPI standard**: Compliant with OpenAPI 3.0.0 and 3.1.0 specs
+5. **OpenAPI standard**: Compliant with OpenAPI 3.0.0, 3.1.0, and 3.2.0 specs
 6. **No code generation**: Specs are generated at runtime (no static codegen step)
 
 ## Limitations

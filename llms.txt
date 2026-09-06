@@ -5,7 +5,7 @@
 ## Package Info
 
 - PyPI: `pip install azure-functions-openapi`
-- Version: 0.16.0
+- Version: 0.25.0
 - Python: >=3.10, <3.15
 - License: MIT
 - Docs: https://yeongseon.dev/azure-functions-python/openapi/
@@ -14,7 +14,7 @@
 ## What It Does
 
 Declarative OpenAPI documentation for Azure Functions v2. Attach metadata via
-`@openapi()` decorator or programmatically. Generates OpenAPI 3.0/3.1 specs in JSON/YAML.
+`@openapi()` decorator or programmatically. Generates OpenAPI 3.0/3.1/3.2 specs in JSON/YAML.
 Renders Swagger UI with enterprise security headers (CSP, HSTS).
 
 ## Core API
@@ -28,7 +28,7 @@ Renders Swagger UI with enterprise security headers (CSP, HSTS).
 - `render_swagger_ui(title, openapi_url, ...)` — Render Swagger UI HTML
 - `OpenAPIOperationMetadata` — Type for operation metadata
 - `OpenAPISpecConfigError` — Exception for configuration errors
-- `OPENAPI_VERSION_3_0`, `OPENAPI_VERSION_3_1` — Version constants
+- `OPENAPI_VERSION_3_0`, `OPENAPI_VERSION_3_1`, `OPENAPI_VERSION_3_2` — Version constants
 - `scan_endpoint_metadata(app)` — Auto-discover @validate_http metadata and register in OpenAPI registry
 
 ## Quick Start
