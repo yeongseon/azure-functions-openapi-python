@@ -457,6 +457,7 @@ def scan_endpoint_metadata(
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     registry: OpenAPIRegistry | None = None,
     infer_docstring: bool = False,
+    infer_return_types: bool = True,
 ) -> None:
     """Scan function builders for toolkit metadata and register OpenAPI operations.
 
@@ -482,7 +483,13 @@ def scan_endpoint_metadata(
     ``infer_docstring`` (opt-in, #551): when ``True``, gap-fill
     ``summary``/``description`` from a bare handler's docstring. Off by default
     so a handler's prose docstring is never published without explicit consent.
-    Return-type response inference is independent and always on.
+    Return-type response inference is controlled separately by
+    ``infer_return_types`` (on by default).
+
+    ``infer_return_types`` (default ``True``): gap-fill the ``200`` response
+    schema from a bare handler's return annotation. Set ``False`` to suppress
+    return-type inference entirely (analogous to FastAPI's
+    ``response_model=None``).
     """
     reg = registry if registry is not None else _global_registry
     isolated = reg is not _global_registry
@@ -617,7 +624,8 @@ def scan_endpoint_metadata(
         inferred_summary = ""
         inferred_description = ""
         if canonical_target is None and endpoint_hints is None and not endpoint_skew:
-            inferred_response_model, inferred_response = _infer_response_from_return(handler)
+            if infer_return_types:
+                inferred_response_model, inferred_response = _infer_response_from_return(handler)
             if infer_docstring:
                 inferred_summary, inferred_description = _infer_doc_metadata(handler)
 
@@ -835,6 +843,7 @@ def scan_validation_metadata(
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     registry: OpenAPIRegistry | None = None,
     infer_docstring: bool = False,
+    infer_return_types: bool = True,
 ) -> None:
     """Deprecated alias for :func:`scan_endpoint_metadata` (forwards ``infer_docstring``).
 
@@ -843,7 +852,8 @@ def scan_validation_metadata(
     ``scan_validation_metadata`` name is a misnomer. Use
     :func:`scan_endpoint_metadata` instead. This alias forwards unchanged and
     will be removed in a future minor release. The opt-in ``infer_docstring``
-    flag is forwarded unchanged to :func:`scan_endpoint_metadata`.
+    flag is forwarded unchanged to :func:`scan_endpoint_metadata`, as is
+    ``infer_return_types`` (on by default).
     """
     warnings.warn(
         "scan_validation_metadata() is deprecated; use scan_endpoint_metadata() "
@@ -852,5 +862,9 @@ def scan_validation_metadata(
         stacklevel=2,
     )
     scan_endpoint_metadata(
-        app, route_prefix, registry=registry, infer_docstring=infer_docstring
+        app,
+        route_prefix,
+        registry=registry,
+        infer_docstring=infer_docstring,
+        infer_return_types=infer_return_types,
     )

@@ -280,6 +280,86 @@ def test_merge_validation_supersedes_inferred_response_dict() -> None:
     assert "_response_inferred" not in existing
 
 
+
+
+# ---------------------------------------------------------------------------
+# Opt-out switch: infer_return_types (#556)
+# ---------------------------------------------------------------------------
+
+
+def test_decorator_opt_out_skips_return_inference() -> None:
+    # infer_return_types=False suppresses return-type inference entirely, even
+    # when the handler declares a documentable return annotation.
+    @openapi(summary="Get a user", infer_return_types=False)
+    def get_user(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    entry = get_openapi_registry()["get_user"]
+    assert entry["response_model"] is None
+    assert entry["response"] == {}
+    assert entry["_response_inferred"] is False
+
+
+def test_decorator_default_still_infers_return() -> None:
+    # Default (infer_return_types=True) preserves 0.25.0 behavior.
+    @openapi(summary="Get a user")
+    def get_user(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    entry = get_openapi_registry()["get_user"]
+    assert entry["response_model"] is User
+    assert entry["_response_inferred"] is True
+
+
+def test_decorator_opt_out_leaves_explicit_responses_intact() -> None:
+    # Explicit responses= still wins regardless of the opt-out flag.
+    @openapi(summary="Create", responses=Other, infer_return_types=False)
+    def create(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    entry = get_openapi_registry()["create"]
+    assert entry["response_model"] is Other
+    assert entry["_response_inferred"] is False
+
+
+def test_scan_opt_out_skips_return_inference_for_bare_route() -> None:
+    def get_user(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    scan_endpoint_metadata(
+        _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+        infer_return_types=False,
+    )
+
+    # With inference off and no other metadata, the bare route registers nothing.
+    assert "get::/api/users" not in get_openapi_registry()
+
+
+def test_scan_default_still_infers_for_bare_route() -> None:
+    def get_user(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+
+    entry = get_openapi_registry()["get::/api/users"]
+    assert entry["response_model"] is User
+    assert entry["_response_inferred"] is True
+
+
+def test_scan_validation_metadata_forwards_infer_return_types() -> None:
+    from azure_functions_openapi.bridge import scan_validation_metadata
+
+    def get_user(req: Any) -> User:  # pragma: no cover
+        raise NotImplementedError
+
+    with pytest.warns(DeprecationWarning):
+        scan_validation_metadata(
+            _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+            infer_return_types=False,
+        )
+
+    assert "get::/api/users" not in get_openapi_registry()
+
 # ---------------------------------------------------------------------------
 # Optional[T]-return 200 semantics (#558) — root flatten, nested preserved
 # ---------------------------------------------------------------------------
@@ -340,3 +420,4 @@ def test_list_of_optional_return_keeps_nullable_items_in_3_1() -> None:
         {"$ref": "#/components/schemas/User"},
         {"type": "null"},
     ]
+
