@@ -223,30 +223,18 @@
             "type": "integer"
           },
           "download_url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
             "description": "Available when status=completed.",
-            "title": "Download Url"
+            "title": "Download Url",
+            "nullable": true,
+            "type": "string"
           },
           "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
             "default": null,
             "description": "Error message when status=failed.",
-            "title": "Error"
+            "title": "Error",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [

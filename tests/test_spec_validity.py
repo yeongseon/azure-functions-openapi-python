@@ -8,6 +8,7 @@ dicts that match our expectations. This catches subtle schema incompatibilities
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from openapi_spec_validator import validate
@@ -275,11 +276,10 @@ class TestSpecValidity30:
 
 
 class TestPydanticV2Compat30:
-    """Test that Pydantic v2 models with nullable fields warn/error in 3.0 mode."""
+    """Pydantic v2 models with nullable fields down-convert to valid 3.0 (#562)."""
 
-    def test_nullable_model_3_0_strict_raises(self) -> None:
-        """Strict mode raises when Pydantic nullable schema targets 3.0."""
-        from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+    def test_nullable_model_3_0_strict_downconverts(self) -> None:
+        """Strict mode down-converts Pydantic nullable schema to valid 3.0 (#562)."""
 
         @openapi(
             route="/users",
@@ -290,17 +290,30 @@ class TestPydanticV2Compat30:
         def create_user() -> None:
             pass
 
-        with pytest.raises(OpenAPISpecConfigError, match="3.1-only constructs"):
-            generate_openapi_spec(
-                title="Test",
-                version="1.0.0",
-                openapi_version="3.0.0",
-                route_prefix="",
-                strict=True,
-            )
+        # #562: nullable fields are down-converted to ``nullable: true`` form,
+        # so strict mode produces a valid 3.0 document instead of raising.
+        spec = generate_openapi_spec(
+            title="Test",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+        assert spec["openapi"] == "3.0.0"
+        props = spec["components"]["schemas"]["NullableModel"]["properties"]
+        nickname = props["nickname"]
+        assert nickname["type"] == "string"
+        assert nickname["nullable"] is True
+        assert "anyOf" not in nickname
+        score = props["score"]
+        assert score["type"] == "integer"
+        assert score["nullable"] is True
+        assert "anyOf" not in score
+        # No 3.1-only null sentinel leaks into the 3.0 document.
+        assert '"type": "null"' not in json.dumps(spec)
 
     def test_nullable_model_3_0_non_strict_warns(self) -> None:
-        """Non-strict mode warns but still generates (potentially invalid) spec."""
+        """Non-strict mode also down-converts and generates a valid 3.0 spec."""
 
         @openapi(
             route="/users",
@@ -311,7 +324,7 @@ class TestPydanticV2Compat30:
         def create_user() -> None:
             pass
 
-        # Non-strict: should not raise, just log a warning
+        # Non-strict: down-converts to valid 3.0 (no raise, no warning)
         spec = generate_openapi_spec(
             title="Test",
             version="1.0.0",
