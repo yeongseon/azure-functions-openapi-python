@@ -45,6 +45,36 @@ _registry_lock = registry.lock
 
 logger = logging.getLogger(__name__)
 
+# Keyword arguments retired from ``@openapi`` mapped to migration guidance.
+# The four discrete request/response params were deprecated in 0.20.0 and
+# removed from ``@openapi`` in 0.24.0 (#509) in favor of the unified
+# ``requests=`` / ``responses=`` forms. They remain available on
+# ``register_openapi_metadata`` for programmatic registration.
+_RETIRED_KWARGS: dict[str, str] = {
+    "request_model": "use 'requests=' instead",
+    "request_body": "use 'requests=' instead",
+    "response_model": "use 'responses=' instead",
+    "response": "use 'responses=' instead",
+}
+
+
+def _reject_retired_kwargs(kwargs: dict[str, Any]) -> None:
+    """Raise a clear, actionable error for retired or unknown ``@openapi`` kwargs.
+
+    Retired kwargs (removed in 0.24.0, #509) get migration guidance pointing at
+    their unified replacement; any other unexpected kwarg preserves the standard
+    ``TypeError`` Python would otherwise raise for an unknown keyword argument.
+    """
+    for name in kwargs:
+        guidance = _RETIRED_KWARGS.get(name)
+        if guidance is not None:
+            raise TypeError(
+                f"@openapi() no longer accepts '{name}' (removed in 0.24.0): {guidance}."
+            )
+    # Not a retired kwarg: fall back to the standard unexpected-keyword error.
+    unexpected = next(iter(kwargs))
+    raise TypeError(f"openapi() got an unexpected keyword argument '{unexpected}'")
+
 
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     """Return the original decorated object and the underlying callable used for metadata."""
@@ -365,6 +395,8 @@ def openapi(
     querystring_media_type: str = "application/x-www-form-urlencoded",
     # ── inference toggles ─────────────────────────────────────────
     infer_docstring: bool = False,
+    # ── retired kwargs guard (#557) ───────────────────────────────
+    **kwargs: Any,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -497,6 +529,11 @@ def openapi(
     Callable
         The original function, with its name stored in `_openapi_registry`.
     """
+    # Reject retired/unknown kwargs eagerly with actionable guidance (#557)
+    # before any handler is decorated.
+    if kwargs:
+        _reject_retired_kwargs(kwargs)
+
 
     def decorator(func: F) -> F:
         target_name = getattr(func, "__qualname__", getattr(func, "__name__", "<unknown>"))
