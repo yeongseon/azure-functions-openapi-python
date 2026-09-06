@@ -155,11 +155,10 @@ jobs:
   # pulls `azure-functions>=2,<3` and runs the full quality suite against the
   # 2.x SDK on real Python 3.13 AND 3.14 interpreters.
   #
-  # Why a wheel + dedicated job (not the main matrix): the hatch `default` env is
-  # pinned to Python 3.10 in pyproject, so every cell of the `test` matrix runs
-  # Python 3.10 at runtime regardless of its `python-version`. Only this
-  # non-hatch, wheel-installed lane genuinely exercises 3.13/3.14, which is
-  # exactly where azure-functions 2.x (Requires-Python >=3.13) is installable.
+  # Why a wheel + dedicated job (not the main matrix): azure-functions 2.x
+  # declares Requires-Python >=3.13, so it is only installable on 3.13/3.14 --
+  # interpreters the main `test` matrix (3.10-3.12) never covers. This lane
+  # installs the built wheel directly (no hatch env) on real 3.13 AND 3.14
   #
   # Gating: this lane runs on every PR as a VISIBLE compatibility signal. The
   # pyproject cap is interpreter-aware (2.x is allowed on Python 3.13+), and the
@@ -197,10 +196,11 @@ jobs:
         run: pip install "$(ls dist/azure_functions_openapi-*.whl)[dev]"
 
       - name: Upgrade azure-functions to the 2.x line
-        # pyproject caps azure-functions <2.0.0 until 2.x is certified on real
-        # Azure. This lane deliberately overrides that cap to PROVE the package
-        # (route discovery adapter, spec generation) still builds and passes its
-        # suite under 2.x. pip warns about the intentional override; expected.
+        # pyproject's azure-functions cap is interpreter-aware: <2.0.0 on Python
+        # <3.13 and <3.0.0 on Python 3.13+ (2.x is certified on real Azure). On
+        # the 3.13/3.14 interpreters this lane runs, 2.x is already permitted; the
+        # explicit >=2,<3 install just pins the 2.x line under test. pip may warn
+        # about resolving to 2.x; expected.
         run: pip install "azure-functions>=2,<3"
 
       - name: Show resolved versions

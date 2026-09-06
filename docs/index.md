@@ -8,7 +8,7 @@
 ## Why teams use it
 
 - Keep API docs close to function code with `@openapi`
-- Generate OpenAPI 3.0.0 or 3.1.0 from runtime metadata
+- Generate OpenAPI 3.0.0, 3.1.0, or 3.2.0 from runtime metadata
 - Serve JSON, YAML, and Swagger UI from the same Function App
 - Reuse Pydantic models for both request/response contracts and docs
 - Merge operation-level and global security schemes into one spec
@@ -130,7 +130,7 @@ Generate programmatically with:
 | --- | --- |
 | Python | 3.10 to 3.14 |
 | Azure Functions model | Python v2 (`func.FunctionApp`) |
-| OpenAPI versions | 3.0.0 and 3.1.0 |
+| OpenAPI versions | 3.0.0, 3.1.0, and 3.2.0 |
 | Pydantic | v2 (≥2.0) |
 
 !!! warning

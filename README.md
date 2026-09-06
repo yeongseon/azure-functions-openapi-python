@@ -246,7 +246,7 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2 is optional.** `requests=` / `responses=` are the recommended path, but you can pass raw JSON Schema dicts instead (see below) if you'd rather not add a dependency.
+> **Pydantic v2 is a required dependency** (`pydantic>=2.0,<3.0`) and is installed with this package. `requests=` / `responses=` accept Pydantic models (the recommended path) **or** raw JSON Schema dicts (see below) — so you can describe schemas without authoring Pydantic models, but Pydantic itself is always present.
 
 > **Want runtime validation too? (optional)** `@openapi` documents your Pydantic models — it does not parse or validate requests at runtime. If you also want automatic request parsing, consistent `400`/`422` error responses, and response-model enforcement, layer [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)'s `@validate_http` on the **same** Pydantic models. It is an optional companion, not a dependency — this package works fully on its own. See the [validation README](https://github.com/yeongseon/azure-functions-validation-python#readme) for details, or a full runnable example that pairs both on one resource: [Full Stack CRUD API](https://github.com/yeongseon/azure-functions-cookbook-python/tree/main/examples/apis-and-ingress/full_stack_crud_api).
 
