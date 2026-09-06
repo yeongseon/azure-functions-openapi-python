@@ -66,7 +66,8 @@ def test_installed_sdk_is_within_supported_matrix() -> None:
 
     Below Python 3.13 the pin is ``>=1.21.0,<2.0.0``. On Python 3.13+ the
     ``<2.0.0`` ceiling is lifted (issue #528) and the wheel-based 2.x compat
-    matrix proves the adapter holds, so only the ``>=1.21.0`` floor is enforced.
+    matrix proves the adapter holds, but an interpreter-aware ``<3.0.0`` ceiling
+    still applies so an uncertified future 3.x major cannot silently install.
     """
     installed = _metadata.version("azure-functions")
     major_minor = tuple(int(p) for p in installed.split(".")[:2])
@@ -80,6 +81,13 @@ def test_installed_sdk_is_within_supported_matrix() -> None:
             f"azure-functions {installed} is above the <2.0.0 ceiling on Python "
             f"{sys.version_info.major}.{sys.version_info.minor}. The ceiling is "
             "only lifted on Python 3.13+ (issue #528)."
+        )
+    else:
+        assert major_minor < (3, 0), (
+            f"azure-functions {installed} reached the 3.x line on Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}, but the pin caps "
+            "it at <3.0.0 on Python 3.13+ until a future 3.x major is certified. "
+            "See issue #550."
         )
 
 

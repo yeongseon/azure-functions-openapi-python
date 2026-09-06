@@ -145,7 +145,7 @@ azure-functions-openapi
 | `latest 1.x`      | ✅ 已测试 | ✅ 已测试 | ✅ 已测试 |           |           |
 | `2.x` (`>=2,<3`)  |           |           |           | ✅ 已测试 | ✅ 已测试 |
 
-`pyproject.toml` 中的版本锁定与解释器相关：在 Python < 3.13 上为 `azure-functions>=1.21.0,<2.0.0`，在 Python 3.13+ 上为 `azure-functions>=1.21.0`（无上限）。下限为 `1.21.0` 是因为更早的版本会从 `FunctionBuilder.__call__` 返回 `None`（会破坏测试和 CLI 提取中对装饰处理器的直接调用）。之所以拆分，是因为 `azure-functions` 2.x 放弃了对 Python < 3.13 的支持，因此 2.x 系列仅在 Python 3.13+ 上可安装和提供。2.x 路径已通过 CI 中专用的基于 wheel 的兼容性矩阵（真实的 Python 3.13 和 3.14 解释器）以及真实 Azure 认证 —— 部署在 koreacentral Flex Consumption 计划上的 Python 3.13 Function App —— 得到验证。解除上限的相关工作请参阅 [问题 #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528) 和 [问题 #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488)。
+`pyproject.toml` 中的版本锁定与解释器相关：在 Python < 3.13 上为 `azure-functions>=1.21.0,<2.0.0`，在 Python 3.13+ 上为 `azure-functions>=1.21.0,<3.0.0`（挡住未认证的 `azure-functions` 3.x）。下限为 `1.21.0` 是因为更早的版本会从 `FunctionBuilder.__call__` 返回 `None`（会破坏测试和 CLI 提取中对装饰处理器的直接调用）。之所以拆分，是因为 `azure-functions` 2.x 放弃了对 Python < 3.13 的支持，因此 2.x 系列仅在 Python 3.13+ 上可安装和提供。2.x 路径已通过 CI 中专用的基于 wheel 的兼容性矩阵（真实的 Python 3.13 和 3.14 解释器）以及真实 Azure 认证 —— 部署在 koreacentral Flex Consumption 计划上的 Python 3.13 Function App —— 得到验证。解除上限的相关工作请参阅 [问题 #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528) 和 [问题 #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488)。
 
 ## Quick Start
 

@@ -185,9 +185,10 @@ This package discovers routes, methods, and handlers from the `azure-functions` 
 | `2.x` (`>=2,<3`)   |             |             |             | ✅ tested   | ✅ tested   |
 
 The version pin in `pyproject.toml` is interpreter-aware:
-`azure-functions>=1.21.0,<2.0.0` on Python < 3.13, and `azure-functions>=1.21.0`
-(no upper cap) on Python 3.13+. The floor is `1.21.0` because earlier releases
-return `None` from `FunctionBuilder.__call__` (breaking direct invocation of
+`azure-functions>=1.21.0,<2.0.0` on Python < 3.13, and `azure-functions>=1.21.0,<3.0.0`
+on Python 3.13+. The `<3.0.0` ceiling keeps an uncertified `azure-functions` 3.x
+out. The floor is `1.21.0` because earlier releases return `None` from
+`FunctionBuilder.__call__` (breaking direct invocation of
 decorated handlers in tests and CLI extraction). The split exists because
 `azure-functions` 2.x drops support for Python < 3.13, so the 2.x line is only
 installable — and only offered — on Python 3.13+. The 2.x path is proven by a
