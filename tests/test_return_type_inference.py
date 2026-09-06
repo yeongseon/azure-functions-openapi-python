@@ -9,7 +9,7 @@ supersede it, and it must never raise on unresolved annotations.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from _scan_helpers import _app_for
 from pydantic import BaseModel
@@ -27,6 +27,7 @@ from azure_functions_openapi.decorator import (
     get_openapi_registry,
     openapi,
 )
+from azure_functions_openapi.spec import generate_openapi_spec
 
 
 @pytest.fixture(autouse=True)
@@ -69,13 +70,15 @@ def test_infer_container_generic_return() -> None:
     assert response[200]["content"]["application/json"]["schema"] == list[User]
 
 
-def test_infer_optional_return_is_union_shorthand() -> None:
+def test_infer_optional_return_flattens_to_model() -> None:
+    # ``Optional[User]`` is treated as "may or may not produce a value", so the
+    # inferred 200 body is the model itself — not a nullable ``anyOf`` (#558).
     def handler(req: Any) -> Optional[User]:  # pragma: no cover
         raise NotImplementedError
 
     model, response = _infer_response_from_return(handler)
-    assert model is None
-    assert response is not None
+    assert model is User
+    assert response is None
 
 
 @pytest.mark.parametrize(
@@ -275,3 +278,65 @@ def test_merge_validation_supersedes_inferred_response_dict() -> None:
 
     assert existing["response"][200]["description"] == "Validated"
     assert "_response_inferred" not in existing
+
+
+# ---------------------------------------------------------------------------
+# Optional[T]-return 200 semantics (#558) — root flatten, nested preserved
+# ---------------------------------------------------------------------------
+
+
+def test_infer_union_return_drops_only_the_none_branch() -> None:
+    # A multi-member union keeps its non-``None`` members but drops ``None`` at
+    # the response root (#558).
+    def handler(req: Any) -> Union[User, Other, None]:  # pragma: no cover
+        raise NotImplementedError
+
+    model, response = _infer_response_from_return(handler)
+    assert model is None
+    assert response is not None
+    schema = response[200]["content"]["application/json"]["schema"]
+    assert schema == Union[User, Other]
+
+
+def test_infer_list_of_optional_preserves_nested_shape() -> None:
+    # Only the *root* union is unwrapped; nested nullability describes the real
+    # JSON shape of array elements and is preserved (#558).
+    def handler(req: Any) -> list[Optional[User]]:  # pragma: no cover
+        raise NotImplementedError
+
+    model, response = _infer_response_from_return(handler)
+    assert model is None
+    assert response is not None
+    assert response[200]["content"]["application/json"]["schema"] == list[Optional[User]]
+
+
+def _spec_response_schema(route: str, openapi_version: str) -> Any:
+    spec = generate_openapi_spec(openapi_version=openapi_version)
+    responses = spec["paths"][route]["get"]["responses"]
+    return responses["200"]["content"]["application/json"]["schema"]
+
+
+@pytest.mark.parametrize("openapi_version", ["3.0.0", "3.1.0"])
+def test_optional_return_emits_plain_model_ref_in_spec(openapi_version: str) -> None:
+    # ``Optional[User]`` renders as the bare model ``$ref`` — identical across
+    # OpenAPI 3.0 and 3.1, with no top-level ``{"type": "null"}`` (#558).
+    @openapi(summary="opt", route="/opt", method="get")
+    def handler(req: Any) -> Optional[User]:  # pragma: no cover
+        raise NotImplementedError
+
+    schema = _spec_response_schema("/api/opt", openapi_version)
+    assert schema == {"$ref": "#/components/schemas/User"}
+
+
+def test_list_of_optional_return_keeps_nullable_items_in_3_1() -> None:
+    # In OpenAPI 3.1, nullable array items are the faithful, valid shape (#558).
+    @openapi(summary="listopt", route="/listopt", method="get")
+    def handler(req: Any) -> list[Optional[User]]:  # pragma: no cover
+        raise NotImplementedError
+
+    schema = _spec_response_schema("/api/listopt", "3.1.0")
+    assert schema["type"] == "array"
+    assert schema["items"]["anyOf"] == [
+        {"$ref": "#/components/schemas/User"},
+        {"type": "null"},
+    ]
