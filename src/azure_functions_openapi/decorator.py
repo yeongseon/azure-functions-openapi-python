@@ -363,6 +363,8 @@ def openapi(
     # ── querystring (OpenAPI 3.2 only) ───────────────────────
     querystring: type[BaseModel] | dict[str, Any] | None = None,
     querystring_media_type: str = "application/x-www-form-urlencoded",
+    # ── inference toggles ─────────────────────────────────────────
+    infer_docstring: bool = False,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -421,13 +423,15 @@ def openapi(
     Parameters
     ----------
     summary:
-        Short description shown in Swagger UI. Defaults to ``None`` (unset),
-        in which case it is inferred from the handler docstring's first line;
-        pass ``""`` to explicitly suppress that inference.
+        Short description shown in Swagger UI. Defaults to ``None`` (unset).
+        When ``infer_docstring=True`` and this is left unset, it is inferred
+        from the handler docstring's first line; pass ``""`` to explicitly
+        suppress that inference.
     description:
-        Longer Markdown-enabled description. Defaults to ``None`` (unset), in
-        which case it is inferred from the handler docstring body; pass ``""``
-        to explicitly suppress that inference.
+        Longer Markdown-enabled description. Defaults to ``None`` (unset).
+        When ``infer_docstring=True`` and this is left unset, it is inferred
+        from the handler docstring body; pass ``""`` to explicitly suppress
+        that inference.
     tags:
         List of group tags.
     operation_id:
@@ -481,6 +485,12 @@ def openapi(
     querystring_media_type:
         Media type used to encode the querystring content. Defaults to
         ``application/x-www-form-urlencoded``.
+    infer_docstring:
+        When ``True`` (opt-in, #551), gap-fill ``summary``/``description``
+        from the handler's docstring for any of those fields left unset
+        (``None``). Defaults to ``False`` so a handler's prose docstring is
+        never published as public API documentation without explicit consent.
+        Return-type response inference is independent and always on.
 
     Returns
     -------
@@ -578,8 +588,11 @@ def openapi(
                     resolved_response = inferred_response
                     response_inferred = True
 
-            # ── docstring inference (P1-A Phase 2) ───────────────────────
-            # Lowest-precedence gap-fill, per field: only when the user gave
+            # ── docstring inference (P1-A Phase 2, opt-in #551) ──────────
+            # Opt-in (#551): docstring inference is off by default so a
+            # handler's prose docstring is never published as public API
+            # documentation without explicit consent. When enabled, it stays
+            # lowest-precedence gap-fill, per field: only when the user gave
             # no explicit ``summary=`` / ``description=``. ``None`` is the
             # "unset" sentinel, so an explicit ``summary=""`` / ``description=""``
             # is an intentional override and suppresses inference for that field.
@@ -587,7 +600,7 @@ def openapi(
             # remainder the description.
             effective_summary = summary or ""
             effective_description = description or ""
-            if summary is None or description is None:
+            if infer_docstring and (summary is None or description is None):
                 inferred_summary, inferred_description = _infer_doc_metadata(metadata_func)
                 if summary is None:
                     effective_summary = inferred_summary

@@ -1,10 +1,13 @@
-"""Docstring inference (P1-A Phase 2).
+"""Docstring inference (P1-A Phase 2, opt-in via ``infer_docstring=True``, #551).
 
 Covers inferring ``summary``/``description`` from a handler's docstring at both
 decorator-time (``@openapi``) and scan-time (bare ``@app.route``, with or
-without a documentable return annotation). Docstring inference is per-field and
-lowest-precedence source: an explicit ``summary=``/``description=`` always wins,
-and a missing/blank docstring infers nothing.
+without a documentable return annotation). Docstring inference is opt-in and
+OFF by default so a handler's prose docstring never leaks into the published
+spec without explicit consent. When enabled it is a per-field, lowest-
+precedence source: an explicit ``summary=``/``description=`` always wins, and a
+missing/blank docstring infers nothing. Return-type response inference is
+independent and always on.
 """
 
 from __future__ import annotations
@@ -94,12 +97,28 @@ def test_infer_dedents_indented_body() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Decorator-time inference
+# Decorator-time inference (opt-in via infer_docstring=True, #551)
 # ---------------------------------------------------------------------------
 
 
-def test_decorator_infers_summary_and_description() -> None:
+def test_decorator_default_off_ignores_docstring() -> None:
+    # Opt-in (#551): docstring inference is OFF by default, so a handler's
+    # prose docstring must never leak into the published spec without consent.
     @openapi()
+    def get_user(req: Any) -> User:  # pragma: no cover
+        """Get a user.
+
+        Full description here.
+        """
+        raise NotImplementedError
+
+    entry = get_openapi_registry()["get_user"]
+    assert entry["summary"] == ""
+    assert entry["description"] == ""
+
+
+def test_decorator_infers_summary_and_description() -> None:
+    @openapi(infer_docstring=True)
     def get_user(req: Any) -> User:  # pragma: no cover
         """Get a user.
 
@@ -115,7 +134,7 @@ def test_decorator_infers_summary_and_description() -> None:
 def test_explicit_summary_wins_but_description_is_inferred() -> None:
     # Per-field gap fill: an explicit summary is kept while a missing
     # description is still filled from the docstring body.
-    @openapi(summary="Explicit summary")
+    @openapi(summary="Explicit summary", infer_docstring=True)
     def get_user(req: Any) -> User:  # pragma: no cover
         """Doc summary.
 
@@ -129,7 +148,7 @@ def test_explicit_summary_wins_but_description_is_inferred() -> None:
 
 
 def test_explicit_both_win_over_docstring() -> None:
-    @openapi(summary="S", description="D")
+    @openapi(summary="S", description="D", infer_docstring=True)
     def get_user(req: Any) -> User:  # pragma: no cover
         """Doc summary.
 
@@ -143,7 +162,7 @@ def test_explicit_both_win_over_docstring() -> None:
 
 
 def test_decorator_no_docstring_leaves_empty() -> None:
-    @openapi()
+    @openapi(infer_docstring=True)
     def bare(req: Any) -> User:  # pragma: no cover
         raise NotImplementedError
 
@@ -155,7 +174,7 @@ def test_decorator_no_docstring_leaves_empty() -> None:
 def test_explicit_empty_string_suppresses_docstring_inference() -> None:
     # ``None`` is the "unset" sentinel; an explicit ``""`` is an intentional
     # override and must NOT be back-filled from the docstring (#532 review).
-    @openapi(summary="", description="")
+    @openapi(summary="", description="", infer_docstring=True)
     def get_user(req: Any) -> User:  # pragma: no cover
         """Doc summary.
 
@@ -171,7 +190,7 @@ def test_explicit_empty_string_suppresses_docstring_inference() -> None:
 def test_explicit_empty_summary_still_infers_description() -> None:
     # Per-field sentinel: suppressing summary with ``""`` must not stop the
     # description from being inferred (it was left as ``None``).
-    @openapi(summary="")
+    @openapi(summary="", infer_docstring=True)
     def get_user(req: Any) -> User:  # pragma: no cover
         """Doc summary.
 
@@ -185,11 +204,14 @@ def test_explicit_empty_summary_still_infers_description() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Scan-time inference (zero-decorator @app.route)
+# Scan-time inference (zero-decorator @app.route, opt-in #551)
 # ---------------------------------------------------------------------------
 
 
-def test_scan_infers_docstring_for_bare_route() -> None:
+def test_scan_default_off_ignores_docstring_but_keeps_return_inference() -> None:
+    # Opt-in (#551): without ``infer_docstring=True`` the scanner must not
+    # publish the docstring. Return-type response inference is independent and
+    # stays on, so the 200 response model is still registered.
     def get_user(req: Any) -> User:  # pragma: no cover
         """Get a user.
 
@@ -200,6 +222,26 @@ def test_scan_infers_docstring_for_bare_route() -> None:
     scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
 
     entry = get_openapi_registry()["get::/api/users"]
+    assert entry["summary"] == ""
+    assert entry["description"] == ""
+    # Return-type inference is unaffected by the docstring opt-in.
+    assert entry.get("response_model") is User
+
+
+def test_scan_infers_docstring_for_bare_route() -> None:
+    def get_user(req: Any) -> User:  # pragma: no cover
+        """Get a user.
+
+        Scan-time description.
+        """
+        raise NotImplementedError
+
+    scan_endpoint_metadata(
+        _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+        infer_docstring=True,
+    )
+
+    entry = get_openapi_registry()["get::/api/users"]
     assert entry["summary"] == "Get a user."
     assert entry["description"] == "Scan-time description."
 
@@ -208,7 +250,10 @@ def test_scan_bare_route_without_docstring_has_empty_metadata() -> None:
     def get_user(req: Any) -> User:  # pragma: no cover
         raise NotImplementedError
 
-    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+    scan_endpoint_metadata(
+        _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+        infer_docstring=True,
+    )
 
     entry = get_openapi_registry()["get::/api/users"]
     assert entry["summary"] == ""
@@ -226,7 +271,10 @@ def test_scan_infers_docstring_for_bare_route_without_documentable_return() -> N
         """
         raise NotImplementedError
 
-    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+    scan_endpoint_metadata(
+        _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+        infer_docstring=True,
+    )
 
     entry = get_openapi_registry()["get::/api/users"]
     assert entry["summary"] == "Get a user."
@@ -244,7 +292,10 @@ def test_scan_infers_docstring_for_unannotated_bare_route() -> None:
         """Ping."""
         raise NotImplementedError
 
-    scan_endpoint_metadata(_app_for(get_user, name="get_user", route="users", methods=["GET"]))
+    scan_endpoint_metadata(
+        _app_for(get_user, name="get_user", route="users", methods=["GET"]),
+        infer_docstring=True,
+    )
 
     entry = get_openapi_registry()["get::/api/users"]
     assert entry["summary"] == "Ping."

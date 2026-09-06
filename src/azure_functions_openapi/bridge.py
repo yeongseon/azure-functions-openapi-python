@@ -456,6 +456,7 @@ def scan_endpoint_metadata(
     app: Any,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     registry: OpenAPIRegistry | None = None,
+    infer_docstring: bool = False,
 ) -> None:
     """Scan function builders for toolkit metadata and register OpenAPI operations.
 
@@ -477,6 +478,11 @@ def scan_endpoint_metadata(
     selected app's operations rather than every ``@openapi`` imported from the
     module. Programmatic ``register_openapi_metadata`` entries (which are not
     tied to any app object) are never seeded into an isolated registry.
+
+    ``infer_docstring`` (opt-in, #551): when ``True``, gap-fill
+    ``summary``/``description`` from a bare handler's docstring. Off by default
+    so a handler's prose docstring is never published without explicit consent.
+    Return-type response inference is independent and always on.
     """
     reg = registry if registry is not None else _global_registry
     isolated = reg is not _global_registry
@@ -612,7 +618,8 @@ def scan_endpoint_metadata(
         inferred_description = ""
         if canonical_target is None and endpoint_hints is None and not endpoint_skew:
             inferred_response_model, inferred_response = _infer_response_from_return(handler)
-            inferred_summary, inferred_description = _infer_doc_metadata(handler)
+            if infer_docstring:
+                inferred_summary, inferred_description = _infer_doc_metadata(handler)
 
         for method in methods:
             endpoint_key = f"{method}::{path}"
@@ -827,6 +834,7 @@ def scan_validation_metadata(
     app: Any,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
     registry: OpenAPIRegistry | None = None,
+    infer_docstring: bool = False,
 ) -> None:
     """Deprecated alias for :func:`scan_endpoint_metadata`.
 
@@ -842,4 +850,6 @@ def scan_validation_metadata(
         DeprecationWarning,
         stacklevel=2,
     )
-    scan_endpoint_metadata(app, route_prefix, registry=registry)
+    scan_endpoint_metadata(
+        app, route_prefix, registry=registry, infer_docstring=infer_docstring
+    )
