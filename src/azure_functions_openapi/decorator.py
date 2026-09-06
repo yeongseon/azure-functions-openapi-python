@@ -365,6 +365,7 @@ def openapi(
     querystring_media_type: str = "application/x-www-form-urlencoded",
     # ── inference toggles ─────────────────────────────────────────
     infer_docstring: bool = False,
+    infer_return_types: bool = True,
 ) -> Callable[[F], F]:
     """
     Decorator that attaches OpenAPI metadata to an Azure Functions handler.
@@ -490,7 +491,15 @@ def openapi(
         from the handler's docstring for any of those fields left unset
         (``None``). Defaults to ``False`` so a handler's prose docstring is
         never published as public API documentation without explicit consent.
-        Return-type response inference is independent and always on.
+        Return-type response inference is controlled separately by
+        ``infer_return_types`` (on by default).
+    infer_return_types:
+        When ``True`` (default), gap-fill the ``200`` response schema from the
+        handler's return annotation whenever no explicit ``responses=`` is
+        supplied. Set ``False`` to suppress return-type inference entirely
+        (analogous to FastAPI's ``response_model=None``);
+        an explicit
+        ``responses=`` always wins regardless of this flag.
 
     Returns
     -------
@@ -579,7 +588,7 @@ def openapi(
             # scan-time validation/explicit metadata can supersede it (Oracle
             # precedence: explicit > validation > inference).
             response_inferred = False
-            if responses is None:
+            if responses is None and infer_return_types:
                 inferred_model, inferred_response = _infer_response_from_return(metadata_func)
                 if inferred_model is not None:
                     resolved_response_model = inferred_model

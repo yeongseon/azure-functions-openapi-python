@@ -244,7 +244,7 @@ decorator-time (`@openapi`) and scan-time (a bare `@app.route` with no
 ### Return-type inference
 
 When you supply no explicit `responses=`, the handler's return annotation infers
-the `200` response. This inference is always on — a return **type** is a
+the `200` response. This inference is **on by default** — a return **type** is a
 structural declaration, not free-form prose, so publishing it needs no separate
 consent:
 
@@ -262,8 +262,15 @@ def get_order(req: func.HttpRequest) -> OrderResponse:  # -> 200 OrderResponse s
   `-> None`, `-> Any`, `-> func.HttpResponse`, bare scalars (`-> str`,
   `-> int`), and unsupported generics.
 - An unresolved forward reference (e.g. under
-  `from __future__ import annotations`) simply infers nothing rather than
+`from __future__ import annotations`) simply infers nothing rather than
   failing.
+
+To suppress return-type inference (for example, when your handler returns an
+internal transport type you do not want surfaced), opt out per handler with
+`infer_return_types=False` (decorator) or per scan with
+`scan_endpoint_metadata(..., infer_return_types=False)`. This is analogous to
+FastAPI's `response_model=None`. An explicit `responses=` always wins regardless
+of the flag.
 
 ### Docstring inference (opt-in)
 
