@@ -74,6 +74,12 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 
 When splitting a large piece of work into focused issues, keep the umbrella open as a tracker that links each child issue with a checkbox; close it once every child is closed or explicitly deferred.
 
+**Single-repo boundary (non-negotiable).** An umbrella issue may only track child issues **in this same repository**. Do **not** open a tracker here that coordinates, checklists, or drives work in sibling repos (`azure-functions-validation-python`, `azure-functions-logging-python`, etc.), and do **not** ask another repo to host a tracker for this one. Each repository in the DX Toolkit is operated **independently** — it owns its own backlog, fix, verification, and release cadence.
+
+- A bug that also exists in sibling repos is **not** one shared work item — it is N independent per-repo issues. File (or ask the maintainer to file) a separate issue in each affected repo; fix and release each on its own timeline.
+- Cross-repo audit findings may be **referenced** from a local issue for context (a plain link is fine), but the local issue must be closeable on this repo's work alone. Never leave an issue here open pending another repo's fix.
+- If you catch yourself building a checklist of `owner/other-repo#N` items to "drive from here," stop — that is the cross-repo umbrella anti-pattern. Close it as `not planned` and let each repo track its own child issue.
+
 ### Project management model
 
 This repository is **issue-based, not milestone-based**. Track and group work using issues plus the existing label taxonomy — do **not** introduce parallel structures.
