@@ -82,6 +82,10 @@ When splitting a large piece of work into focused issues, keep the umbrella open
 - Cross-repo audit findings may be **referenced** from a local issue for context (a plain link is fine), but the local issue must be closeable on this repo's work alone. Never leave an issue here open pending another repo's fix.
 - If you catch yourself building a checklist of `owner/other-repo#N` items to "drive from here," stop — that is the cross-repo umbrella anti-pattern. Close it as `not planned` and let each repo track its own child issue.
 
+### Issue-creation access (fleet policy)
+
+Keep issue creation **open/unrestricted** on every public toolkit repository (issue tracker enabled, no `interaction-limits`). External bug reports are the only inbound support channel, so restricting issue creation suppresses the signal we most need. Do not enable an interaction limit or restrict issue creation without an explicit, documented reason recorded in an issue first.
+
 ### Project management model
 
 This repository is **issue-based, not milestone-based**. Track and group work using issues plus the existing label taxonomy — do **not** introduce parallel structures.
