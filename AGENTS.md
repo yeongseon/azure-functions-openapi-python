@@ -34,6 +34,8 @@
 
 **Non-negotiable:** a PR without a linked issue will be rejected at review.
 
+**No merge before the review checklist is complete.** Do not merge a PR until every item on its review checklist is checked off; an incomplete checklist blocks merge regardless of CI status.
+
 ## Issue Conventions
 
 Follow these conventions when opening issues so the backlog stays consistent with sibling DX Toolkit repositories.
