@@ -42,6 +42,8 @@ nav:
       - Development: development.md
       - Testing: testing.md
       - Guidelines: contributing.md
+  - Decisions:
+      - "ADR 0001: Inference default policy": decisions/0001-inference-default-policy.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
   - Security: security.md
