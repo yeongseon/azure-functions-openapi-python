@@ -34,9 +34,6 @@ updates:
     # compromised release has time to be yanked/flagged (supply-chain hardening).
     cooldown:
       default-days: 7
-      semver-major-days: 30
-      semver-minor-days: 7
-      semver-patch-days: 3
       include:
         - "*"
     commit-message:
