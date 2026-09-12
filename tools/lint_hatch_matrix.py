@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Guard against the fleet-wide "hatch default-env pin hides the CI matrix" bug.
 
-Follow-up to the CI hardening tracked in #559 (reference fix: #554 / PR #555).
+Origin of the fleet-wide fix: #554 / PR #555 (CI hardening tracked in #559);
+fleet deployment audit in #576. This repo is the canonical source for the lint.
 
 The failure mode this lint catches: a repo pins its Hatch *default* env to a
 single interpreter --
@@ -26,11 +27,13 @@ Rule -- a workflow is flagged when ALL of the following hold:
 3. that workflow routes the test run through Hatch (``hatch run`` or a
    ``make`` target known to wrap Hatch: ``install`` / ``check-all`` /
    ``check`` / ``test`` / ``coverage``); and
-4. the workflow does NOT carry an interpreter-match guard -- a step that
-   asserts the runtime ``sys.version_info`` equals ``matrix.python-version``
-   (the belt-and-braces assertion added by the reference fix). A repo that
-   runs tests directly on the matrix interpreter (``python -m pytest``) or
-   proves the interpreter with such a guard is considered safe.
+4. the workflow does NOT run its tests directly on the matrix interpreter --
+   i.e. there is no un-Hatched ``pytest`` / ``python -m pytest`` invocation.
+   A ``sys.version_info`` guard is NOT sufficient on its own: it asserts the
+   top-level interpreter, but a subsequent ``hatch run pytest`` still
+   re-resolves to the pinned env, so the guard cannot prove where the tests
+   actually ran. Only a direct pytest invocation on the matrix interpreter
+   makes the workflow safe.
 
 Stdlib-only on purpose (mirrors ``tools/lint_workflow_pins.py``): the lint must
 not itself depend on a package that can drift. Exit code 0 = clean, 1 = drift.
@@ -59,9 +62,9 @@ _SECTION_RE = re.compile(r"^\s*\[")
 _HATCH_RUN_RE = re.compile(r"\bhatch\s+run\b")
 _HATCH_MAKE_RE = re.compile(r"\bmake\s+(?:" + "|".join(_HATCH_MAKE_TARGETS) + r")\b")
 
-# An interpreter-match guard proves the runtime interpreter equals the matrix cell.
-_GUARD_VERSION_INFO_RE = re.compile(r"\bversion_info\b")
-_GUARD_MATRIX_REF_RE = re.compile(r"matrix\.python-version")
+# A direct pytest invocation (``python -m pytest`` / ``pytest ...``) that is not
+# routed through Hatch proves the tests run on the matrix interpreter itself.
+_DIRECT_PYTEST_RE = re.compile(r"\bpytest\b")
 
 # Inline matrix list: python-version: ["3.10", "3.11"].
 _MATRIX_INLINE_RE = re.compile(r"""python-version:\s*\[(?P<body>[^\]]*)\]""")
@@ -138,11 +141,22 @@ def routes_tests_through_hatch(workflow_text: str) -> bool:
     return bool(_HATCH_RUN_RE.search(workflow_text) or _HATCH_MAKE_RE.search(workflow_text))
 
 
-def has_interpreter_guard(workflow_text: str) -> bool:
-    """True when the workflow asserts the runtime interpreter matches the matrix cell."""
-    return bool(
-        _GUARD_VERSION_INFO_RE.search(workflow_text) and _GUARD_MATRIX_REF_RE.search(workflow_text)
-    )
+def runs_tests_directly_on_matrix(workflow_text: str) -> bool:
+    """True when the workflow invokes pytest directly (not through ``hatch run``).
+
+    The interpreter provisioned by ``actions/setup-python`` is then the one that
+    executes the tests, so the matrix cell is genuinely exercised. A mere
+    ``sys.version_info`` guard is NOT sufficient: it asserts the *top-level*
+    interpreter but a subsequent ``hatch run pytest`` still re-resolves to the
+    pinned Hatch env, so the guard cannot prove where the tests actually ran.
+    """
+    for raw in workflow_text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if _DIRECT_PYTEST_RE.search(line) and "hatch" not in line and "make " not in line:
+            return True
+    return False
 
 
 def check_workflow(workflow_text: str, rel_path: str, pinned: dict[str, str]) -> list[str]:
@@ -154,7 +168,10 @@ def check_workflow(workflow_text: str, rel_path: str, pinned: dict[str, str]) ->
         return []
     if not routes_tests_through_hatch(workflow_text):
         return []
-    if has_interpreter_guard(workflow_text):
+    if runs_tests_directly_on_matrix(workflow_text):
+        # Hatch may still run interpreter-agnostic linters, but the test suite
+        # executes via a direct pytest invocation on the matrix interpreter, so
+        # every cell is genuinely exercised.
         return []
     env_desc = ", ".join(f"{name}={ver}" for name, ver in sorted(pinned.items()))
     return [
@@ -162,7 +179,7 @@ def check_workflow(workflow_text: str, rel_path: str, pinned: dict[str, str]) ->
         f"but [tool.hatch.envs] pins the interpreter ({env_desc}); every matrix "
         f"cell would execute on the pinned version. Run tests directly on the "
         f"matrix interpreter (python -m pytest) or add a sys.version_info guard "
-        f"asserting it equals matrix.python-version (see #559)."
+        f"asserting it equals matrix.python-version."
     ]
 
 

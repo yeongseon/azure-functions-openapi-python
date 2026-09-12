@@ -35,6 +35,7 @@ jobs:
         run: |
           python tools/lint_release_workflows.py
           python tools/lint_workflow_pins.py
+          python tools/lint_hatch_matrix.py
 
       - name: Ruff style check
         run: ruff check src tests
