@@ -1,8 +1,11 @@
-"""Regression guard for the hatch-pin / CI-matrix conflict lint (#559).
+"""Regression guard for the hatch-pin / CI-matrix conflict lint.
+
+Origin of the fleet-wide fix: #554 / PR #555 (CI hardening tracked in #559);
+fleet deployment audit in #576. This repo is the canonical source for the lint.
 
 Exercises tools/lint_hatch_matrix.py against this repo (must be clean -- the
-reference fix in #555 runs the matrix directly on the interpreter and adds a
-version guard) and against synthetic buggy configs (must be caught).
+test matrix runs directly on the interpreter and adds a version guard) and
+against synthetic buggy configs (must be caught).
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ jobs:
 
 
 def test_repo_is_clean() -> None:
-    """This repo's committed workflows must pass -- the fix (#555) is in place."""
+    """This repo's committed workflows must pass -- the fix is in place."""
     assert lint_mod.lint() == []
 
 
@@ -113,8 +116,10 @@ jobs:
     assert lint_mod.check_workflow(text, "ci.yml", _PINNED) == []
 
 
-def test_interpreter_guard_makes_it_clean() -> None:
-    # Routes through hatch but proves the interpreter matches the matrix cell.
+def test_interpreter_guard_alone_is_not_enough() -> None:
+    # Routes tests through hatch (hatch run pytest) with only a version_info
+    # guard. The guard asserts the top-level interpreter, but the tests still
+    # run on the pinned hatch env -- so this must be FLAGGED, not cleared.
     text = (
         _MATRIX_BLOCK
         + """
@@ -125,4 +130,5 @@ def test_interpreter_guard_makes_it_clean() -> None:
         # version_info guard tied to matrix.python-version
 """
     )
-    assert lint_mod.check_workflow(text, "ci.yml", _PINNED) == []
+    errors = lint_mod.check_workflow(text, "ci.yml", _PINNED)
+    assert errors and "runs tests through Hatch" in errors[0]
