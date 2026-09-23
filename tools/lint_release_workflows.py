@@ -42,7 +42,7 @@ CANONICAL_ACTIONS: dict[str, tuple[str, str]] = {
     # renovate: datasource=github-tags depName=actions/setup-python versioning=github-tags
     "actions/setup-python": ("5fda3b95a4ea91299a34e894583c3862153e4b97", "v7.0.0"),
     # renovate: datasource=github-tags depName=azure/login versioning=github-tags
-    "azure/login": ("7ddb5af1ef8758cf1353cf3b42f940aee27ba21c", "v3.0.2"),
+    "azure/login": ("a641126d1b8aa4d1fa005f4f92df94a3a4c4c906", "v3.1.0"),
     # renovate: datasource=github-tags depName=actions/upload-artifact versioning=github-tags
     "actions/upload-artifact": ("ea165f8d65b6e75b540449e92b4886f43607fa02", "v4"),
     # renovate: datasource=github-tags depName=actions/download-artifact versioning=github-tags
