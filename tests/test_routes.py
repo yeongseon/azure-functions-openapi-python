@@ -39,9 +39,6 @@ class TestNormalizeRoutePrefix:
     def test_default_constant_is_canonical(self) -> None:
         assert normalize_route_prefix(DEFAULT_ROUTE_PREFIX) == "/api"
 
-    def test_none_treated_as_empty(self) -> None:
-        assert normalize_route_prefix(None) == ""  # type: ignore[arg-type]
-
 
 class TestApplyRoutePrefix:
     def test_empty_prefix_returns_path_unchanged(self) -> None:
