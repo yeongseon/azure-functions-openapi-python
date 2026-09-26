@@ -1,0 +1,1 @@
+"""Inference cookbook example package."""

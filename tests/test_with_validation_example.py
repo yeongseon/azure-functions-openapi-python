@@ -150,3 +150,7 @@ def test_openapi_spec_includes_notification_paths() -> None:
     assert resp.status_code == 200
     payload = json.loads(resp.get_body())
     assert "/api/notifications/email" in payload["paths"]
+
+    responses = payload["paths"]["/api/notifications/email"]["post"]["responses"]
+    assert set(responses) == {"202", "422"}
+    assert "200" not in responses
