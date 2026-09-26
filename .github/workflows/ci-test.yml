@@ -164,8 +164,11 @@ jobs:
   # Gating: this lane runs on every PR as a VISIBLE compatibility signal. The
   # pyproject cap is interpreter-aware (2.x is allowed on Python 3.13+), and the
   # two version-pin guard tests are likewise interpreter-aware, so they run
-  # (not deselected) and actively prove 2.x is permitted on 3.13+. Promote to a
-  # required check via branch protection once real-Azure certification lands.
+  # (not deselected) and actively prove 2.x is permitted on 3.13+. Real-Azure
+  # certification of the 2.x path has already landed on Python 3.13 (see the
+  # SDK Compatibility section of README.md and the cap comment in pyproject.toml),
+  # so the only outstanding step is adding these two contexts to the required
+  # checks in branch protection -- an admin action no workflow edit can perform.
   azure-functions-2x:
     name: azure-functions 2.x compat (Py ${{ matrix.python-version }})
     strategy:
