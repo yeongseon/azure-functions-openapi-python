@@ -63,7 +63,7 @@ Before bypassing, confirm every required check is green on the exact head SHA be
 - the CI run that passed on that SHA,
 - anything left unverified.
 
-Merge with `gh pr merge --admin`. If you find yourself doing this routinely, that is the signal to resolve option 1 instead — a standing exception is not a review process.
+Merge with `gh pr merge --admin --squash --delete-branch`, keeping the `--delete-branch` flag the Branch Hygiene section requires of every CLI merge. If you find yourself doing this routinely, that is the signal to resolve option 1 instead — a standing exception is not a review process.
 
 ### Dependabot
 
