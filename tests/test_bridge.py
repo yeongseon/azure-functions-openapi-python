@@ -1046,7 +1046,6 @@ def test_scan_skips_builders_without_function_or_handler() -> None:
     assert get_openapi_registry() == {}
 
 
-
 def test_validation_only_namespace_is_not_discovered() -> None:
     # Post-#313: the bridge reads ONLY the endpoint namespace. A handler that
     # carries just the legacy validation namespace must register nothing.
