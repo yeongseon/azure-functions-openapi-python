@@ -345,6 +345,20 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
 
 
 def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Convert a Python type hint into a JSON Schema fragment.
+
+    Parameters:
+        type_hint: A Pydantic model class or any type hint accepted by
+            ``pydantic.TypeAdapter``.
+        components: Optional OpenAPI components object. When omitted, the
+            generated schema is returned directly. When provided, referenced
+            definitions are merged into its ``schemas`` mapping and the
+            returned fragment points to the registered definitions as needed.
+    Returns:
+        A JSON Schema object for ``type_hint``. Depending on ``components``
+        and the type hint, this is either an inline schema or a fragment with
+        ``$ref`` entries into ``components["schemas"]``.
+    """
     if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
         if components is None:
             return type_hint.model_json_schema()
