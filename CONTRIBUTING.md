@@ -32,6 +32,33 @@ Recommended branch prefixes:
    git push origin feat/your-feature-name
    ```
 
+## Local development quickstart
+
+The package supports Python `>=3.10,<3.15` (currently Python 3.10 through 3.14).
+The default Hatch development environment is intentionally provisioned with
+Python 3.10, so `make install` may download or select Python 3.10 even when
+your machine's default interpreter is newer. From the repository root, run:
+
+```bash
+make install
+```
+
+This creates the repository's `.venv` when needed, installs Hatch, creates the
+Hatch environment, and installs the development dependencies. No Azure account
+or deployed Function App is required for the standard local checks.
+
+Run the same checks used by the project locally:
+
+```bash
+make test
+make lint
+make typecheck
+make build
+```
+
+The default test command excludes real-Azure end-to-end tests. Those tests need
+an `E2E_BASE_URL`; use `make e2e-azure` only when that environment is available.
+
 ## Project Commands
 
 ```bash
