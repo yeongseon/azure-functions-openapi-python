@@ -185,6 +185,58 @@ class TestGenerateReport:
         second = generate_openapi_report().warnings
         assert first == second
 
+    def test_report_forwards_spec_options_and_auth_inference(self) -> None:
+        isolated = OpenAPIRegistry()
+        isolated.set(
+            "get::/api/private",
+            {
+                "function_name": "private",
+                "route": "private",
+                "method": "get",
+                "response": {"200": {"description": "OK"}},
+                "_auth_level": "function",
+            },
+        )
+        options: dict[str, Any] = {
+            "infer_auth_level": True,
+            "servers": [{"url": "https://api.example.com"}],
+            "contact": {"name": "API team"},
+            "license": {"name": "MIT", "url": "https://opensource.org/license/mit"},
+            "external_docs": {"url": "https://docs.example.com"},
+            "tags": [{"name": "private"}],
+        }
+
+        report = generate_openapi_report(registry=isolated, **options)
+        expected = generate_openapi_spec(registry=isolated, **options)
+
+        assert report.spec == expected
+        assert report.spec["servers"] == options["servers"]
+        assert report.spec["info"]["contact"] == options["contact"]
+        assert report.spec["info"]["license"] == options["license"]
+        assert report.spec["externalDocs"] == options["external_docs"]
+        assert report.spec["tags"] == options["tags"]
+        operation = report.spec["paths"]["/api/private"]["get"]
+        assert operation["security"] == [{"AzureFunctionKey": []}]
+
+    def test_report_warning_parity_uses_injected_registry(self) -> None:
+        isolated = OpenAPIRegistry()
+        isolated.set(
+            "get::/api/isolated",
+            {
+                "function_name": "isolated",
+                "route": "isolated",
+                "method": "get",
+                "response": {"200": {"description": "OK"}},
+                "_skew_flags": [WarningCode.VERSION_SKEW.value],
+            },
+        )
+
+        report = generate_openapi_report(registry=isolated)
+        expected = collect_spec_warnings(report.spec, registry=isolated)
+
+        assert report.warnings == expected
+        assert any(w.code == WarningCode.VERSION_SKEW for w in report.warnings)
+
 
 # ---------------------------------------------------------------------------
 # #344: injected-registry isolation for report/warnings

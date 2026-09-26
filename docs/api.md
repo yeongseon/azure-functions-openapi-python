@@ -257,6 +257,18 @@ scan_endpoint_metadata(app)
 `SpecReport` — the identical `spec` mapping plus a deterministic `warnings` tuple.
 This lets CI gate a build on API drift without parsing log output.
 
+It accepts the same document options as `generate_openapi_spec()`, including
+`infer_auth_level`, `servers`, `contact`, `license`, `external_docs`, and
+top-level `tags`:
+
+```python
+report = generate_openapi_report(
+    title="My API",
+    servers=[{"url": "https://api.example.com"}],
+    tags=[{"name": "users"}],
+)
+```
+
 ```python
 from azure_functions_openapi import generate_openapi_report
 

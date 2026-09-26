@@ -1540,6 +1540,12 @@ def generate_openapi_report(
     strict: bool = False,
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
 ) -> SpecReport:
     """Generate the spec together with structured, machine-readable warnings.
 
@@ -1563,6 +1569,12 @@ def generate_openapi_report(
         route_prefix=route_prefix,
         strict=strict,
         hoist_flat_schemas=hoist_flat_schemas,
+        infer_auth_level=infer_auth_level,
+        servers=servers,
+        contact=contact,
+        license=license,
+        external_docs=external_docs,
+        tags=tags,
         registry=registry,
     )
     warnings_list = collect_spec_warnings(spec, registry=registry)
