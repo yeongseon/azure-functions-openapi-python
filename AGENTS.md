@@ -36,6 +36,43 @@
 
 **No merge before the review checklist is complete.** Do not merge a PR until every item on its review checklist is checked off; an incomplete checklist blocks merge regardless of CI status.
 
+### Who approves what
+
+`main` requires **one approving review**, dismisses stale reviews on new commits, and requires all conversations resolved. `enforce_admins` is **false**, so administrators can bypass those requirements — that exception exists for the release flow below, not for routine merges.
+
+**An AI review is not an approval.** Copilot and Codex submit `COMMENTED`, never `APPROVED`, so they never satisfy the requirement. A PR can carry several AI reviews and still have zero approvals. Treat "the AI reviewed it" and "an authorized reviewer accepted it" as separate facts.
+
+**Externally authored PRs** follow the normal path: a maintainer reviews, approves, and merges.
+
+**Maintainer-authored PRs have no approver today.** GitHub forbids approving your own PR, and `yeongseon` is currently the only account with push access, so a maintainer-authored PR cannot reach an approved state on the normal path. Pick one, in order of preference:
+
+1. **Get a second reviewer.** Grant an authorized reviewer push access and have them approve. This is the only option that satisfies the rule as written, and the only one that scales.
+2. **Split the work.** If the change is genuinely reviewable by a contributor, let them author it so a maintainer can approve.
+3. **Administrator bypass**, under the procedure below. Last resort.
+
+Do not silently self-merge, and do not weaken the protection rule to make a single PR mergeable.
+
+### Administrator bypass
+
+Permitted only when a maintainer-authored change is blocked solely by the missing approval, and delaying it would hold back a release or leave `main` broken. Never use it to skip a failing check.
+
+Before bypassing, confirm every required check is green on the exact head SHA being merged, and all review conversations are resolved. Then record on the PR, in one comment:
+
+- the head SHA merged,
+- which requirement was bypassed and why no reviewer was available,
+- the CI run that passed on that SHA,
+- anything left unverified.
+
+Merge with `gh pr merge --admin`. If you find yourself doing this routinely, that is the signal to resolve option 1 instead — a standing exception is not a review process.
+
+### Dependabot
+
+`dependabot-automerge.yml` enables auto-merge for patch and minor updates using `secrets.GITHUB_TOKEN`. That token cannot approve a PR, so auto-merge alone cannot satisfy the approval requirement — a Dependabot PR still needs a human approval before it can complete. This has not been exercised since branch protection was applied; if Dependabot PRs start stalling, that is why, and the fix is an approval, not a token with more scope.
+
+### Release flow
+
+`make release-*` commits and pushes directly to `main` rather than opening a PR. There is no push allow-list on the branch, so this works **because** `enforce_admins` is false. Keep that in mind before changing the setting: enabling admin enforcement would break the release path until it is reworked to go through a PR.
+
 ## Issue Conventions
 
 Follow these conventions when opening issues so the backlog stays consistent with sibling DX Toolkit repositories.
