@@ -10,8 +10,10 @@ import tempfile
 from unittest import mock
 
 import pytest
+import yaml
 
 from azure_functions_openapi.cli import _import_app_module, handle_generate, main
+import azure_functions_openapi.decorator as decorator_module
 
 
 class TestMain:
@@ -59,6 +61,56 @@ class TestMain:
 
 class TestHandleGenerate:
     """Tests for handle_generate() command."""
+
+    @pytest.mark.parametrize(
+        ("output_format", "destination"),
+        [
+            ("json", "stdout"),
+            ("json", "file"),
+            ("yaml", "stdout"),
+            ("yaml", "file"),
+        ],
+    )
+    def test_generate_preserves_unicode_metadata(
+        self,
+        output_format: str,
+        destination: str,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """JSON and YAML artifacts preserve Unicode for stdout and files."""
+        output_path = tmp_path / f"openapi.{output_format}"
+        args = mock.Mock(
+            title="Café API",
+            version="1.0.0",
+            description="こんにちは、세계 API",
+            format=output_format,
+            output=str(output_path) if destination == "file" else None,
+            pretty=False,
+            openapi_version="3.1",
+            app=None,
+        )
+
+        with decorator_module._registry_lock:
+            previous_entries = dict(decorator_module._openapi_registry)
+            decorator_module._openapi_registry.clear()
+        try:
+            assert handle_generate(args) == 0
+            captured = capsys.readouterr()
+        finally:
+            with decorator_module._registry_lock:
+                decorator_module._openapi_registry.clear()
+                decorator_module._openapi_registry.update(previous_entries)
+
+        content = output_path.read_text(encoding="utf-8") if destination == "file" else captured.out
+        parsed = json.loads(content) if output_format == "json" else yaml.safe_load(content)
+
+        assert parsed["info"]["title"] == "Café API"
+        assert parsed["info"]["description"] == "こんにちは、세계 API"
+        assert "Café API" in content
+        assert "こんにちは、세계 API" in content
+        if output_format == "json":
+            assert "\\u" not in content
 
     def test_generate_json_default(self) -> None:
         """Test default JSON generation."""
