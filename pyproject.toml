@@ -95,7 +95,8 @@ features = ["dev", "docs"]
 
 [tool.hatch.envs.default.scripts]
 format = "ruff format src tests"
-style = "ruff check src tests"
+format-check = "ruff format --check src tests"
+style = "ruff check src tests && ruff format --check src tests"
 typecheck = "mypy src tests"
 lint = "hatch run style && hatch run typecheck"
 test = "pytest -v tests"

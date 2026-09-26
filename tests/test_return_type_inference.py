@@ -280,8 +280,6 @@ def test_merge_validation_supersedes_inferred_response_dict() -> None:
     assert "_response_inferred" not in existing
 
 
-
-
 # ---------------------------------------------------------------------------
 # Opt-out switch: infer_return_types (#556)
 # ---------------------------------------------------------------------------
@@ -360,6 +358,7 @@ def test_scan_validation_metadata_forwards_infer_return_types() -> None:
 
     assert "get::/api/users" not in get_openapi_registry()
 
+
 # ---------------------------------------------------------------------------
 # Optional[T]-return 200 semantics (#558) — root flatten, nested preserved
 # ---------------------------------------------------------------------------
@@ -420,4 +419,3 @@ def test_list_of_optional_return_keeps_nullable_items_in_3_1() -> None:
         {"$ref": "#/components/schemas/User"},
         {"type": "null"},
     ]
-

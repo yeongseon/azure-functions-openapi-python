@@ -186,6 +186,7 @@ def _convert_schemas_to_3_1(schemas: dict[str, Any]) -> dict[str, Any]:
     """Convert all schemas in components to OpenAPI 3.1 format."""
     return {name: _convert_schema_to_3_1(schema) for name, schema in schemas.items()}
 
+
 # Keywords whose presence on BOTH an ``anyOf`` wrapper node and its sole non-null
 # member makes an up-merge ambiguous: they constrain validation, so a conflict
 # must not be silently resolved. Annotation-only keys (description/title/...) are
@@ -429,9 +430,7 @@ def _convert_operation_schemas(
                                 continue
                             for _schema_key in _MEDIA_SCHEMA_KEYS:
                                 if _schema_key in media_obj:
-                                    media_obj[_schema_key] = converter(
-                                        media_obj[_schema_key]
-                                    )
+                                    media_obj[_schema_key] = converter(media_obj[_schema_key])
 
             # parameters
             for param in operation.get("parameters", []):
@@ -648,9 +647,7 @@ def generate_openapi_spec(
                                         f"openapi_version='3.2.0' for streaming "
                                         f"responses."
                                     )
-                                    _diag_registry.add_downgrade_drop(
-                                        downgrade_message
-                                    )
+                                    _diag_registry.add_downgrade_drop(downgrade_message)
                                     warnings.warn(
                                         downgrade_message,
                                         RuntimeWarning,
@@ -762,8 +759,7 @@ def generate_openapi_spec(
                 # and at most one querystring parameter may appear per operation.
                 if op_parameters:
                     has_query_param = any(
-                        isinstance(p, dict) and p.get("in") == "query"
-                        for p in op_parameters
+                        isinstance(p, dict) and p.get("in") == "query" for p in op_parameters
                     )
                     qs_total = sum(
                         1
@@ -934,11 +930,7 @@ def generate_openapi_spec(
             # declared neither explicit security nor an explicit scheme, and
             # only if the name is free — a user scheme of the same name always
             # wins (no collision error is raised for the inferred default).
-            if (
-                infer_auth_level
-                and not meta.get("security")
-                and not meta.get("security_scheme")
-            ):
+            if infer_auth_level and not meta.get("security") and not meta.get("security_scheme"):
                 _inferred = _infer_auth_security(meta.get("_auth_level"))
                 if _inferred is not None:
                     for name, definition in _inferred[1].items():
@@ -1118,7 +1110,6 @@ def _normalize_spec_output(spec: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
-
 def _drop_unsupported_query(spec: dict[str, Any], openapi_version: str) -> list[str]:
     """Drop ``query`` operations from pre-3.2 specs (#472).
 
@@ -1152,9 +1143,7 @@ _RESERVED_PATH_ITEM_FIELDS: frozenset[str] = frozenset(
 )
 
 
-def _restructure_additional_operations(
-    spec: dict[str, Any], openapi_version: str
-) -> list[str]:
+def _restructure_additional_operations(spec: dict[str, Any], openapi_version: str) -> list[str]:
     """Relocate non-standard HTTP method operations (#471).
 
     Operations keyed by a method outside :data:`STANDARD_OPENAPI_METHODS`

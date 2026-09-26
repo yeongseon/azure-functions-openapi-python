@@ -736,7 +736,6 @@ class TestCliIsolateApp:
         assert "/api/b/one" not in spec["paths"]
 
 
-
 class TestDowngradeDropWarnings:
     """Constructs that cannot survive a pre-3.2 downgrade -- custom-method
     operations (#471) and the ``query`` operation (#472) -- are removed from the
@@ -825,9 +824,7 @@ class TestDowngradeDropWarnings:
     def test_report_surfaces_downgrade_drop(self) -> None:
         reg = self._custom_method_registry()
         report = generate_openapi_report(openapi_version=OPENAPI_VERSION_3_1, registry=reg)
-        assert any(
-            w.code == WarningCode.VERSION_DOWNGRADE_DROP for w in report.warnings
-        )
+        assert any(w.code == WarningCode.VERSION_DOWNGRADE_DROP for w in report.warnings)
 
     def test_fail_on_warnings_catches_downgrade_drop(self) -> None:
         # The global CLI path must exit non-zero: a silently dropped operation on
@@ -850,9 +847,7 @@ class TestItemSchemaDowngradeDrop:
             response={
                 200: {
                     "description": "Event stream",
-                    "content": {
-                        "text/event-stream": {"itemSchema": {"type": "object"}}
-                    },
+                    "content": {"text/event-stream": {"itemSchema": {"type": "object"}}},
                 }
             },
             registry=registry,
@@ -882,9 +877,9 @@ class TestItemSchemaDowngradeDrop:
         spec = generate_openapi_spec(
             openapi_version=OPENAPI_VERSION_3_1, registry=reg, route_prefix=""
         )
-        media = spec["paths"]["/api/events"]["get"]["responses"]["200"][
-            "content"
-        ]["text/event-stream"]
+        media = spec["paths"]["/api/events"]["get"]["responses"]["200"]["content"][
+            "text/event-stream"
+        ]
         assert "itemSchema" in media
 
     def test_item_schema_no_drop_under_3_2(self) -> None:
@@ -906,9 +901,7 @@ class TestItemSchemaDowngradeDrop:
                 openapi_version=OPENAPI_VERSION_3_1, registry=reg, route_prefix=""
             )
         runtime_messages = [
-            str(w.message)
-            for w in caught.list
-            if issubclass(w.category, RuntimeWarning)
+            str(w.message) for w in caught.list if issubclass(w.category, RuntimeWarning)
         ]
         drop_messages = [
             w.message

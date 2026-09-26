@@ -22,12 +22,11 @@
 ## Checklist
 
 - [ ] My code follows the project's code style
-- [ ] I have run `make check` (lint + typecheck)
-- [ ] I have run `make test` and all tests pass
+- [ ] I have run `make check-all` and all checks pass (including tests and at least 95% coverage)
 - [ ] I have added tests for new functionality (if applicable)
 - [ ] I have updated documentation (if applicable)
 - [ ] My changes do not introduce new warnings
 
 ## Related Issues
 
-<!-- Link to related issues: Closes #123, Fixes #456 -->
+<!-- Required: Closes #123 (include every issue this PR resolves). -->

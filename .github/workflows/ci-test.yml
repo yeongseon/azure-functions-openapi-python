@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A PR can branch before the base tip; its merge-base needs full history.
+          fetch-depth: 0
 
       - name: Set up Python 3.10
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -38,7 +41,16 @@ jobs:
           python tools/lint_hatch_matrix.py
 
       - name: Ruff style check
-        run: ruff check src tests
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Ruff format check (changed Python files)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python tools/check_pr_format.py "$PR_BASE_SHA" "$PR_HEAD_SHA"
 
       - name: Type check (mypy, strict)
         run: mypy src tests
@@ -221,4 +233,3 @@ jobs:
         # proving the adapter surface holds under azure-functions 2.x.
         run: |
           pytest tests/ --no-cov -q -o "pythonpath=."
-

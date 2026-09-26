@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 import pytest
 
 from azure_functions_openapi.decorator import (
-_expand_model_parameters,
+    _expand_model_parameters,
     _merge_typed_parameters,
     _schema_is_object,
     clear_openapi_registry,
