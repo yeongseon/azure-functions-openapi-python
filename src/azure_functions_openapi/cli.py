@@ -48,9 +48,9 @@ def _import_app_module(app: str) -> tuple[object | None, bool]:
     module_name = module_name.strip()
     if not module_name:
         raise ValueError(f"Invalid --app value: {app!r}. Expected 'module' or 'module:variable'.")
-    mod = importlib.import_module(module_name)
     if not sep:
         # No ``:variable`` suffix supplied — module-only import.
+        importlib.import_module(module_name)
         return None, False
     variable = variable.strip()
     if not variable:
@@ -58,6 +58,7 @@ def _import_app_module(app: str) -> tuple[object | None, bool]:
             f"Invalid --app value: {app!r}. Expected a non-empty variable name after "
             "the ':' (e.g. 'function_app:app')."
         )
+    mod = importlib.import_module(module_name)
     if not hasattr(mod, variable):
         raise AttributeError(
             f"Module '{module_name}' has no attribute '{variable}'. "

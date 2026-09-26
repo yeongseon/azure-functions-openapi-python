@@ -518,18 +518,20 @@ class TestImportAppModule:
         import types
 
         fake_mod = types.ModuleType("fake_mod")
-        with mock.patch("importlib.import_module", return_value=fake_mod):
+        with mock.patch("importlib.import_module", return_value=fake_mod) as mock_import:
             with pytest.raises(ValueError, match="non-empty variable name"):
                 _import_app_module("fake_mod:")
+            mock_import.assert_not_called()
 
     def test_trailing_colon_whitespace_raises_value_error(self) -> None:
         """'module:   ' (whitespace-only variable) raises ValueError."""
         import types
 
         fake_mod = types.ModuleType("fake_mod")
-        with mock.patch("importlib.import_module", return_value=fake_mod):
+        with mock.patch("importlib.import_module", return_value=fake_mod) as mock_import:
             with pytest.raises(ValueError, match="non-empty variable name"):
                 _import_app_module("fake_mod:   ")
+            mock_import.assert_not_called()
 
     def test_variable_resolving_to_none_raises_value_error(self) -> None:
         """'module:variable' where the attribute is None raises ValueError."""
