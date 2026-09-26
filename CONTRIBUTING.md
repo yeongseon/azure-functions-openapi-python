@@ -45,8 +45,8 @@ make check-all   # Run the full local gate
 
 Before opening a PR, run `ruff format --check <changed-python-files>` (or
 `ruff format <changed-python-files>` to fix them). `make format-check` checks
-the entire repository without changing files. CI runs the full style check and
-also reports formatting failures on changed Python files in a dedicated step.
+`src` and `tests` without changing files. CI checks those same trees and also
+reports formatting failures on changed Python files in a dedicated step.
 
 ## GitHub Actions Pinning
 
