@@ -38,36 +38,55 @@
 
 ### Who approves what
 
-`main` requires **one approving review**, dismisses stale reviews on new commits, and requires all conversations resolved. `enforce_admins` is **false**, so administrators can bypass those requirements — that exception exists for the release flow below, not for routine merges.
+`main` requires **one approving review**, dismisses stale reviews on new commits, and requires all conversations resolved. `enforce_admins` is **false**, so administrators can bypass those requirements. With a single maintainer and no second reviewer, that bypass is the routine path for maintainer-authored changes, not a rare exception — see below for the conditions and the evidence every use must record.
 
 **An AI review is not an approval.** Copilot and Codex submit `COMMENTED`, never `APPROVED`, so they never satisfy the requirement. A PR can carry several AI reviews and still have zero approvals. Treat "the AI reviewed it" and "an authorized reviewer accepted it" as separate facts.
 
-**Externally authored PRs** follow the normal path: a maintainer reviews, approves, and merges.
+**Maintainer-authored PRs have no approver.** GitHub forbids approving your own PR, and `yeongseon` is the only account with push access, so a maintainer-authored PR cannot reach an approved state on the normal path.
 
-**Maintainer-authored PRs have no approver today.** GitHub forbids approving your own PR, and `yeongseon` is currently the only account with push access, so a maintainer-authored PR cannot reach an approved state on the normal path. Pick one, in order of preference:
+**A second reviewer has been declined.** That decision is settled; do not re-propose it as the preferred path. It removes the only option that satisfied the rule as written, which means routine maintainer-authored work has no path that ends in an approval. The rule is not being met — it is being substituted for, and the sections below say exactly what the substitute is.
 
-1. **Get a second reviewer.** Grant an authorized reviewer push access and have them approve. This is the only option that satisfies the rule as written, and the only one that scales.
-2. **Split the work.** If the change is genuinely reviewable by a contributor, let them author it so a maintainer can approve.
-3. **Administrator bypass**, under the procedure below. Last resort.
+For a maintainer-authored change, in order of preference:
 
-Do not silently self-merge, and do not weaken the protection rule to make a single PR mergeable.
+1. **Split the work.** If the change is genuinely reviewable by a contributor, let them author it so a maintainer can approve. This is the only remaining option that produces a real second pair of eyes, and it is worth reaching for more often than it currently is.
+2. **Administrator bypass**, under the procedure below.
+
+**Externally authored PRs are unaffected** and must not use the bypass. A maintainer reviews, approves, and merges them on the normal path. The bypass exists because one specific person cannot approve their own work, not because approval is optional.
+
+Do not silently self-merge. Every bypass carries the evidence comment below, so the substitution stays auditable rather than invisible.
 
 ### Administrator bypass
 
-Permitted only when a maintainer-authored change is blocked solely by the missing approval, and delaying it would hold back a release or leave `main` broken. Never use it to skip a failing check.
+Permitted for a maintainer-authored change that is blocked **solely** by the missing approval. **Never use it to skip a failing check** — that prohibition is absolute and is the one thing this substitution must never erode.
 
-Before bypassing, confirm every required check is green on the exact head SHA being merged, and all review conversations are resolved. Then record on the PR, in one comment:
+The approval requirement is what is being substituted for; the status checks are what actually guard `main`, so they get stricter, not looser. Before bypassing:
+
+- Query check-runs on the **exact head SHA being merged** (`gh api repos/{owner}/{repo}/commits/{sha}/check-runs`). Confirm zero non-success, zero incomplete, and no required context missing. Do **not** read the PR status rollup instead: a rollup can report a stale success while a newly-started run has not yet replaced it. Two merges on 2026-09-27 broke `main` exactly this way (#628 here, `azure-functions-doctor-python`#463).
+- Confirm all review conversations are resolved.
+- For an externally authored PR, stop — those do not qualify.
+
+Then record on the PR, in one comment:
 
 - the head SHA merged,
 - which requirement was bypassed and why no reviewer was available,
 - the CI run that passed on that SHA,
 - anything left unverified.
 
-Merge with `gh pr merge --admin --squash --delete-branch`, keeping the `--delete-branch` flag the Branch Hygiene section requires of every CLI merge. If you find yourself doing this routinely, that is the signal to resolve option 1 instead — a standing exception is not a review process.
+Merge with `gh pr merge --admin --squash --delete-branch`, keeping the `--delete-branch` flag the Branch Hygiene section requires of every CLI merge.
+
+**If a bypass does not meet the conditions above, say so in the evidence comment rather than reframing the change to fit.** An honestly recorded divergence is reviewable; a dressed-up one is not.
+
+**The structural alternative.** Dropping `required_approving_review_count` to 0 — while keeping every required status check and `required_conversation_resolution` — would remove the need for bypass entirely. The approval count currently blocks only the one person who can merge: external contributors cannot self-merge regardless, because they lack push access. Changing it is shared-infrastructure configuration and needs an explicit maintainer decision, so it is documented here as an option, not adopted.
 
 ### Dependabot
 
-`dependabot-automerge.yml` enables auto-merge for patch and minor updates using `secrets.GITHUB_TOKEN`. That token cannot approve a PR, so auto-merge alone cannot satisfy the approval requirement — a Dependabot PR still needs a human approval before it can complete. This has not been exercised since branch protection was applied; if Dependabot PRs start stalling, that is why, and the fix is an approval, not a token with more scope.
+`dependabot-automerge.yml` enables auto-merge for patch and minor updates using `secrets.GITHUB_TOKEN`. That token cannot approve a PR, so auto-merge alone cannot satisfy the approval requirement — a Dependabot PR still needs a human approval before it can complete.
+
+**This has been exercised, and the fix is an approval.** On 2026-09-27, seven Dependabot PRs across the fleet sat at `REVIEW_REQUIRED` with auto-merge enabled and CI green, some for days. Ordinary maintainer approval cleared all seven; four merged within seconds of the approval landing.
+
+**A Dependabot PR is not a maintainer-authored PR.** Its author is `dependabot[bot]`, so GitHub's self-approval prohibition does not apply and the maintainer can simply approve it. Never use the administrator bypass on one, and do not read a stalled bot queue as evidence that branch protection is unworkable — it means nobody pressed approve. That misreading happened once already.
+
+Review the diff before approving: confirm it is a version bump with no unrelated changes, and that each pinned action SHA matches its claimed tag (`git ls-remote --tags <repo>`, comparing against the dereferenced `^{}` commit).
 
 ### Release flow
 
