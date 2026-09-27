@@ -4,5 +4,5 @@ contact_links:
     url: https://yeongseon.dev/azure-functions-python/openapi/
     about: Check our documentation for usage guides and examples
   - name: Security Advisories
-    url: /security/advisories/new
+    url: https://github.com/yeongseon/azure-functions-openapi-python/security/advisories/new
     about: Report security issues privately via GitHub Security Advisories
