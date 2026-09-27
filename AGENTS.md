@@ -82,7 +82,7 @@ Follow these conventions when opening issues so the backlog stays consistent wit
 - Use Conventional Commit prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `build:`, `perf:`.
 - Add a scope qualifier when it narrows the area: `feat(cli):`, `docs(spec):`, `refactor(bridge):`.
 - Keep the title imperative, under ~80 characters, no trailing period.
-- Do **not** put `[P0]` / `[P1]` / `[P2]` (or any priority marker) in the title — priority is tracked with a `priority:p0` / `priority:p1` / `priority:p2` label.
+- Do **not** put a priority marker in the title — priority is tracked with a `priority:*` label.
 
 ### Body
 
@@ -105,7 +105,8 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 ### Labels
 
 - Apply at least one of `bug`, `enhancement`, `documentation`, `chore`.
-- Apply exactly one `priority:p0` / `priority:p1` / `priority:p2` label to record priority (replaces the old `## Priority` body line).
+- Apply exactly one priority label. The scale in use is `priority:critical` / `priority:high` / `priority:medium` / `priority:low`; `critical` is reserved for defects that reach package users, such as a broken published artifact or wrong product output.
+- Labels are applied by maintainers or authorized triage automation. An external contributor without label permissions should describe urgency in the issue body and leave labelling to triage.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 
@@ -127,7 +128,7 @@ Keep issue creation **open/unrestricted** on every public toolkit repository (is
 
 This repository is **issue-based, not milestone-based**. Track and group work using issues plus the existing label taxonomy — do **not** introduce parallel structures.
 
-- Plan and group multi-issue efforts with an **umbrella tracker issue** (see above) plus the existing `priority:p0` / `priority:p1` / `priority:p2` labels. Do **not** create GitHub Milestones — none exist by design, and their absence is an intentional signal, not an oversight.
+- Plan and group multi-issue efforts with an **umbrella tracker issue** (see above) plus the existing `priority:*` labels. Do **not** create GitHub Milestones — none exist by design, and their absence is an intentional signal, not an oversight.
 - Do **not** invent new label taxonomies (e.g. `epic:*`, `vNext`, release-tag labels) to group work. Reuse `priority:*`, `area:*` (only where they already exist), and the umbrella issue. Propose any new label in discussion and wait for explicit approval before creating it.
 - Treat optional or tentative suggestions ("we could…", "it might be nice to…", "~해도 괜찮아") as **discussion, not a directive**. Confirm intent before making any structural change to how work is tracked (milestones, labels, project boards, issue hierarchies).
 - Before adding any organizational structure, check whether the repository already has an established convention. A category being empty or unused (zero milestones, no `epic:*` labels) is evidence to follow the existing pattern, not to introduce a new one.
