@@ -61,7 +61,8 @@ Permitted for a maintainer-authored change that is blocked **solely** by the mis
 
 The approval requirement is what is being substituted for; the status checks are what actually guard `main`, so they get stricter, not looser. Before bypassing:
 
-- Query check-runs on the **exact head SHA being merged** (`gh api repos/{owner}/{repo}/commits/{sha}/check-runs`). Confirm zero non-success, zero incomplete, and no required context missing. Do **not** read the PR status rollup instead: a rollup can report a stale success while a newly-started run has not yet replaced it. Two merges on 2026-09-27 broke `main` exactly this way (#628 here, `azure-functions-doctor-python`#463).
+- Fetch the required contexts (`gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks --jq '.contexts[]?'`) and **diff them against the successful check-run names** on the head SHA. Do this explicitly — a required workflow that never started (path-filter mistake, Actions outage, unapproved fork run) produces no check-run at all, so its absence is invisible to a check-runs query alone. Since `--admin` bypasses branch protection, nothing else will catch it.
+- Query check-runs on the **exact head SHA being merged** (`gh api repos/{owner}/{repo}/commits/{sha}/check-runs`). Confirm zero non-success and zero incomplete. Do **not** read the PR status rollup instead: a rollup can report a stale success while a newly-started run has not yet replaced it. Two merges on 2026-09-27 broke `main` exactly this way (#628 here, `azure-functions-doctor-python`#463).
 - Confirm all review conversations are resolved.
 - For an externally authored PR, stop — those do not qualify.
 
@@ -76,7 +77,11 @@ Merge with `gh pr merge --admin --squash --delete-branch`, keeping the `--delete
 
 **If a bypass does not meet the conditions above, say so in the evidence comment rather than reframing the change to fit.** An honestly recorded divergence is reviewable; a dressed-up one is not.
 
-**The structural alternative.** Dropping `required_approving_review_count` to 0 — while keeping every required status check and `required_conversation_resolution` — would remove the need for bypass entirely. The approval count currently blocks only the one person who can merge: external contributors cannot self-merge regardless, because they lack push access. Changing it is shared-infrastructure configuration and needs an explicit maintainer decision, so it is documented here as an option, not adopted.
+**The structural alternative.** Dropping `required_approving_review_count` to 0 — while keeping every required status check and `required_conversation_resolution` — would remove the need for bypass entirely. The approval count currently blocks only the one person who can merge: external contributors cannot self-merge regardless, because they lack push access.
+
+It is **not** a free change, and the cost falls on Dependabot. `dependabot-automerge.yml` already enables auto-merge for patch and minor updates, and the approval requirement is the only thing currently holding those PRs for a human. At count 0 they would merge on green CI alone, silently skipping the diff-and-pinned-SHA review the Dependabot section below requires — which is precisely the review that catches a SHA not matching its claimed tag. Adopting this means either keeping a separate gate for bot PRs (a CODEOWNERS rule, or dropping auto-merge) or accepting that loss in writing.
+
+Changing it is shared-infrastructure configuration and needs an explicit maintainer decision, so it is documented here as an option, not adopted.
 
 ### Dependabot
 
