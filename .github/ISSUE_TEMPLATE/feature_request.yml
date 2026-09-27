@@ -1,6 +1,6 @@
 name: Feature Request
 description: Suggest a new feature or enhancement
-title: "[Feature]: "
+title: "feat: "
 labels: ["enhancement"]
 body:
   - type: markdown
@@ -11,7 +11,7 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
+      label: Context
       description: What problem does this feature solve?
       placeholder: Describe the problem or limitation you're facing
     validations:
@@ -51,7 +51,7 @@ body:
   - type: textarea
     id: expected-outcome
     attributes:
-      label: Expected Outcome
+      label: Acceptance Checklist
       description: What should be the end result?
     validations:
       required: true
