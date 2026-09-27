@@ -47,7 +47,7 @@ def test_generate_openapi_spec_rejects_unsupported_version() -> None:
     with pytest.raises(OpenAPISpecConfigError) as excinfo:
         generate_openapi_spec(openapi_version="2.0", registry=OpenAPIRegistry())
     assert str(excinfo.value) == "Unsupported OpenAPI version: 2.0. Supported: 3.0.0, 3.1.0, 3.2.0"
-   
+
 
 def test_generate_openapi_spec_info_and_top_level_metadata() -> None:
     """Title/version/description plus #494 top-level metadata are emitted exactly."""
