@@ -28,7 +28,7 @@ def test_checks_changed_python_files_with_spaces_and_renames(
     monkeypatch.setattr(subprocess, "run", run)
     assert check_pr_format.main("base", "head") == 0
     assert calls == [
-        ["git", "diff", "--name-only", "--diff-filter=ACMR", "-z", "base...head", "--"],
+        ["git", "diff", "--name-only", "--diff-filter=d", "-z", "base...head", "--"],
         ["ruff", "format", "--check", "--", "new name.py", "renamed.py"],
     ]
 
@@ -73,3 +73,14 @@ def test_git_diff_failure_does_not_skip_check(monkeypatch: pytest.MonkeyPatch) -
         pass
     else:
         raise AssertionError("An unavailable PR base must fail the gate")
+
+
+@pytest.mark.parametrize(("base", "head"), [("", ""), ("", "head"), ("base", ""), ("   ", "head")])
+def test_blank_revision_fails_without_running_git(
+    monkeypatch: pytest.MonkeyPatch, base: str, head: str
+) -> None:
+    def run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        raise AssertionError(f"git/ruff must not run for a blank revision: {args}")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert check_pr_format.main(base, head) != 0
