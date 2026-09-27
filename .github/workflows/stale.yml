@@ -20,15 +20,19 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           stale-issue-message: "This issue has been marked as stale because it has not had recent activity. It will be closed in 7 days if no further activity occurs. Please reopen if this is still relevant."
-          stale-pr-message: "This pull request has been marked as stale because it has not had recent activity. It will be closed in 14 days if no further activity occurs. Please reopen if this is still relevant."
+          stale-pr-message: "This pull request has been labelled stale because it has not had recent activity. It will not be closed automatically; the label is a prompt for a maintainer to pick it back up. Comment if it is still relevant."
           stale-issue-label: "stale"
           stale-pr-label: "stale"
-          exempt-issue-labels: "pinned,security,enhancement,bug,documentation"
+          # Must stay in sync with the labels AGENTS.md requires on every
+          # issue (bug/enhancement/documentation/chore); omitting one closes
+          # issues that follow the documented convention.
+          exempt-issue-labels: "pinned,security,enhancement,bug,documentation,chore,good first issue,help wanted"
           exempt-pr-labels: "pinned,security,enhancement,bug,documentation,wip"
-          days-before-stale: 60
-          days-before-close: 7
-          close-issue: true
-          close-pr: false
+          days-before-stale: 30
+          # actions/stale has no close-issue/close-pr inputs; closing is
+          # controlled solely by days-before-*-close, where -1 means never.
+          days-before-issue-close: 7
+          days-before-pr-close: -1
 
   stale-branches:
     runs-on: ubuntu-latest
