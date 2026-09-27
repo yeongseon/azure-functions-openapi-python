@@ -42,3 +42,5 @@ site/
 
 # Compiled Bicep/ARM output (only infra/*.bicep is tracked)
 infra/*.json
+# OpenCode/OMO agent run state — local, never committed
+.omo/
