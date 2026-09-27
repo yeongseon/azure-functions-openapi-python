@@ -29,9 +29,10 @@ jobs:
           exempt-issue-labels: "pinned,security,enhancement,bug,documentation,chore,good first issue,help wanted"
           exempt-pr-labels: "pinned,security,enhancement,bug,documentation,wip"
           days-before-stale: 30
-          days-before-close: 7
-          close-issue: true
-          close-pr: false
+          # actions/stale has no close-issue/close-pr inputs; closing is
+          # controlled solely by days-before-*-close, where -1 means never.
+          days-before-issue-close: 7
+          days-before-pr-close: -1
 
   stale-branches:
     runs-on: ubuntu-latest
