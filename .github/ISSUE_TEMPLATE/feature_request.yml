@@ -12,8 +12,8 @@ body:
     id: problem
     attributes:
       label: Context
-      description: What problem does this feature solve?
-      placeholder: Describe the problem or limitation you're facing
+      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
+      placeholder: What happened, what you expected, and why it matters now.
     validations:
       required: true
 
@@ -52,7 +52,7 @@ body:
     id: expected-outcome
     attributes:
       label: Acceptance Checklist
-      description: What should be the end result?
+      description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
     validations:
       required: true
 

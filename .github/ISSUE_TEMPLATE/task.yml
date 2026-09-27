@@ -12,8 +12,8 @@ body:
     id: problem
     attributes:
       label: Context
-      description: Why is this task needed?
-      placeholder: Describe the motivation for this task
+      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
+      placeholder: What happened, what you expected, and why it matters now.
     validations:
       required: true
 
@@ -43,7 +43,7 @@ body:
     id: expected-outcome
     attributes:
       label: Acceptance Checklist
-      description: What should be the result when this is complete?
+      description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
     validations:
       required: true
 

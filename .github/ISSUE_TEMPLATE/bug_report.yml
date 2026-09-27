@@ -12,8 +12,8 @@ body:
     id: problem
     attributes:
       label: Context
-      description: A clear description of the bug
-      placeholder: What happened? What did you expect to happen?
+      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
+      placeholder: What happened, what you expected, and why it matters now.
     validations:
       required: true
 
@@ -44,7 +44,7 @@ body:
     id: expected-outcome
     attributes:
       label: Acceptance Checklist
-      description: What should happen instead?
+      description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
     validations:
       required: true
 
