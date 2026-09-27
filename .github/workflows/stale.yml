@@ -155,6 +155,7 @@ jobs:
               /^docs\/.+$/,
               /^refactor\/.+$/,
               /^test\/.+$/,
+              /^perf\/.+$/,
               /^chore\/.+$/,
               /^build\/.+$/,
               /^ci\/.+$/,
@@ -162,41 +163,21 @@ jobs:
               /^main$/
             ];
 
-            const isValid = validPatterns.some(pattern => pattern.test(branchName));
-            core.setOutput('isValid', String(isValid));
-
-            if (!isValid) {
-              core.setFailed(`Invalid branch name: ${branchName}. Please use one of the following naming conventions:
-                - dependabot/<ecosystem>/<dependency>
-                - feat/<description>
-                - fix/<description>
-                - docs/<description>
-                - refactor/<description>
-                - test/<description>
-                - chore/<description>
-                - build/<description>
-                - ci/<description>
-                - codex/<description>
-                - main`);
-            } else {
-              core.info(`Branch name validation passed: ${branchName}`);
+            if (validPatterns.some((pattern) => pattern.test(branchName))) {
+              core.info(`Branch name follows the convention: ${branchName}`);
+              return;
             }
 
-            return { isValid };
-
-      - name: "Add comment with validation result"
-        if: steps.validate-branch.outputs.isValid == 'false'
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            const prNumber = context.payload.pull_request.number;
-            const branchName = context.payload.pull_request.head.ref;
-
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: prNumber,
-              body: 'Warning: branch naming validation failed\n\nYour branch name `' + branchName + '` does not follow our naming conventions.\n\nPlease rename your branch to follow one of these patterns:\n- `feat/<description>` for new features\n- `fix/<description>` for bug fixes\n- `docs/<description>` for documentation changes\n- `refactor/<description>` for refactoring\n- `test/<description>` for test changes\n- `chore/<description>` for maintenance tasks\n- `ci/<description>` for CI/CD changes\n- `build/<description>` for build/dependency changes\n- `codex/<description>` for Codex-generated changes\n\nTo rename your branch:\n1. `git checkout ' + branchName + '`\n2. `git branch -m feat/your-new-branch-name`\n3. `git push origin --delete ' + branchName + '`\n4. `git push origin feat/your-new-branch-name`\n\nOnce you have renamed the branch, please update the PR head branch.'
-            });
+            // A branch name is a suggestion, not a merge requirement. Renaming
+            // a branch mid-review forces a new pull request, which costs more
+            // than the inconsistency it would fix.
+            core.notice(
+              `Branch "${branchName}" does not match the suggested convention ` +
+                `(feat/, fix/, docs/, refactor/, test/, chore/, ci/, build/, perf/, codex/, dependabot/). ` +
+                `This does not block the pull request; please use one of these prefixes next time.`,
+            );
+            await core.summary
+              .addHeading('Branch naming', 3)
+              .addRaw(`\`${branchName}\` does not match the suggested prefixes. `)
+              .addRaw('This is advisory and does not block this pull request.\n')
+              .write();
