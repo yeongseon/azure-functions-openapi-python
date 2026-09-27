@@ -1,6 +1,6 @@
 name: Task
 description: A general task or chore (refactoring, maintenance, etc.)
-title: "[Task]: "
+title: "chore: "
 labels: ["chore"]
 body:
   - type: markdown
@@ -11,9 +11,9 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: Why is this task needed?
-      placeholder: Describe the motivation for this task
+      label: Context
+      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
+      placeholder: What happened, what you expected, and why it matters now.
     validations:
       required: true
 
@@ -42,8 +42,8 @@ body:
   - type: textarea
     id: expected-outcome
     attributes:
-      label: Expected Outcome
-      description: What should be the result when this is complete?
+      label: Acceptance Checklist
+      description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
     validations:
       required: true
 
