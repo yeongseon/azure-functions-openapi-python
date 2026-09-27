@@ -35,6 +35,9 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
+- Add [inference cookbook](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/docs/examples/inference_cookbook.md) and update the
+  [notification request example](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/docs/examples/notification_request.md) to
+  demonstrate return-type inference and validation precedence (#573)
 - Update changelog 
 - *(readme)* Sync translated READMEs with interpreter-aware pin and Flex/3.13 certification (#547) 
 - Codify issue-based project management convention in AGENTS.md (#543) 

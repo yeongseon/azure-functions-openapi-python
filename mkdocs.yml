@@ -34,6 +34,7 @@ nav:
       - Webhook Receiver: examples/webhook_receiver.md
       - Report Jobs: examples/report_jobs.md
       - Notification Request: examples/notification_request.md
+      - Inference Cookbook: examples/inference_cookbook.md
       - Partner Import Bridge: examples/partner_import_bridge.md
   - API Reference: api.md
   - Extending:

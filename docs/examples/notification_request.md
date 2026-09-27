@@ -75,7 +75,7 @@ Both decorators share the same Pydantic model:
 @validate_http(body=EmailNotificationRequest, response_model=NotificationAcceptedResponse)
 def send_notification(
     req: func.HttpRequest, body: EmailNotificationRequest
-) -> func.HttpResponse:
+) -> NotificationAcceptedResponse:
     ...
 ```
 
