@@ -1,7 +1,7 @@
 # Agent Playbook
 
 ## Source Of Truth
-- `AGENT.md` for repository-wide engineering and agent rules.
+- `AGENTS.md` for repository-wide engineering and agent rules.
 - `README.md` for installation, quick start, and CLI examples.
 - `CONTRIBUTING.md` for branch, commit, and release workflow.
 - `pyproject.toml` and `Makefile` for supported commands.
