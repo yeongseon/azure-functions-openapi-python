@@ -178,10 +178,16 @@ git commit -m "chore: update dev dependencies"
 
 Use imperative present tense and keep the message concise.
 
-## Deployment
+## Releases
 
-- A merge to `main` triggers the production deployment workflow.
-- Deployment status can be tracked from the related GitHub Actions run.
+Merging to `main` does not publish a release.
+
+Releases are initiated by pushing a version tag (`v*`), or by the documented
+manual dispatch of the publish workflow, and only after the release
+verification requirements have been satisfied. Contributors never need to bump
+a version or tag anything in an ordinary pull request.
+
+See `AGENTS.md` for the maintainer-only release procedure.
 
 ## Code of Conduct
 
