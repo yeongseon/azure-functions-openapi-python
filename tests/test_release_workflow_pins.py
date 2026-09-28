@@ -42,10 +42,10 @@ def test_detects_unpinned_tag() -> None:
     assert errors and "not pinned to a 40-hex SHA" in errors[0]
 
 
-def test_detects_missing_verify_azure_certification() -> None:
+def test_detects_missing_azure_e2e_gate() -> None:
     text = "  publish:\n    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke]\n"
     errors = lint_mod.check_publish_needs(text, "publish-pypi.yml")
-    assert any("verify-azure-certification" in e for e in errors)
+    assert any("azure-e2e" in e for e in errors)
 
 
 def test_detects_regressed_needs() -> None:
@@ -56,7 +56,7 @@ def test_detects_regressed_needs() -> None:
 
 def test_detects_missing_runtime_tier() -> None:
     # cookbook family requires cookbook-smoke + cookbook-host-smoke
-    text = "  publish:\n    needs: [build, lib-tests, verify-azure-certification]\n"
+    text = "  publish:\n    needs: [build, lib-tests, azure-e2e]\n"
     errors = lint_mod.check_publish_needs(text, "publish-pypi.yml")
     assert any("runtime tier" in e for e in errors)
 
@@ -69,7 +69,7 @@ def test_parses_block_style_needs() -> None:
         "      - lib-tests\n"
         "      - cookbook-smoke\n"
         "      - cookbook-host-smoke\n"
-        "      - verify-azure-certification\n"
+        "      - azure-e2e\n"
         "    runs-on: ubuntu-latest\n"
     )
     assert lint_mod.check_publish_needs(text, "publish-pypi.yml") == []

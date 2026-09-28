@@ -3,6 +3,33 @@
 ## Purpose
 `azure-functions-openapi` provides OpenAPI generation and validation support for Python Azure Functions.
 
+## Repository Identity
+
+- Project: `azure-functions-openapi`
+- Project type: Python library
+- Runtime scope: Azure Functions Python v2 programming model
+- Minimum supported Python: `3.10`
+- Packaging: `pyproject.toml` with Hatch
+
+## Root vs Docs
+
+Use the repository root for engineering and planning documents:
+
+- `AGENTS.md`: contribution and automation rules
+- `DESIGN.md`: architecture and design principles
+- `PRD.md`: product scope and user-facing goals
+
+Use `docs/` for user-facing documentation only:
+
+- installation
+- usage
+- API reference
+- examples
+- diagnostics and guides
+
+If a change materially affects behavior, architecture, or project positioning, update the
+relevant root document in the same pull request or commit series.
+
 ## Read First
 - `README.md`
 - `CONTRIBUTING.md`
@@ -38,64 +65,45 @@
 
 ### Who approves what
 
-`main` requires **one approving review**, dismisses stale reviews on new commits, and requires all conversations resolved. `enforce_admins` is **false**, so administrators can bypass those requirements. With a single maintainer and no second reviewer, that bypass is the routine path for maintainer-authored changes, not a rare exception — see below for the conditions and the evidence every use must record.
+`main` requires a **pull request** (no direct pushes), every **required status check** green, and all conversations resolved. It requires **zero approving reviews**. `enforce_admins` is **false**.
 
-**An AI review is not an approval.** Copilot and Codex submit `COMMENTED`, never `APPROVED`, so they never satisfy the requirement. A PR can carry several AI reviews and still have zero approvals. Treat "the AI reviewed it" and "an authorized reviewer accepted it" as separate facts.
+**Why zero.** `yeongseon` is the only account with push access, GitHub forbids approving your own PR, and a second reviewer has been declined — that decision is settled; do not re-propose it as the preferred path. With one required approval, routine maintainer-authored work could only merge through an administrator bypass (#631). Dropping the count to 0 was the structural alternative #631 recorded; it was **adopted on 2026-09-28**. The required status checks and conversation resolution are what actually guard `main`, and they are unchanged.
 
-**Maintainer-authored PRs have no approver.** GitHub forbids approving your own PR, and `yeongseon` is the only account with push access, so a maintainer-authored PR cannot reach an approved state on the normal path.
+**Review is still expected, just not enforced.** Read the diff before merging, including your own.
 
-**A second reviewer has been declined.** That decision is settled; do not re-propose it as the preferred path. It removes the only option that satisfied the rule as written, which means routine maintainer-authored work has no path that ends in an approval. The rule is not being met — it is being substituted for, and the sections below say exactly what the substitute is.
+- **Split the work** when a change is genuinely reviewable by a contributor, so a second person authors it. That is the only path that produces a real second pair of eyes, and it is worth reaching for more often than it currently is.
+- **An AI review is not an approval.** Copilot and Codex submit `COMMENTED`, never `APPROVED`. Treat "the AI reviewed it" and "a person accepted it" as separate facts.
+- **Externally authored PRs** are reviewed by a maintainer before merging. Contributors have no push access, so they cannot merge their own PRs.
 
-For a maintainer-authored change, in order of preference:
-
-1. **Split the work.** If the change is genuinely reviewable by a contributor, let them author it so a maintainer can approve. This is the only remaining option that produces a real second pair of eyes, and it is worth reaching for more often than it currently is.
-2. **Administrator bypass**, under the procedure below.
-
-**Externally authored PRs are unaffected** and must not use the bypass. A maintainer reviews, approves, and merges them on the normal path. The bypass exists because one specific person cannot approve their own work, not because approval is optional.
-
-Do not silently self-merge. Every bypass carries the evidence comment below, so the substitution stays auditable rather than invisible.
+If a second maintainer ever gets push access, raise the approval count back to 1.
 
 ### Administrator bypass
 
-Permitted for a maintainer-authored change that is blocked **solely** by the missing approval. **Never use it to skip a failing check** — that prohibition is absolute and is the one thing this substitution must never erode.
+With zero required approvals there is no routine reason to use `--admin`. **Never use it to skip a failing or pending required check** — that prohibition is absolute.
 
-The approval requirement is what is being substituted for; the status checks are what actually guard `main`, so they get stricter, not looser. Before bypassing:
+If a bypass is ever genuinely needed, the verification #631 introduced still applies:
 
-- Fetch the required contexts (`gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks --jq '.contexts[]?'`) and **diff them against the successful check-run names** on the head SHA. Do this explicitly — a required workflow that never started (path-filter mistake, Actions outage, unapproved fork run) produces no check-run at all, so its absence is invisible to a check-runs query alone. Since `--admin` bypasses branch protection, nothing else will catch it.
-- Query check-runs on the **exact head SHA being merged** (`gh api repos/{owner}/{repo}/commits/{sha}/check-runs`). Confirm zero non-success and zero incomplete. Do **not** read the PR status rollup instead: a rollup can report a stale success while a newly-started run has not yet replaced it. Two merges on 2026-09-27 broke `main` exactly this way (#628 here, `azure-functions-doctor-python`#463).
-- Confirm all review conversations are resolved.
-- For an externally authored PR, stop — those do not qualify.
+- Fetch the required contexts (`gh api repos/{owner}/{repo}/branches/main/protection/required_status_checks --jq '.contexts[]?'`) and **diff them against the successful check-run names** on the head SHA. A required workflow that never started produces no check-run at all, so its absence is otherwise invisible.
+- Query check-runs on the **exact head SHA being merged** (`gh api repos/{owner}/{repo}/commits/{sha}/check-runs`) and confirm zero non-success and zero incomplete. Do **not** read the PR status rollup: it can report a stale success. Two merges on 2026-09-27 broke `main` exactly this way (#628 here, `azure-functions-doctor-python`#463).
+- Record the head SHA, the reason, the passing CI run, and anything left unverified in one PR comment. If the bypass does not meet these conditions, say so rather than reframing the change to fit.
 
-Then record on the PR, in one comment:
-
-- the head SHA merged,
-- which requirement was bypassed and why no reviewer was available,
-- the CI run that passed on that SHA,
-- anything left unverified.
-
-Merge with `gh pr merge --admin --squash --delete-branch`, keeping the `--delete-branch` flag the Branch Hygiene section requires of every CLI merge.
-
-**If a bypass does not meet the conditions above, say so in the evidence comment rather than reframing the change to fit.** An honestly recorded divergence is reviewable; a dressed-up one is not.
-
-**The structural alternative.** Dropping `required_approving_review_count` to 0 — while keeping every required status check and `required_conversation_resolution` — would remove the need for bypass entirely. The approval count currently blocks only the one person who can merge: external contributors cannot self-merge regardless, because they lack push access.
-
-It is **not** a free change, and the cost falls on Dependabot. `dependabot-automerge.yml` already enables auto-merge for patch and minor updates, and the approval requirement is the only thing currently holding those PRs for a human. At count 0 they would merge on green CI alone, silently skipping the diff-and-pinned-SHA review the Dependabot section below requires — which is precisely the review that catches a SHA not matching its claimed tag. Adopting this means either keeping a separate gate for bot PRs (a CODEOWNERS rule, or dropping auto-merge) or accepting that loss in writing.
-
-Changing it is shared-infrastructure configuration and needs an explicit maintainer decision, so it is documented here as an option, not adopted.
+Merge with `gh pr merge --admin --squash --delete-branch`.
 
 ### Dependabot
 
-`dependabot-automerge.yml` enables auto-merge for patch and minor updates using `secrets.GITHUB_TOKEN`. That token cannot approve a PR, so auto-merge alone cannot satisfy the approval requirement — a Dependabot PR still needs a human approval before it can complete.
+Dropping the approval count removed the only human gate on Dependabot auto-merge (#631 named this cost). It is absorbed by scoping auto-merge, not by accepting the loss:
 
-**This has been exercised, and the fix is an approval.** On 2026-09-27, seven Dependabot PRs across the fleet sat at `REVIEW_REQUIRED` with auto-merge enabled and CI green, some for days. Ordinary maintainer approval cleared all seven; four merged within seconds of the approval landing.
+- **`pip` patch/minor updates auto-merge** once every required check passes. Their risk is covered by the full test matrix.
+- **`github-actions` updates never auto-merge.** A bumped action is pinned to a SHA, and the review that matters is confirming that SHA matches its claimed tag — CI cannot catch a wrong one. `dependabot-automerge.yml` enforces this by checking the package ecosystem.
+- Major updates of either kind are not auto-merged.
 
-**A Dependabot PR is not a maintainer-authored PR.** Its author is `dependabot[bot]`, so GitHub's self-approval prohibition does not apply and the maintainer can simply approve it. Never use the administrator bypass on one, and do not read a stalled bot queue as evidence that branch protection is unworkable — it means nobody pressed approve. That misreading happened once already.
-
-Review the diff before approving: confirm it is a version bump with no unrelated changes, and that each pinned action SHA matches its claimed tag (`git ls-remote --tags <repo>`, comparing against the dereferenced `^{}` commit).
+Before merging an action update: confirm the diff is a version bump with no unrelated changes, and that each pinned SHA matches its claimed tag (`git ls-remote --tags <repo>`, comparing against the dereferenced `^{}` commit).
 
 ### Release flow
 
-`make release-*` commits and pushes directly to `main` rather than opening a PR. There is no push allow-list on the branch, so this works **because** `enforce_admins` is false. Keep that in mind before changing the setting: enabling admin enforcement would break the release path until it is reworked to go through a PR.
+Releases go through a PR like everything else: Release Please maintains a **Release PR**, and merging it is what cuts the release. The old `make release-*` path, which pushed straight to `main`, is deleted.
+
+Release Please runs with `secrets.RELEASE_PLEASE_TOKEN`, a fine-grained PAT, instead of the default `GITHUB_TOKEN`, so the required status checks run on the Release PR and the release tag starts `publish-pypi.yml`. The Release PR is merged under exactly the same rules as any other PR. See "Release Process" below.
 
 ## Issue Conventions
 
@@ -164,43 +172,131 @@ This repository is **issue-based, not milestone-based**. Track and group work us
 - `make build`
 
 ## Release Process
-- Version is managed via `hatch` (dynamic from `src/azure_functions_openapi/__init__.py`).
-- **Do NOT manually edit version strings.** Use the Makefile targets below. The public-API test reads `__version__` against `importlib.metadata.version(...)`, so no test changes are needed when bumping.
 
-### Commands
-- `make release-patch` — bump patch version, update changelog, tag, and push
-- `make release-minor` — bump minor version, update changelog, tag, and push
-- `make release-major` — bump major version, update changelog, tag, and push
-- `make release VERSION=x.y.z` — set explicit version, update changelog, tag, and push
-- `make tag-release VERSION=x.y.z` — create and push an annotated tag (used internally by release targets)
+Three tools, one job each. Nothing else participates.
+
+| Tool | Owns |
+|---|---|
+| **Release Please** | version decision, `__version__`, `CHANGELOG.md`, Release PR, tag, GitHub Release |
+| **GitHub Actions** | verification, real-Azure e2e, PyPI publish |
+| **Hatch** | building the Python package (reads `__version__` via `[tool.hatch.version]`) |
+
+- **Do NOT manually edit version strings, `CHANGELOG.md`, `.release-please-manifest.json`, or tags.** Release Please owns all of them. The public-API test reads `__version__` against `importlib.metadata.version(...)`, so no test changes are needed when bumping.
+- Releases are driven by **Conventional Commits** on `main`: `fix:` → patch, `feat:` → minor, `feat!:`/`fix!:`/`BREAKING CHANGE:` → breaking. While this package is pre-1.0, `bump-minor-pre-major` keeps a breaking change on the `0.x` line (`0.25.1` → `0.26.0`, never `1.0.0`).
+- There are **no release Makefile targets**. `make release-*`, `make changelog`, `make tag-release`, and `make publish-pypi` were deleted; a local `hatch publish` would have skipped every gate below.
 
 ### Flow
-1. `make release-patch` (or `-minor` / `-major`) on `main`
-2. This runs: `hatch version` → `git commit` → `make changelog` → `git commit` → `git tag` → `git push`
-3. Tag push triggers the **Publish to PyPI** GitHub Actions workflow. **Verification is a pre-publish gate, not a post-publish check.** The `publish` job runs only after `build → lib-tests → cookbook-smoke → cookbook-host-smoke → verify-azure-certification` all pass, and it uploads the exact artifact that was tested (it never rebuilds).
-4. Update `docs/changelog.md` separately if needed (different format from `CHANGELOG.md`).
+
+```
+feat:/fix: PR merged into main
+        |
+  Release Please  ->  Release PR (version + CHANGELOG)
+        |  maintainer reviews and merges
+  tag vX.Y.Z + GitHub Release
+        |
+  publish-pypi.yml  (started by the tag)
+        build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
+              -> azure-e2e -> PyPI
+```
+
+1. Merge Conventional-Commit PRs into `main`. Release Please keeps an open **Release PR** showing exactly what the next release would be.
+2. Merging that Release PR is the act of cutting a release.
+3. Release Please tags the release commit and publishes the GitHub Release. The tag starts `publish-pypi.yml`.
+4. Every verification tier runs in that one workflow. PyPI upload happens only if all of them pass.
+5. Update `docs/changelog.md` separately if needed (different format from `CHANGELOG.md`, and not managed by Release Please).
+
+**Certification is an in-chain gate.** `azure-e2e` deploys to real Azure and runs the live e2e suite at the same ref being published, so it covers the exact published commit by construction. There is no separate certification step to dispatch, and no cross-run SHA or freshness matching to get wrong.
+
+**`RELEASE_PLEASE_TOKEN` is load-bearing.** It is a fine-grained PAT (repository: this repo only; permissions: Contents read/write, Pull requests read/write) stored as a repository secret. The default `GITHUB_TOKEN` cannot trigger other workflows, which would leave the Release PR without the required status checks — permanently unmergeable — and would stop the tag from starting `publish-pypi.yml`. The PAT grants repository write only; PyPI upload uses OIDC Trusted Publishing and cannot be reached with it. **Fine-grained PATs expire** (at most one year): when it does, the workflow fails at the release-please step and no Release PR appears. Regenerate it and update the secret before the expiry date.
 
 ### Tiered runtime verification (what gates a release)
 
-Release verification is layered; each tier catches a different failure class, and **every tier is a pre-publish gate**:
+Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the upload**:
 
-| Tier | Runs where | Catches |
-| --- | --- | --- |
-| `lib-tests` | publish-pypi.yml (per publish) | library unit regressions |
-| `cookbook-smoke` | publish-pypi.yml (per publish) | downstream import/registration drift |
-| `cookbook-host-smoke` | publish-pypi.yml (per publish) | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
-| `verify-azure-certification` | publish-pypi.yml (per publish) | requires a fresh, SHA+version-matched **real-Azure** certification for the exact release commit |
-| Azure Release Certification (`e2e-azure.yml`) | `workflow_dispatch`, per release | cloud-only drift — deploys to real Azure, runs live e2e, records a certification artifact. **Certified per release, not per publish.** |
+| Tier | Catches |
+| --- | --- |
+| `build` | tag/`__version__` mismatch; produces the one artifact that is later uploaded |
+| `lib-tests` | library unit regressions |
+| `cookbook-smoke` | downstream import/registration drift |
+| `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
+| `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
+| `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
-**Real-Azure certification (required once per release, before the final tag).** Before pushing the release tag, dispatch the **e2e-azure** workflow on the exact release commit and version:
-- `gh workflow run e2e-azure.yml --ref main -f ref=<release-sha> -f version=<x.y.z>`
-- The run deploys to real Azure, executes the live e2e suite, and uploads the `azure-cert` artifact (keyed by commit SHA + version).
-- `verify-azure-certification` in `publish-pypi.yml` later requires a successful, SHA+version-matched, non-stale (<14 day) certification for the release commit; without it the publish gate fails and the version stays unpublished.
-5. **Verify the release against the dogfood cookbook.** Once **Publish to PyPI** succeeds, confirm the downstream consumer still passes on the freshly published version:
+### Recovery
+- **Any gate failed.** Nothing was uploaded, so the version is still free. Fix the cause and re-run the workflow on the same tag (`gh workflow run publish-pypi.yml --ref main -f tag=vX.Y.Z`), or fix forward on `main` and let the next Release PR cut a new version. Never move or reuse a tag.
+- **A tag exists but was never published.** A valid resting state. Re-run publish, or abandon the version and let the next release take the following number.
+- **Release PR stopped appearing.** Check for a stale `autorelease: pending` label on an already-merged Release PR — Release Please treats that as a release still in flight and will not open another. This failure is silent: the workflow still reports success.
+- **Break-glass (automation unavailable).** Bump `__version__`, match `.release-please-manifest.json`, commit, tag, and push. The tag starts the same gated workflow — never bypass it.
+
+
+### Post-release verification
+
+**Verify the release against the dogfood cookbook.** Once **Publish to PyPI** succeeds, confirm the downstream consumer still passes on the freshly published version:
+
+- In [`azure-functions-cookbook-python`](https://github.com/yeongseon/azure-functions-cookbook-python), upgrade to the new release (`hatch run pip install -U "azure-functions-openapi>=X.Y,<1"`) and run `make test`.
+- Treat any new `RuntimeWarning`/`DeprecationWarning` surfaced by this library during the cookbook run as a release-blocking signal — decorator-order and API-drift problems are reported as warnings, so a clean run (zero warnings from this package) is part of the release gate.
+- If the cookbook pins a lower bound (`azure-functions-openapi>=X.Y,<1`), bump it to the new minor in the same verification PR so examples are tested against the version they advertise.
+- A release is **not** considered done until the cookbook passes on the published version.
+
    - In [`azure-functions-cookbook-python`](https://github.com/yeongseon/azure-functions-cookbook-python), upgrade to the new release (`hatch run pip install -U "azure-functions-openapi>=X.Y,<1"`) and run `make test`.
    - Treat any new `RuntimeWarning`/`DeprecationWarning` surfaced by this library during the cookbook run as a release-blocking signal — decorator-order and API-drift problems are reported as warnings, so a clean run (zero warnings from this package) is part of the release gate.
    - If the cookbook pins a lower bound (`azure-functions-openapi>=X.Y,<1`), bump it to the new minor in the same verification PR so examples are tested against the version they advertise.
    - A release is **not** considered done until the cookbook passes on the published version.
+
+## Golden Commands
+
+Use Makefile entry points only. Do not bypass the Makefile in CI or contributor guidance.
+
+| Purpose | Command |
+| --- | --- |
+| Environment setup | `make install` |
+| Format code | `make format` |
+| Check formatting (`src`, `tests`) | `make format-check` |
+| Lint | `make lint` |
+| Type check | `make typecheck` |
+| Tests | `make test` |
+| Coverage | `make cov` |
+| Full validation | `make check-all` |
+| Docs build | `make docs` |
+| Package build | `make build` |
+
+## Compatibility Rules
+
+- Runtime code must remain compatible with Python `3.10`.
+- Public APIs must be fully typed.
+- Avoid silent behavior changes.
+- Breaking changes require explicit documentation and versioning discussion.
+
+## Testing Rules
+
+- Public APIs require tests.
+- Bug fixes require regression tests.
+- Representative and complex examples must remain smoke-tested.
+- `make check-all` is the minimum merge gate.
+
+## Commit Rules
+
+Use Conventional Commits:
+
+```text
+<type>: <short imperative summary>
+```
+
+Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`
+
+## Agent Rules
+
+When using AI-assisted development:
+
+- Prefer small, reviewable changes.
+- Do not guess about behavior that can be verified.
+- Keep repository structure aligned with sibling repositories.
+- Update docs, examples, and tests together when behavior changes.
+
+## Final Rule
+
+If it is not automated, it will drift.
+If it is not documented, it is not a stable rule.
 
 ## Branch Hygiene
 

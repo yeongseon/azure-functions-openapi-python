@@ -13,7 +13,7 @@ release gate cannot silently regress:
    reviewers. Both are asserted.
 
 2. **Publish-gate wiring.** The ``publish`` job's ``needs`` must always include
-   ``build``, ``lib-tests`` and ``verify-azure-certification``, plus this repo's
+   ``build``, ``lib-tests`` and ``azure-e2e``, plus this repo's
    required runtime tier(s). The gate must never regress to publishing on
    ``build`` + ``lib-tests`` alone.
 
@@ -54,12 +54,15 @@ CANONICAL_ACTIONS: dict[str, tuple[str, str]] = {
 # misclassification would be worse than this one-line duplication.
 #   "cookbook"     -> requires cookbook-smoke + cookbook-host-smoke
 #   "runtime-gate" -> requires the package-specific <pkg>-runtime-gate job
-#   "minimal"      -> verify-azure-certification is itself the runtime proof
+#   "minimal"      -> azure-e2e is itself the runtime proof
 REPO_FAMILY = "cookbook"
 REQUIRED_RUNTIME_TIERS: tuple[str, ...] = ("cookbook-smoke", "cookbook-host-smoke")
 
 # Universal invariant across every repo, regardless of family.
-UNIVERSAL_REQUIRED_NEEDS = ("build", "lib-tests", "verify-azure-certification")
+# ``azure-e2e`` calls e2e-azure.yml as a reusable workflow at the ref being
+# published, so real-Azure certification is an in-chain gate rather than a
+# separately dispatched run that has to be matched back by SHA.
+UNIVERSAL_REQUIRED_NEEDS = ("build", "lib-tests", "azure-e2e")
 
 GATE_WORKFLOWS = (
     ".github/workflows/publish-pypi.yml",
