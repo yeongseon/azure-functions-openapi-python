@@ -9,8 +9,8 @@ producing a late or nonsensical schema at spec-generation time.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable, Iterator, Sequence
+from typing import Any, Optional, Union
 import warnings
 
 from pydantic import BaseModel
@@ -78,7 +78,7 @@ def test_dict_generic_is_accepted() -> None:
     assert schema.get("type") == "object"
 
 
-@pytest.mark.parametrize("union", [Optional[Item], Union[Item, int]])
+@pytest.mark.parametrize("union", [Optional[Item], Union[Item, int]])  # noqa: UP045, UP007
 def test_union_and_optional_are_accepted(union: Any) -> None:
     # Unions/Optional resolve without raising; the concrete schema shape is
     # owned by TypeAdapter and not asserted here.

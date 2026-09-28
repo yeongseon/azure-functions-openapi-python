@@ -1,6 +1,6 @@
 # test/test_utils.py
 
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel, Field
 import pytest
@@ -16,8 +16,8 @@ class MyModel(BaseModel):
 @pytest.mark.parametrize("model_cls", [MyModel])
 def test_model_to_schema(model_cls: type[BaseModel]) -> None:
     """Verify that the model_to_schema function returns a valid schema for the given model class."""
-    components: Dict[str, Any] = {"schemas": {}}
-    schema: Dict[str, Any] = model_to_schema(model_cls, components)
+    components: dict[str, Any] = {"schemas": {}}
+    schema: dict[str, Any] = model_to_schema(model_cls, components)
 
     # Common schema assertions
     assert schema == {"$ref": f"#/components/schemas/{model_cls.__name__}"}
