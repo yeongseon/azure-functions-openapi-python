@@ -1,6 +1,64 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.26.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.25.1...v0.26.0) (2026-09-29)
+
+
+### Features
+
+* preserve report generation options ([#599](https://github.com/yeongseon/azure-functions-openapi-python/issues/599)) ([ba1397b](https://github.com/yeongseon/azure-functions-openapi-python/commit/ba1397b34b69f499e9e4c5a5ae5e3e5ab9910724))
+
+
+### Bug Fixes
+
+* **ci:** correct release wording and stale.yml inputs ([#635](https://github.com/yeongseon/azure-functions-openapi-python/issues/635)) ([d058e74](https://github.com/yeongseon/azure-functions-openapi-python/commit/d058e741278d352cd9dac1669d1fa9478e0954a7)), closes [#634](https://github.com/yeongseon/azure-functions-openapi-python/issues/634)
+* **ci:** shorten the stale window and stop auto-closing contributor-facing issues ([#633](https://github.com/yeongseon/azure-functions-openapi-python/issues/633)) ([8fd6a73](https://github.com/yeongseon/azure-functions-openapi-python/commit/8fd6a732768f72670db46cacc777f6335b46b108))
+* **ci:** stop the changed-file format gate failing open ([#626](https://github.com/yeongseon/azure-functions-openapi-python/issues/626)) ([51ce0df](https://github.com/yeongseon/azure-functions-openapi-python/commit/51ce0df6a20da15bd18ab105bb284d09792ab039))
+* **ci:** strip trailing whitespace breaking Ruff format check ([#629](https://github.com/yeongseon/azure-functions-openapi-python/issues/629)) ([ce9bc7a](https://github.com/yeongseon/azure-functions-openapi-python/commit/ce9bc7a7268dcc3014decf9e6c91248c28a220c5)), closes [#628](https://github.com/yeongseon/azure-functions-openapi-python/issues/628)
+* **cli:** reject empty app suffix before import ([#600](https://github.com/yeongseon/azure-functions-openapi-python/issues/600)) ([517c73e](https://github.com/yeongseon/azure-functions-openapi-python/commit/517c73e9d37ee97aba784aa483509dc67ccf99f2))
+* **deps:** drop unsupported semver cooldown keys for github-actions ecosystem ([#581](https://github.com/yeongseon/azure-functions-openapi-python/issues/581)) ([88aa687](https://github.com/yeongseon/azure-functions-openapi-python/commit/88aa6872043c170e1ec649c5254bd2e75ecd9f84))
+* **templates:** use an absolute URL for the security contact link ([#637](https://github.com/yeongseon/azure-functions-openapi-python/issues/637)) ([aea15fa](https://github.com/yeongseon/azure-functions-openapi-python/commit/aea15fa0a26ef70dc4d6247cdcbc26cc72b792d9)), closes [#636](https://github.com/yeongseon/azure-functions-openapi-python/issues/636)
+* **templates:** use Conventional Commit prefixes in issue forms ([#639](https://github.com/yeongseon/azure-functions-openapi-python/issues/639)) ([6ea095c](https://github.com/yeongseon/azure-functions-openapi-python/commit/6ea095c59779d3c70f4f5f987a1ba8b59cfcb718))
+
+
+### Documentation
+
+* add ADR for inference default policy ([#572](https://github.com/yeongseon/azure-functions-openapi-python/issues/572)) ([#577](https://github.com/yeongseon/azure-functions-openapi-python/issues/577)) ([fe1b3e8](https://github.com/yeongseon/azure-functions-openapi-python/commit/fe1b3e8ec1b49375dae3733928f25ffa4e73c7e5))
+* add agent playbook to navigation ([#590](https://github.com/yeongseon/azure-functions-openapi-python/issues/590)) ([56e5513](https://github.com/yeongseon/azure-functions-openapi-python/commit/56e551397d845b87b6109eb45353c2209f3dcff4))
+* add inference cookbook recipes ([#594](https://github.com/yeongseon/azure-functions-openapi-python/issues/594)) ([ae6356c](https://github.com/yeongseon/azure-functions-openapi-python/commit/ae6356ca230f8582b5dc75b94aebd2166dc64497))
+* add local development quickstart ([#593](https://github.com/yeongseon/azure-functions-openapi-python/issues/593)) ([c42d99c](https://github.com/yeongseon/azure-functions-openapi-python/commit/c42d99cfdbb10974141e62dfdd881e2a3bec0030))
+* **agents:** forbid cross-repo umbrella issues (single-repo boundary) ([#571](https://github.com/yeongseon/azure-functions-openapi-python/issues/571)) ([4121173](https://github.com/yeongseon/azure-functions-openapi-python/commit/4121173a20009fe0dcc2d5d6a01bf948afaffbb0)), closes [#570](https://github.com/yeongseon/azure-functions-openapi-python/issues/570)
+* **agents:** realign approval policy with the single-maintainer reality ([#631](https://github.com/yeongseon/azure-functions-openapi-python/issues/631)) ([5e80246](https://github.com/yeongseon/azure-functions-openapi-python/commit/5e802463ba1dbde454e2fc4091c0d11207f18ae5))
+* align the contributor contract with the actual configuration ([#627](https://github.com/yeongseon/azure-functions-openapi-python/issues/627)) ([89d8cfb](https://github.com/yeongseon/azure-functions-openapi-python/commit/89d8cfbe3973e576c4965f4a5eda18ae380b1441))
+* document the maintainer-authored PR approval path and admin-bypass procedure ([#623](https://github.com/yeongseon/azure-functions-openapi-python/issues/623)) ([96a4810](https://github.com/yeongseon/azure-functions-openapi-python/commit/96a481076e123279b6d67c78152fdd42626f8c25))
+* **utils:** document type_to_schema ([#591](https://github.com/yeongseon/azure-functions-openapi-python/issues/591)) ([94977b7](https://github.com/yeongseon/azure-functions-openapi-python/commit/94977b774c66f6b1117e7c9f8235b65bf1ba6ca9))
+
+
+### Testing
+
+* add dedicated test coverage for spec module ([#608](https://github.com/yeongseon/azure-functions-openapi-python/issues/608)) ([408aed8](https://github.com/yeongseon/azure-functions-openapi-python/commit/408aed83f54d53dbf5bc74314b1708253be04342))
+* cover exception hierarchy ([#602](https://github.com/yeongseon/azure-functions-openapi-python/issues/602)) ([070ec81](https://github.com/yeongseon/azure-functions-openapi-python/commit/070ec81dcb3c1ee309ad22bd5c085f9cde159b59))
+* cover registry behavior ([#592](https://github.com/yeongseon/azure-functions-openapi-python/issues/592)) ([06a7952](https://github.com/yeongseon/azure-functions-openapi-python/commit/06a79522d083203645475f541bded2c54880f865))
+* cover route prefix helpers ([#607](https://github.com/yeongseon/azure-functions-openapi-python/issues/607)) ([7dc60e9](https://github.com/yeongseon/azure-functions-openapi-python/commit/7dc60e9829050a812a5f95c45bb923ca4925f102))
+* cover the HTTP method-set constants in routes.py ([#643](https://github.com/yeongseon/azure-functions-openapi-python/issues/643)) ([d505c15](https://github.com/yeongseon/azure-functions-openapi-python/commit/d505c15878d345aa7f0a3f0f8661f2ef8882c6d1)), closes [#642](https://github.com/yeongseon/azure-functions-openapi-python/issues/642)
+* preserve Unicode in CLI output ([#598](https://github.com/yeongseon/azure-functions-openapi-python/issues/598)) ([48688d1](https://github.com/yeongseon/azure-functions-openapi-python/commit/48688d1b5e599d5f6495daa95890a7910a74b457))
+
+
+### Miscellaneous Tasks
+
+* adopt release-please and gate PyPI on in-chain Azure e2e ([#647](https://github.com/yeongseon/azure-functions-openapi-python/issues/647)) ([2da5cc6](https://github.com/yeongseon/azure-functions-openapi-python/commit/2da5cc6359a7488cc50d63ccbfa02fbba77048cd))
+* codify open issue-creation as fleet policy ([#575](https://github.com/yeongseon/azure-functions-openapi-python/issues/575)) ([#578](https://github.com/yeongseon/azure-functions-openapi-python/issues/578)) ([dbe9e93](https://github.com/yeongseon/azure-functions-openapi-python/commit/dbe9e93cd451053cb642567e0ce9fc1569e0207a))
+* correct the stale 2.x promotion note on the compat lane ([#621](https://github.com/yeongseon/azure-functions-openapi-python/issues/621)) ([0ea675a](https://github.com/yeongseon/azure-functions-openapi-python/commit/0ea675aaa98fc8a467f528e847e3200fb56c01d2))
+* **deps:** bump codecov/codecov-action in the github-actions group ([#606](https://github.com/yeongseon/azure-functions-openapi-python/issues/606)) ([f87975a](https://github.com/yeongseon/azure-functions-openapi-python/commit/f87975a3b6eb999165c539c4e4a47f3e954fb32e))
+* **deps:** bump ruff in the python-dependencies group ([#579](https://github.com/yeongseon/azure-functions-openapi-python/issues/579)) ([1b92bb2](https://github.com/yeongseon/azure-functions-openapi-python/commit/1b92bb23f954b4274e7bf10dccfcc6a2449397b4))
+* **deps:** bump ruff in the python-dependencies group ([#582](https://github.com/yeongseon/azure-functions-openapi-python/issues/582)) ([3a814f1](https://github.com/yeongseon/azure-functions-openapi-python/commit/3a814f16aca350fe6ddd768e436369a05e2c701b))
+* **deps:** bump ruff in the python-dependencies group ([#605](https://github.com/yeongseon/azure-functions-openapi-python/issues/605)) ([4e715b5](https://github.com/yeongseon/azure-functions-openapi-python/commit/4e715b5d06d1e9a20cc099df65f8ed8ea23528ad))
+* **deps:** bump the github-actions group with 3 updates ([#583](https://github.com/yeongseon/azure-functions-openapi-python/issues/583)) ([e2fc86a](https://github.com/yeongseon/azure-functions-openapi-python/commit/e2fc86a636eba3e462970f358479b5ecfdbdf99b))
+* enforce Ruff formatting in PR quality checks ([#619](https://github.com/yeongseon/azure-functions-openapi-python/issues/619)) ([c0fdc26](https://github.com/yeongseon/azure-functions-openapi-python/commit/c0fdc2649656ea4f194a04569209f3ca52fa0aea))
+* harden and wire the hatch default-env-pin lint (canonical source) ([#580](https://github.com/yeongseon/azure-functions-openapi-python/issues/580)) ([3d100bc](https://github.com/yeongseon/azure-functions-openapi-python/commit/3d100bcdb2e66033e148661a0aaea7d4a20f0b2b))
+* ignore uv.lock ([#645](https://github.com/yeongseon/azure-functions-openapi-python/issues/645)) ([2525542](https://github.com/yeongseon/azure-functions-openapi-python/commit/252554228e8a9ea657edcef6a3ab74555c861bce)), closes [#644](https://github.com/yeongseon/azure-functions-openapi-python/issues/644)
+* **pins:** align canonical azure/login pin with v3.1.0 ([#604](https://github.com/yeongseon/azure-functions-openapi-python/issues/604)) ([2668106](https://github.com/yeongseon/azure-functions-openapi-python/commit/26681065942ba180d3ffb69655607fa9c28073aa))
+
 ## [0.25.1] - 2026-09-06
 
 ### Bug Fixes
