@@ -1,0 +1,63 @@
+name: Release Please
+
+# Release-decision layer. Owns version calculation, CHANGELOG.md, the Release PR,
+# the tag, and the GitHub Release. It does not publish.
+#
+#   Conventional-Commit PRs -> main
+#        |
+#   Release Please  ->  Release PR (version bump + CHANGELOG)
+#        |  maintainer merges
+#   release commit  ->  tag vX.Y.Z  +  GitHub Release
+#        |
+#   publish-pypi.yml (started by the tag)
+#        build -> lib-tests -> cookbook-smoke -> cookbook-host-smoke
+#              -> azure-e2e -> PyPI
+#
+# RELEASE_PLEASE_TOKEN (a fine-grained PAT) is load-bearing, not a convenience.
+# The default GITHUB_TOKEN cannot trigger other workflows, which would mean
+# (a) the Release PR never runs the required status checks and so could never be
+# merged, and (b) the tag would not start publish-pypi.yml.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  release-please:
+    name: Maintain Release PR / cut release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Run Release Please
+        id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Summarize
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          {
+            echo "### Released \`$RELEASE_TAG\`"
+            echo
+            echo "Commit: \`$RELEASE_SHA\`"
+            echo
+            echo "The tag has started **Publish to PyPI**, which runs the full gate"
+            echo "(build, lib-tests, cookbook smoke, host smoke, real-Azure e2e) before"
+            echo "uploading. Nothing reaches PyPI until every tier passes."
+          } >> "$GITHUB_STEP_SUMMARY"

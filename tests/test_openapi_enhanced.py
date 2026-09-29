@@ -1,7 +1,7 @@
 # tests/test_openapi_enhanced.py
 
 import importlib
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import patch
 
 from pydantic import BaseModel, Field
@@ -37,7 +37,7 @@ class TestGenerateOpenAPISpecEnhanced:
     def test_generate_openapi_spec_with_error_handling(self) -> None:
         """Test OpenAPI spec generation with error handling."""
         # Mock registry with problematic function
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "test_func": {
                 "summary": "Test function",
                 "description": "A test function",
@@ -64,7 +64,7 @@ class TestGenerateOpenAPISpecEnhanced:
 
     def test_generate_openapi_spec_with_model_errors(self) -> None:
         """Test OpenAPI spec generation when model schema generation fails."""
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "test_func": {
                 "summary": "Test function",
                 "description": "A test function",
@@ -99,7 +99,7 @@ class TestGenerateOpenAPISpecEnhanced:
 
     def test_generate_openapi_spec_with_function_processing_error(self) -> None:
         """Test OpenAPI spec generation when individual function processing fails."""
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "good_func": {
                 "summary": "Good function",
                 "description": "A good function",
@@ -151,7 +151,7 @@ class TestGenerateOpenAPISpecEnhanced:
 
     def test_generate_openapi_spec_logging(self) -> None:
         """Test that OpenAPI spec generation logs correctly."""
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "func1": {"summary": "Function 1", "route": "/func1", "method": "get"},
             "func2": {"summary": "Function 2", "route": "/func2", "method": "post"},
         }
@@ -316,7 +316,7 @@ class TestOpenAPISpecComplexScenarios:
 
     def test_generate_openapi_spec_with_all_components(self) -> None:
         """Test OpenAPI spec generation with all components."""
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "complex_func": {
                 "summary": "Complex function",
                 "description": "A complex function with all features",
@@ -385,7 +385,7 @@ class TestOpenAPISpecComplexScenarios:
 
     def test_generate_openapi_spec_multiple_methods_same_route(self) -> None:
         """Test OpenAPI spec generation with multiple methods on same route."""
-        mock_registry: Dict[str, Any] = {
+        mock_registry: dict[str, Any] = {
             "get_user": {
                 "summary": "Get user",
                 "route": "/users/{id}",

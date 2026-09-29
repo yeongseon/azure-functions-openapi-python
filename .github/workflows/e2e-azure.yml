@@ -1,9 +1,11 @@
 name: e2e-azure
 
-# Azure Release Certification. Dispatch-only: deploys to real Azure, runs live
-# e2e, and records an azure-cert artifact for the exact release commit + version.
-# The publish-pypi.yml verify-azure-certification gate requires a fresh, matching
-# certification before it will publish.
+# Azure Release Certification: deploys to real Azure, runs the live e2e suite,
+# and records an azure-cert artifact for the exact commit + version.
+#
+# It runs as a GATE INSIDE publish-pypi.yml (workflow_call), so certification
+# always covers the exact commit being published and no cross-run matching is
+# needed. workflow_dispatch is kept for standalone verification and debugging.
 on:
   workflow_dispatch:
     inputs:
@@ -20,6 +22,28 @@ on:
         required: false
         default: "3.10"
         type: string
+  workflow_call:
+    inputs:
+      ref:
+        description: Release commit SHA (or ref) to certify
+        required: false
+        type: string
+      version:
+        description: Expected package version (must match source __version__)
+        required: false
+        type: string
+      python_version:
+        description: Python runtime version for the Azure Function App (e.g. 3.10, 3.13)
+        required: false
+        default: "3.10"
+        type: string
+    secrets:
+      AZURE_CLIENT_ID:
+        required: true
+      AZURE_TENANT_ID:
+        required: true
+      AZURE_SUBSCRIPTION_ID:
+        required: true
 
 permissions:
   id-token: write
@@ -33,6 +57,9 @@ jobs:
   deploy_and_test:
     name: Deploy & Test
     runs-on: ubuntu-latest
+    # Pins the OIDC subject to environment:azure-e2e regardless of the triggering
+    # ref, so one Azure federated credential covers tag pushes and dispatches.
+    environment: azure-e2e
     outputs:
       resource_group: ${{ steps.names.outputs.rg }}
 
@@ -255,6 +282,9 @@ jobs:
   cleanup:
     name: Cleanup Azure Resources
     runs-on: ubuntu-latest
+    # Pins the OIDC subject to environment:azure-e2e regardless of the triggering
+    # ref, so one Azure federated credential covers tag pushes and dispatches.
+    environment: azure-e2e
     needs: [deploy_and_test]
     if: always()
     steps:

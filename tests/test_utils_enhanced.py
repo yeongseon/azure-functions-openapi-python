@@ -1,6 +1,6 @@
 # tests/test_utils_enhanced.py
 
-from typing import Any, Dict, List, Literal, Optional, Union, cast
+from typing import Any, Literal, cast
 from unittest.mock import patch
 
 from pydantic import BaseModel, Field
@@ -36,7 +36,7 @@ class TestModelToSchema:
 
     def test_model_to_schema_pydantic_v2(self) -> None:
         """Test model_to_schema with Pydantic v2."""
-        components: Dict[str, Dict[str, Any]] = {"schemas": {}}
+        components: dict[str, dict[str, Any]] = {"schemas": {}}
         schema = model_to_schema(SampleModel, components)
 
         assert schema == {"$ref": "#/components/schemas/SampleModel"}
@@ -64,7 +64,7 @@ class TestModelToSchema:
                 },
             }
 
-            components: Dict[str, Dict[str, Any]] = {"schemas": {}}
+            components: dict[str, dict[str, Any]] = {"schemas": {}}
             schema = model_to_schema(SampleModel, components)
 
             assert schema == {"$ref": "#/components/schemas/SampleModel"}
@@ -90,7 +90,7 @@ class TestModelToSchema:
                 },
             }
 
-            components: Dict[str, Dict[str, Any]] = {
+            components: dict[str, dict[str, Any]] = {
                 "schemas": {
                     "SampleModel": {
                         "type": "object",
@@ -155,7 +155,7 @@ class TestUtilsInternals:
         )
 
     def test_rewrite_refs_with_map_handles_lists_and_empty_map(self) -> None:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "items": [
                 {"$ref": "#/components/schemas/Thing"},
                 {"nested": {"$ref": "#/components/schemas/Other"}},
@@ -393,7 +393,7 @@ class TestCollectSchemas:
 
     def test_non_dict_definition_skipped(self) -> None:
         """Non-dict values in $defs should be skipped."""
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "$defs": {
                 "Good": {"type": "string"},
@@ -408,7 +408,7 @@ class TestCollectSchemas:
 
     def test_nested_definitions_collected(self) -> None:
         """Definitions nested inside other definitions should be recursively collected."""
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "type": "object",
             "$defs": {
                 "Outer": {
@@ -427,7 +427,7 @@ class TestCollectSchemas:
         assert "$defs" not in collected["Outer"]
 
     def test_empty_definitions(self) -> None:
-        schema: Dict[str, Any] = {"type": "object", "properties": {"id": {"type": "integer"}}}
+        schema: dict[str, Any] = {"type": "object", "properties": {"id": {"type": "integer"}}}
         normalized, collected = _collect_schemas(schema)
         assert collected == {}
         assert normalized["type"] == "object"
@@ -437,23 +437,23 @@ class TestResolveNameCollision:
     """Test _resolve_name_collision function."""
 
     def test_no_collision(self) -> None:
-        existing: Dict[str, Dict[str, Any]] = {}
+        existing: dict[str, dict[str, Any]] = {}
         assert _resolve_name_collision("Foo", {"type": "string"}, existing) == "Foo"
 
     def test_same_name_identical_schema(self) -> None:
-        schema: Dict[str, Any] = {"type": "string"}
-        existing: Dict[str, Dict[str, Any]] = {"Foo": {"type": "string"}}
+        schema: dict[str, Any] = {"type": "string"}
+        existing: dict[str, dict[str, Any]] = {"Foo": {"type": "string"}}
         assert _resolve_name_collision("Foo", schema, existing) == "Foo"
 
     def test_collision_different_schema(self) -> None:
-        schema: Dict[str, Any] = {"type": "integer"}
-        existing: Dict[str, Dict[str, Any]] = {"Foo": {"type": "string"}}
+        schema: dict[str, Any] = {"type": "integer"}
+        existing: dict[str, dict[str, Any]] = {"Foo": {"type": "string"}}
         assert _resolve_name_collision("Foo", schema, existing) == "Foo_2"
 
     def test_collision_cascading(self) -> None:
         """When Foo and Foo_2 are both taken with different schemas, returns Foo_3."""
-        schema: Dict[str, Any] = {"type": "boolean"}
-        existing: Dict[str, Dict[str, Any]] = {
+        schema: dict[str, Any] = {"type": "boolean"}
+        existing: dict[str, dict[str, Any]] = {
             "Foo": {"type": "string"},
             "Foo_2": {"type": "integer"},
         }
@@ -461,8 +461,8 @@ class TestResolveNameCollision:
 
     def test_collision_candidate_identical(self) -> None:
         """When Foo is taken but Foo_2 has identical schema, returns Foo_2."""
-        schema: Dict[str, Any] = {"type": "integer"}
-        existing: Dict[str, Dict[str, Any]] = {
+        schema: dict[str, Any] = {"type": "integer"}
+        existing: dict[str, dict[str, Any]] = {
             "Foo": {"type": "string"},
             "Foo_2": {"type": "integer"},
         }
@@ -473,22 +473,22 @@ class TestRewriteRefsWithMap:
     """Test _rewrite_refs_with_map function."""
 
     def test_empty_name_map_returns_unchanged(self) -> None:
-        obj: Dict[str, Any] = {"$ref": "#/components/schemas/Foo"}
+        obj: dict[str, Any] = {"$ref": "#/components/schemas/Foo"}
         result = _rewrite_refs_with_map(obj, {})
         assert result == obj
 
     def test_rewrites_matching_ref(self) -> None:
-        obj: Dict[str, Any] = {"$ref": "#/components/schemas/Foo"}
+        obj: dict[str, Any] = {"$ref": "#/components/schemas/Foo"}
         result = _rewrite_refs_with_map(obj, {"Foo": "Foo_2"})
         assert result == {"$ref": "#/components/schemas/Foo_2"}
 
     def test_preserves_ref_not_in_map(self) -> None:
-        obj: Dict[str, Any] = {"$ref": "#/components/schemas/Bar"}
+        obj: dict[str, Any] = {"$ref": "#/components/schemas/Bar"}
         result = _rewrite_refs_with_map(obj, {"Foo": "Foo_2"})
         assert result == {"$ref": "#/components/schemas/Bar"}
 
     def test_preserves_non_components_ref(self) -> None:
-        obj: Dict[str, Any] = {"$ref": "#/external/Foo"}
+        obj: dict[str, Any] = {"$ref": "#/external/Foo"}
         result = _rewrite_refs_with_map(obj, {"Foo": "Foo_2"})
         assert result == {"$ref": "#/external/Foo"}
 
@@ -508,7 +508,7 @@ class TestRewriteRefsWithMap:
         assert _rewrite_refs_with_map(42, {"Foo": "Foo_2"}) == 42
 
     def test_nested_dict_rewrite(self) -> None:
-        obj: Dict[str, Any] = {
+        obj: dict[str, Any] = {
             "properties": {
                 "child": {"$ref": "#/components/schemas/Foo"},
             }
@@ -533,7 +533,7 @@ class TestModelToSchemaCollisionPath:
                 "properties": {"id": {"type": "integer"}},
             }
             # Pre-populate with a different schema under the same name
-            components: Dict[str, Any] = {
+            components: dict[str, Any] = {
                 "schemas": {
                     "SampleModel": {
                         "type": "object",
@@ -553,13 +553,13 @@ class TestModelToSchemaCollisionPath:
     def test_identical_schema_no_overwrite(self) -> None:
         """When schema already exists with identical content, no rename or overwrite."""
         with patch.object(SampleModel, "model_json_schema") as mock_schema:
-            schema_content: Dict[str, Any] = {
+            schema_content: dict[str, Any] = {
                 "type": "object",
                 "properties": {"name": {"type": "string"}},
             }
             mock_schema.return_value = dict(schema_content)
             # Pre-populate with identical schema
-            components: Dict[str, Any] = {"schemas": {"SampleModel": dict(schema_content)}}
+            components: dict[str, Any] = {"schemas": {"SampleModel": dict(schema_content)}}
             result = model_to_schema(SampleModel, components)
 
             assert result == {"$ref": "#/components/schemas/SampleModel"}
@@ -579,7 +579,7 @@ class TestModelToSchemaCollisionPath:
                 },
             }
             # Pre-populate Child with a different schema to force collision
-            components: Dict[str, Any] = {
+            components: dict[str, Any] = {
                 "schemas": {
                     "Child": {"type": "integer"},
                 }
@@ -596,13 +596,13 @@ class TestModelToSchemaCollisionPath:
 
 class TestTypeToSchemaCoverage:
     def test_basemodel_with_components_uses_model_to_schema_path(self) -> None:
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = type_to_schema(SampleModel, components)
         assert ref == {"$ref": "#/components/schemas/SampleModel"}
         assert "SampleModel" in components["schemas"]
 
     def test_generic_type_name_collision_rewrites_refs(self) -> None:
-        components: Dict[str, Any] = {
+        components: dict[str, Any] = {
             "schemas": {
                 "Address": {"type": "string"},
             }
@@ -630,11 +630,11 @@ class Address(BaseModel):
 
 class PersonWithOptional(BaseModel):
     name: str
-    nickname: Optional[str] = None
+    nickname: str | None = None
 
 
 class PersonWithUnion(BaseModel):
-    identifier: Union[int, str]
+    identifier: int | str
 
 
 class PersonWithLiteral(BaseModel):
@@ -647,8 +647,8 @@ class PersonWithNested(BaseModel):
 
 
 class PersonWithList(BaseModel):
-    tags: List[str]
-    addresses: List[Address]
+    tags: list[str]
+    addresses: list[Address]
 
 
 class TestPydanticV2EdgeCases:
@@ -656,7 +656,7 @@ class TestPydanticV2EdgeCases:
 
     def test_optional_field_not_required(self) -> None:
         """Optional[str] field must NOT appear in 'required'."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = model_to_schema(PersonWithOptional, components)
         assert ref == {"$ref": "#/components/schemas/PersonWithOptional"}
         schema = components["schemas"]["PersonWithOptional"]
@@ -666,7 +666,7 @@ class TestPydanticV2EdgeCases:
 
     def test_union_field_produces_valid_schema(self) -> None:
         """Union[int, str] must produce anyOf / oneOf or a schema without errors."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = model_to_schema(PersonWithUnion, components)
         assert ref == {"$ref": "#/components/schemas/PersonWithUnion"}
         schema = components["schemas"]["PersonWithUnion"]
@@ -677,7 +677,7 @@ class TestPydanticV2EdgeCases:
 
     def test_literal_field_uses_enum(self) -> None:
         """Literal['admin','user','guest'] must produce an enum in the schema."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = model_to_schema(PersonWithLiteral, components)
         assert ref == {"$ref": "#/components/schemas/PersonWithLiteral"}
         schema = components["schemas"]["PersonWithLiteral"]
@@ -687,7 +687,7 @@ class TestPydanticV2EdgeCases:
 
     def test_nested_model_registered_as_component(self) -> None:
         """Nested Pydantic model must be registered separately in components.schemas."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = model_to_schema(PersonWithNested, components)
         assert ref == {"$ref": "#/components/schemas/PersonWithNested"}
         # Address must be hoisted into components.schemas
@@ -698,7 +698,7 @@ class TestPydanticV2EdgeCases:
 
     def test_list_of_nested_model_registered(self) -> None:
         """List[NestedModel] must hoist the nested model and rewrite $refs."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         ref = model_to_schema(PersonWithList, components)
         assert ref == {"$ref": "#/components/schemas/PersonWithList"}
         # Address must be registered even when used inside a list
@@ -709,7 +709,7 @@ class TestPydanticV2EdgeCases:
 
     def test_no_defs_key_in_registered_schemas(self) -> None:
         """$defs must never appear in the final registered component schemas."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         model_to_schema(PersonWithNested, components)
         for name, schema in components["schemas"].items():
             assert "$defs" not in schema, f"$defs leaked into components.schemas['{name}']"
@@ -720,7 +720,7 @@ class TestPydanticV2EdgeCases:
     def test_multiple_models_no_cross_contamination(self) -> None:
         """Registering two unrelated models must not contaminate each other.
         Uses the same components dict for both calls."""
-        components: Dict[str, Any] = {"schemas": {}}
+        components: dict[str, Any] = {"schemas": {}}
         model_to_schema(PersonWithOptional, components)
         model_to_schema(PersonWithLiteral, components)
         assert "PersonWithOptional" in components["schemas"]

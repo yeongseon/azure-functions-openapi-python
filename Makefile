@@ -2,7 +2,6 @@ VENV_DIR := .venv
 PYTHON := $(VENV_DIR)/bin/python
 PIP := $(VENV_DIR)/bin/pip
 HATCH := $(VENV_DIR)/bin/hatch
-PACKAGE_INIT := $(shell find src -mindepth 2 -maxdepth 2 -name "__init__.py" | head -n1)
 SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
 PLAYWRIGHT_VERSION := 1.54.1
 PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.cache/ms-playwright
@@ -124,76 +123,9 @@ e2e-azure: ensure-hatch
 build: ensure-hatch
 	@$(HATCH) build
 
-.PHONY: changelog
-changelog: ensure-hatch
-	@$(HATCH) run git-cliff $(if $(VERSION),--tag v$(VERSION),) -o CHANGELOG.md
-	@echo "Changelog generated."
-
-.PHONY: commit-changelog
-commit-changelog:
-	@git add CHANGELOG.md
-	@git commit -m "docs: update changelog" || echo "No changes to commit"
-
-.PHONY: tag-release
-tag-release:
-ifndef VERSION
-	$(error VERSION is not set. Usage: make tag-release VERSION=1.0.1)
-endif
-	@git push origin HEAD
-	@git tag -a v$(VERSION) -m "Release v$(VERSION)"
-	@git push origin v$(VERSION)
-	@echo "Tagged release v$(VERSION)"
-
-.PHONY: release
-release: ensure-hatch
-ifndef VERSION
-	$(error VERSION is not set. Usage: make release VERSION=1.0.1)
-endif
-	@$(HATCH) version $(VERSION)
-	@git add "$(PACKAGE_INIT)" && \
-	 git commit -m "build: bump version to $(VERSION)"
-	@$(MAKE) release-core VERSION=$(VERSION)
-
-.PHONY: release-core
-release-core:
-ifndef VERSION
-	$(error VERSION is not set. Usage: make release-core VERSION=1.0.1)
-endif
-	@$(MAKE) changelog VERSION=$(VERSION)
-	@$(MAKE) commit-changelog
-	@$(MAKE) tag-release VERSION=$(VERSION)
-
-.PHONY: release-patch
-release-patch: ensure-hatch
-	@$(HATCH) version patch
-	@VERSION=$$($(HATCH) version | tail -n1); \
-	 git add "$(PACKAGE_INIT)" && \
-	 git commit -m "build: bump version to $$VERSION" && \
-	 $(MAKE) release-core VERSION=$$VERSION
-
-.PHONY: release-minor
-release-minor: ensure-hatch
-	@$(HATCH) version minor
-	@VERSION=$$($(HATCH) version | tail -n1); \
-	 git add "$(PACKAGE_INIT)" && \
-	 git commit -m "build: bump version to $$VERSION" && \
-	 $(MAKE) release-core VERSION=$$VERSION
-
-.PHONY: release-major
-release-major: ensure-hatch
-	@$(HATCH) version major
-	@VERSION=$$($(HATCH) version | tail -n1); \
-	 git add "$(PACKAGE_INIT)" && \
-	 git commit -m "build: bump version to $$VERSION" && \
-	 $(MAKE) release-core VERSION=$$VERSION
-
 .PHONY: publish-test
 publish-test: ensure-hatch
 	@$(HATCH) publish --repo test
-
-.PHONY: publish-pypi
-publish-pypi: ensure-hatch
-	@$(HATCH) publish
 
 .PHONY: version
 version: ensure-hatch

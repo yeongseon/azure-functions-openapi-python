@@ -17,8 +17,11 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Enable auto-merge for patch/minor updates
-        if: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
+      # pip only. github-actions bumps are SHA-pinned, and verifying that the SHA
+      # matches its claimed tag needs a human; with zero required approvals this
+      # step is the only thing keeping them out of auto-merge (see AGENTS.md).
+      - name: Enable auto-merge for pip patch/minor updates
+        if: ${{ steps.meta.outputs.package-ecosystem == 'pip' && (steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor') }}
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

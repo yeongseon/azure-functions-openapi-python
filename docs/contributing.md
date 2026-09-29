@@ -65,8 +65,9 @@ git commit -m "feat: add cookie parameter support to @openapi decorator"
 
 ## Commit Message Format
 
-All commits must follow the Conventional Commits specification. The changelog is
-generated automatically from commit messages using git-cliff.
+All commits must follow the Conventional Commits specification. Release Please derives
+the next version and generates the changelog from these messages, so the prefix you choose
+directly determines the release.
 
 ### Structure
 

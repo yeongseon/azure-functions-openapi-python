@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import collections.abc as _cabc
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from http import HTTPStatus
 import inspect
 import logging
@@ -10,7 +10,6 @@ import re
 import types
 from typing import (
     Any,
-    Callable,
     Literal,
     TypeGuard,
     TypeVar,
@@ -260,7 +259,7 @@ def _flatten_optional_root(hint: Any) -> Any:
         return type(None)
     if len(non_none) == 1:
         return non_none[0]
-    return Union[tuple(non_none)]
+    return Union[tuple(non_none)]  # noqa: UP007
 
 
 def _normalize_unified_responses(

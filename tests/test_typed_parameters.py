@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 import json
-from typing import Literal, Optional, Union
+from typing import Literal
 
 import azure.functions as func
 from pydantic import BaseModel, Field
@@ -32,7 +32,7 @@ class PathModel(BaseModel):
 
 class HeaderModel(BaseModel):
     x_request_id: str = Field(alias="X-Request-Id")
-    x_trace: Optional[str] = None
+    x_trace: str | None = None
     verbose: bool = Field(default=False, description="Enable verbose output")
 
 
@@ -106,7 +106,7 @@ class TestExpandModelParameters:
 class TestEdgeCaseHardening:
     def test_optional_header_strips_null_branch(self) -> None:
         class H(BaseModel):
-            x: Optional[str] = None
+            x: str | None = None
 
         params = _expand_model_parameters(H, "header", "h")
         assert params[0]["required"] is False
@@ -114,7 +114,7 @@ class TestEdgeCaseHardening:
 
     def test_optional_header_preserves_description(self) -> None:
         class H(BaseModel):
-            y: Optional[int] = Field(default=None, description="opt count")
+            y: int | None = Field(default=None, description="opt count")
 
         params = _expand_model_parameters(H, "header", "h")
         assert params[0]["description"] == "opt count"
@@ -122,7 +122,7 @@ class TestEdgeCaseHardening:
 
     def test_optional_path_is_rejected(self) -> None:
         class P(BaseModel):
-            id: Optional[int] = None
+            id: int | None = None
 
         with pytest.raises(OpenAPISpecConfigError, match="Optional/nullable"):
             _expand_model_parameters(P, "path", "h")
@@ -155,7 +155,7 @@ class TestEdgeCaseHardening:
     def test_union_of_scalars_keeps_both_branches(self) -> None:
 
         class H(BaseModel):
-            v: Union[int, str]
+            v: int | str
 
         params = _expand_model_parameters(H, "header", "h")
         branches = params[0]["schema"]["anyOf"]
@@ -165,7 +165,7 @@ class TestEdgeCaseHardening:
     def test_optional_union_of_scalars_strips_null_keeps_rest(self) -> None:
 
         class H(BaseModel):
-            v: Optional[Union[int, str]] = None
+            v: int | str | None = None
 
         params = _expand_model_parameters(H, "header", "h")
         branches = params[0]["schema"]["anyOf"]
@@ -179,7 +179,7 @@ class TestEdgeCaseHardening:
             a: int
 
         class H(BaseModel):
-            v: Union[int, Nested]
+            v: int | Nested
 
         with pytest.raises(OpenAPISpecConfigError, match="object schema"):
             _expand_model_parameters(H, "header", "h")
@@ -203,7 +203,7 @@ class TestEdgeCaseHardening:
 
     def test_nullable_array_element_strips_nested_null_branch(self) -> None:
         class H(BaseModel):
-            tags: list[Optional[int]] = Field(default_factory=list)
+            tags: list[int | None] = Field(default_factory=list)
 
         params = _expand_model_parameters(H, "header", "h")
         items = params[0]["schema"]["items"]

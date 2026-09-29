@@ -11,7 +11,7 @@ nullable inline. Pydantic v2 emits ``Optional[T]`` as
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 import pytest
@@ -282,7 +282,7 @@ def _list_optional_user_spec(version: str) -> dict[str, Any]:
             "response": {
                 200: {
                     "description": "ok",
-                    "content": {"application/json": {"schema": List[Optional[User]]}},
+                    "content": {"application/json": {"schema": list[User | None]}},
                 }
             },
         },
