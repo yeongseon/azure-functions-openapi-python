@@ -1,0 +1,53 @@
+name: PR title
+
+# Validates the pull request title against the Title Convention in
+# CONTRIBUTING.md. The title becomes the squash commit title on the default
+# branch, so this is the one place the convention is enforced.
+#
+# Safe for pull requests from forks: runs on `pull_request` (not
+# `pull_request_target`), checks out nothing, needs no token permissions and no
+# secrets, and passes the untrusted title through an environment variable
+# instead of interpolating it into the script.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the title format
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(feat|fix|docs|test|perf|refactor|ci|build|chore|style|revert)(\([a-z0-9][a-z0-9._/,-]*\))?!?: [^[:space:]](.*[^.[:space:]])?$'
+          if [[ "$TITLE" =~ $pattern ]]; then
+            printf 'Title OK: %s\n' "$TITLE"
+            exit 0
+          fi
+          printf 'Title rejected: %s\n\n' "$TITLE"
+          cat <<'EOF'
+          Expected "type: description" or "type(scope): description":
+            - type is one of: feat fix docs test perf refactor ci build chore style revert
+            - lowercase type and scope, one space after the colon
+            - a non-empty description with no trailing period
+            - add "!" before the colon for a breaking change: "feat(api)!: drop the v1 endpoints"
+
+          Examples:
+            fix: decode nonempty NULL-only collection results
+            feat(cli): add a JSON output option
+            docs(readme): clarify the local setup steps
+
+          See "Title Convention" in CONTRIBUTING.md. Edit the title; the check re-runs automatically.
+          EOF
+          echo "::error::The pull request title does not follow the Title Convention in CONTRIBUTING.md."
+          exit 1
