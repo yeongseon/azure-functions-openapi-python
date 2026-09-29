@@ -203,7 +203,7 @@ feat:/fix: PR merged into main
 2. Merging that Release PR is the act of cutting a release.
 3. Release Please tags the release commit and publishes the GitHub Release. The tag starts `publish-pypi.yml`.
 4. Every verification tier runs in that one workflow. PyPI upload happens only if all of them pass.
-5. Update `docs/changelog.md` separately if needed (different format from `CHANGELOG.md`, and not managed by Release Please).
+5. Nothing else to update: `docs/changelog.md` embeds the root `CHANGELOG.md`, so the docs site picks up the new entry automatically.
 
 **Certification is an in-chain gate.** `azure-e2e` deploys to real Azure and runs the live e2e suite at the same ref being published, so it covers the exact published commit by construction. There is no separate certification step to dispatch, and no cross-run SHA or freshness matching to get wrong.
 
