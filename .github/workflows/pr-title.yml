@@ -30,6 +30,21 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
           pattern='^(feat|fix|docs|test|perf|refactor|ci|build|chore|style|revert)(\([a-z0-9][a-z0-9._/,-]*\))?!?: [^[:space:]](.*[^.[:space:]])?$'
+          trailing_ref='\(#[0-9]+\)$'
+          if [[ "$TITLE" =~ $trailing_ref ]]; then
+            printf 'Title rejected: %s\n\n' "$TITLE"
+            cat <<'EOF'
+          Do not put an issue or pull request number at the end of the title.
+          GitHub appends the pull request number to the squash commit on its own,
+          so "fix: decode the results (#503)" lands on main as
+          "fix: decode the results (#503) (#504)".
+
+          Reference issues in the pull request body instead, for example:
+            Closes #503
+          EOF
+            echo "::error::The pull request title must not end with an issue or pull request number; GitHub appends it automatically."
+            exit 1
+          fi
           if [[ "$TITLE" =~ $pattern ]]; then
             printf 'Title OK: %s\n' "$TITLE"
             exit 0
