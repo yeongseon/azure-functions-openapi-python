@@ -111,10 +111,7 @@ Follow these conventions when opening issues so the backlog stays consistent wit
 
 ### Title
 
-- Use Conventional Commit prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `ci:`, `build:`, `perf:`.
-- Add a scope qualifier when it narrows the area: `feat(cli):`, `docs(spec):`, `refactor(bridge):`.
-- Keep the title imperative, under ~80 characters, no trailing period.
-- Do **not** put a priority marker in the title — priority is tracked with a `priority:*` label.
+Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
 
 ### Body
 
@@ -276,13 +273,7 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 
 ## Commit Rules
 
-Use Conventional Commits:
-
-```text
-<type>: <short imperative summary>
-```
-
-Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`
+Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
 
 ## Agent Rules
 

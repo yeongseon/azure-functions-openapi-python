@@ -1,3 +1,5 @@
+<!-- Title: `type: description` or `type(scope): description`. See "Title Convention" in CONTRIBUTING.md. Link issues in the body (Closes #123), not in the title. -->
+
 ## Summary
 
 <!-- Brief description of changes -->

@@ -65,42 +65,7 @@ git commit -m "feat: add cookie parameter support to @openapi decorator"
 
 ## Commit Message Format
 
-All commits must follow the Conventional Commits specification. Release Please derives
-the next version and generates the changelog from these messages, so the prefix you choose
-directly determines the release.
-
-### Structure
-
-```text
-<type>(<optional scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-### Allowed types
-
-| Type | Description |
-| --- | --- |
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `docs` | Documentation only |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `test` | Adding or updating tests |
-| `chore` | Maintenance, dependency updates, tooling |
-| `ci` | CI/CD workflow changes |
-| `perf` | Performance improvement |
-
-### Examples
-
-```bash
-git commit -m "feat: add OpenAPI 3.1 nullable type conversion"
-git commit -m "fix: handle empty request body in POST operations"
-git commit -m "docs: add security scheme examples to usage guide"
-git commit -m "refactor: extract schema builder into utils module"
-git commit -m "chore: update ruff to v0.15.0"
-```
+Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
 
 ## Pull Request Guidelines
 
