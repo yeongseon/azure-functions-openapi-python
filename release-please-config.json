@@ -8,14 +8,15 @@
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "refactor", "section": "Refactor" },
-    { "type": "style", "section": "Styling" },
-    { "type": "test", "section": "Testing" },
     { "type": "perf", "section": "Performance" },
-    { "type": "ci", "section": "Miscellaneous Tasks" },
-    { "type": "chore", "section": "Miscellaneous Tasks" },
-    { "type": "build", "section": "Other" }
+    { "type": "revert", "section": "Reverts" },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "refactor", "section": "Refactor", "hidden": true },
+    { "type": "style", "section": "Styling", "hidden": true },
+    { "type": "test", "section": "Testing", "hidden": true },
+    { "type": "ci", "section": "Miscellaneous Tasks", "hidden": true },
+    { "type": "chore", "section": "Miscellaneous Tasks", "hidden": true },
+    { "type": "build", "section": "Other", "hidden": true }
   ],
   "packages": {
     ".": {

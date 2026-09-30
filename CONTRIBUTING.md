@@ -196,7 +196,7 @@ type(scope): description
 | `style` | formatting only, no behavior change |
 | `revert` | reverting an earlier change |
 
-A breaking change adds `!` before the colon: `type!: description` or `type(scope)!: description`. Whether a change is breaking, and how it is released, is decided by the Release Process in [AGENTS.md](AGENTS.md), not by the title alone. Release Please reads these titles from the squash commits on `main`: `fix` and `feat` drive the version bump, and the other types only shape the changelog.
+A breaking change adds `!` before the colon: `type!: description` or `type(scope)!: description`. Whether a change is breaking, and how it is released, is decided by the Release Process in [AGENTS.md](AGENTS.md), not by the title alone. Release Please reads these titles from the squash commits on `main`: `feat`, `fix`, `perf` and `revert` are treated as user-facing, so they appear in `CHANGELOG.md` and drive the version bump. The remaining types are marked hidden — they neither appear in the changelog nor cut a release, unless the commit carries a breaking change.
 
 Examples:
 
@@ -217,10 +217,11 @@ Issue titles are not enforced. Anyone can open an issue without knowing this con
 
 Merging to `main` does not publish a release.
 
-Releases are initiated by pushing a version tag (`v*`), or by the documented
-manual dispatch of the publish workflow, and only after the release
-verification requirements have been satisfied. Contributors never need to bump
-a version or tag anything in an ordinary pull request.
+Release Please keeps an open **Release PR** showing what the next version would
+be; merging that PR is what cuts the release, and it is what creates the `v*`
+tag that starts the publish workflow. Publishing happens only after the release
+verification requirements have been satisfied. Contributors never need to bump a
+version or tag anything in an ordinary pull request.
 
 See `AGENTS.md` for the maintainer-only release procedure.
 
