@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.26.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.26.0...v0.26.1) (2026-09-30)
+
+
+### Miscellaneous Tasks
+
+* add a PR title check and unify the title convention ([#650](https://github.com/yeongseon/azure-functions-openapi-python/issues/650)) ([5f8801e](https://github.com/yeongseon/azure-functions-openapi-python/commit/5f8801ec6b178690b1e35d68c1169da026a0d7b6))
+
 ## [0.26.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.25.1...v0.26.0) (2026-09-29)
 
 
