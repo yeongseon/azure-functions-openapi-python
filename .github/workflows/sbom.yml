@@ -15,11 +15,44 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      # Scanning the checkout inventoried the workflow actions and found no
+      # runtime dependency at all. Install the built wheel and scan that
+      # environment, so the SBOM describes what users actually receive.
+      - name: Build and install the distribution
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+          python -m venv .sbom-venv
+          .sbom-venv/bin/pip install "$(ls dist/*.whl)"
+
       - name: Generate SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
+          path: .sbom-venv
           format: spdx-json
           output-file: sbom.spdx.json
+
+      # Without this the job is green whatever syft produces, which is how the
+      # dependency-free SBOM went unnoticed.
+      - name: Verify the SBOM describes the distribution
+        run: |
+          python - <<'PY'
+          import json, sys
+
+          packages = {
+              p["name"].replace("_", "-").lower()
+              for p in json.load(open("sbom.spdx.json"))["packages"]
+          }
+          missing = {"azure-functions-openapi", "azure-functions"} - packages
+          if missing:
+              sys.exit(f"::error::SBOM omits {sorted(missing)}; it is not describing the distribution")
+          print(f"SBOM describes {len(packages)} packages, including the distribution and its runtime dependencies")
+          PY
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

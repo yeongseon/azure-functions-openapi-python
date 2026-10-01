@@ -13,8 +13,14 @@ updates:
       semver-patch-days: 3
       include:
         - "*"
+    # Runtime dependency bumps change what users receive on install, so they are
+    # typed fix(deps) and cut a release. Development-only bumps stay chore(deps),
+    # which is a hidden changelog section and therefore does not. Without the
+    # split, a runtime bump such as "raise the azure-functions floor" would sit
+    # on main unreleased until some unrelated feat or fix came along.
     commit-message:
-      prefix: "chore(deps)"
+      prefix: "fix(deps)"
+      prefix-development: "chore(deps)"
     labels:
       - "dependencies"
     open-pull-requests-limit: 10
@@ -36,6 +42,8 @@ updates:
       default-days: 7
       include:
         - "*"
+    # Action bumps never reach users of the published package, so they stay
+    # chore(deps) and do not cut a release.
     commit-message:
       prefix: "chore(deps)"
     labels:

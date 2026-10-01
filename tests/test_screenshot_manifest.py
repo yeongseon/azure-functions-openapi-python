@@ -54,10 +54,14 @@ def test_missing_image_and_duplicate_id_fail(tmp_path: Path) -> None:
             image: docs/assets/does_not_exist.png
             captured: {package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}
             source: {inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}
+            output:
+              hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
           - id: dupe
             image: docs/assets/webhook_receiver_swagger_ui.png
             captured: {package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}
             source: {inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}
+            output:
+              hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
         """,
     )
     result = _run("--manifest", str(manifest))
@@ -77,6 +81,8 @@ def test_source_drift_warns_but_passes_without_strict(tmp_path: Path) -> None:
             image: docs/assets/webhook_receiver_swagger_ui.png
             captured: {package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}
             source: {inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:stale"}
+            output:
+              hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
         """,
     )
     ok = _run("--manifest", str(manifest))
@@ -101,6 +107,8 @@ def test_secret_in_manifest_fails(tmp_path: Path) -> None:
             image: docs/assets/webhook_receiver_swagger_ui.png
             captured: {{package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}}
             source: {{inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}}
+            output:
+              hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
         """,
     )
     result = _run("--manifest", str(manifest))
@@ -124,9 +132,52 @@ def test_secret_scan_allow_exempts_reviewed_match(tmp_path: Path) -> None:
             image: docs/assets/webhook_receiver_swagger_ui.png
             captured: {{package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}}
             source: {{inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}}
+            output:
+              hash: "sha256:5bdb7901a647ce5e15fc9ad439742160c04a5c46f655c627106b5e2856a644f0"
         """,
     )
     result = _run("--manifest", str(manifest))
     # Secret is allowlisted, so the only remaining signal is soft hash drift.
     assert result.returncode == 0
     assert "subscription id" not in result.stdout
+
+
+def test_output_hash_mismatch_warns_and_fails_strict(tmp_path: Path) -> None:
+    manifest = tmp_path / "m.yml"
+    _write(
+        manifest,
+        """
+        schema_version: 1
+        screenshots:
+          - id: tampered
+            image: docs/assets/webhook_receiver_swagger_ui.png
+            captured: {package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}
+            source: {inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:stale"}
+            output:
+              hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        """,
+    )
+    ok = _run("--manifest", str(manifest))
+    assert ok.returncode == 0
+    assert "image differs from the hash recorded at capture" in ok.stdout
+
+    strict = _run("--manifest", str(manifest), "--strict")
+    assert strict.returncode == 1
+
+
+def test_missing_output_hash_is_a_hard_error(tmp_path: Path) -> None:
+    manifest = tmp_path / "m.yml"
+    _write(
+        manifest,
+        """
+        schema_version: 1
+        screenshots:
+          - id: no-output
+            image: docs/assets/webhook_receiver_swagger_ui.png
+            captured: {package_version: "0.0.0", git_sha: x, date: "2026-01-01", method: manual}
+            source: {inputs: [examples/webhook_receiver/function_app.py], hash: "sha256:x"}
+        """,
+    )
+    result = _run("--manifest", str(manifest))
+    assert result.returncode == 1
+    assert "output.hash is required" in result.stdout

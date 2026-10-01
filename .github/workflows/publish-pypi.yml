@@ -7,12 +7,10 @@ on:
   push:
     tags:
       - 'v*'
+  # Dispatch is the recovery path. It takes no ref input: run it with the tag
+  # selected as the workflow ref, so the published ref is always a real tag and
+  # cannot be an arbitrary branch supplied as a string.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: Git tag to publish (for example v0.21.1)
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -51,7 +49,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -66,7 +64,7 @@ jobs:
       - name: Check if tag matches __version__
         id: version
         run: |
-          TAG_NAME="${{ inputs.tag || github.ref_name }}"
+          TAG_NAME="${{ github.ref_name }}"
           VERSION_FROM_FILE=$(grep -Po '(?<=__version__ = ")[^"]*' src/azure_functions_openapi/__init__.py)
           TAG_VERSION=${TAG_NAME#v}
           echo "Version from file: $VERSION_FROM_FILE"
@@ -98,7 +96,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -125,7 +123,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Download candidate wheel
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -176,7 +174,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Set up Node.js (func Core Tools + Azurite)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

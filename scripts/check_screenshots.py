@@ -80,15 +80,9 @@ def _scan_text_for_secrets(text: str, label: str, allow: list[str]) -> list[str]
 def _scan_secrets(path: Path, manifest: dict[str, Any]) -> list[str]:
     """Scan the manifest text and every referenced screenshot for leaked secrets."""
     allow_raw = manifest.get("secret_scan_allow", [])
-    allow = (
-        [a for a in allow_raw if isinstance(a, str)]
-        if isinstance(allow_raw, list)
-        else []
-    )
+    allow = [a for a in allow_raw if isinstance(a, str)] if isinstance(allow_raw, list) else []
     findings: list[str] = []
-    findings.extend(
-        _scan_text_for_secrets(path.read_text(encoding="utf-8"), path.name, allow)
-    )
+    findings.extend(_scan_text_for_secrets(path.read_text(encoding="utf-8"), path.name, allow))
     for entry in manifest["screenshots"]:
         if not isinstance(entry, dict):
             continue
@@ -165,6 +159,10 @@ def _validate_entry(entry: Any, index: int) -> tuple[list[str], str, list[str]]:
         if "hash" not in source:
             errors.append(f"{entry_id or index}: source.hash is required")
 
+    output = entry.get("output")
+    if not isinstance(output, dict) or "hash" not in output:
+        errors.append(f"{entry_id or index}: output.hash is required")
+
     return errors, entry_id, inputs
 
 
@@ -196,6 +194,15 @@ def _check(path: Path, strict: bool) -> int:
                 f"{entry_id}: source inputs changed since capture "
                 f"(declared {declared}, actual {actual}); re-capture screenshot "
                 f"and refresh the manifest"
+            )
+
+        declared_output = entry["output"]["hash"]
+        actual_output = _image_hash(entry["image"])
+        if declared_output != actual_output:
+            warnings.append(
+                f"{entry_id}: image differs from the hash recorded at capture "
+                f"(declared {declared_output}, actual {actual_output}); "
+                f"refresh the manifest with --update"
             )
 
     if hard_errors:
