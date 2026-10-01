@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/azure-functions-openapi.svg)](https://pypi.org/project/azure-functions-openapi/)
 [![Downloads](https://static.pepy.tech/badge/azure-functions-openapi/month)](https://pepy.tech/project/azure-functions-openapi)
-[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/azure-functions-openapi/)
+[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/azure-functions-openapi/)
 [![CI](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml)
 [![Release](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml)
 [![Security Scans](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml)
@@ -140,12 +140,12 @@ azure-functions-openapi
 
 このパッケージは、`azure-functions` SDK からルート、メソッド、ハンドラーを 1 つの分離されたアダプター（`azure_functions_openapi.adapters`）を介して検出します。検出は **公開 API 優先** で、公開された冪等な `FunctionBuilder.build()` で列挙し、その他はすべて公開 `Function` アクセサー（`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`）を介して読み取ります。アダプターは冪等でない `FunctionApp.get_functions()` を決して呼び出しません。列挙に公開の代替手段がない **唯一** の非公開トークン `app._function_builders` のみがアダプター内部に分離され、必須のガードテストで保護されます。CI で明示的なマトリックスで検証します。経緯は [イシュー #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) と [イシュー #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327) を参照してください。
 
-| `azure-functions` | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
-| ----------------- | :---------: | :---------: | :---------: | :---------: |
-| `1.21.0`（下限）  | ✅ 検証済 |             |             |             |
-| `1.24.0`          | ✅ 検証済 |             |             |             |
-| `latest 1.x`      | ✅ 検証済 | ✅ 検証済 |             |             |
-| `2.x` (`>=2,<3`)  |           |           | ✅ 検証済 | ✅ 検証済 |
+| `azure-functions` | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ----------------- | :---------: | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0`（下限）  | ✅ 検証済 |             |             |             |             |
+| `1.24.0`          | ✅ 検証済 |             |             |             |             |
+| `latest 1.x`      | ✅ 検証済 | ✅ 検証済 | ✅ 検証済 |             |             |
+| `2.x` (`>=2,<3`)  |           |           |           | ✅ 検証済 | ✅ 検証済 |
 
 `pyproject.toml` のバージョンピンはインタプリタに依存します: Python < 3.13 では `azure-functions>=1.21.0,<2.0.0`、Python 3.13+ では `azure-functions>=1.21.0,<3.0.0`（未認証の `azure-functions` 3.x を除外）です。下限が `1.21.0` なのは、それ以前のリリースが `FunctionBuilder.__call__` から `None` を返すためです（テストと CLI 抽出でデコレートされたハンドラーの直接呼び出しが壊れる）。分割している理由は、`azure-functions` 2.x が Python < 3.13 のサポートを廃止するため、2.x ラインは Python 3.13+ でのみインストール・提供されるからです。2.x パスは CI の専用 wheel ベース互換性マトリックス（実際の Python 3.13 および 3.14 インタプリタ）と、実際の Azure 認証 — koreacentral の Flex Consumption プランにデプロイされた Python 3.13 Function App — によって実証されています。上限解除の作業は [イシュー #528](https://github.com/yeongseon/azure-functions-openapi-python/issues/528) と [イシュー #488](https://github.com/yeongseon/azure-functions-openapi-python/issues/488) を参照してください。
 

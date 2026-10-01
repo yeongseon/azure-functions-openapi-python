@@ -8,7 +8,7 @@
 - Project: `azure-functions-openapi`
 - Project type: Python library
 - Runtime scope: Azure Functions Python v2 programming model
-- Minimum supported Python: `3.11`
+- Minimum supported Python: `3.10`
 - Packaging: `pyproject.toml` with Hatch
 
 ## Root vs Docs
@@ -260,7 +260,7 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 
 ## Compatibility Rules
 
-- Runtime code must remain compatible with Python `3.11`.
+- Runtime code must remain compatible with Python `3.10`.
 - Public APIs must be fully typed.
 - Avoid silent behavior changes.
 - Breaking changes require explicit documentation and versioning discussion.

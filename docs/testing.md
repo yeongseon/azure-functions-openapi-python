@@ -51,11 +51,11 @@ hatch run pytest -k "security" -v
 
 ## Coverage Policy
 
-- CI runs tests on Python **3.11 through 3.14**.
+- CI runs tests on Python **3.10 through 3.14**.
 - All matrix versions are **required** -- no allow-fail entries.
 - Python 3.14 is treated as stable support, not preview.
 - Coverage report is generated as `coverage.xml`.
-- Codecov upload runs in CI for the Python 3.11 job.
+- Codecov upload runs in CI for the Python 3.10 job.
 
 ### Coverage thresholds
 
@@ -233,7 +233,7 @@ The CI workflow runs:
 4. `make security` -- Bandit security scan
 
 All four steps must pass for a PR to be mergeable. The matrix covers
-Python 3.11, 3.12, 3.13, and 3.14.
+Python 3.10, 3.11, 3.12, 3.13, and 3.14.
 
 ## Real Azure E2E Tests
 

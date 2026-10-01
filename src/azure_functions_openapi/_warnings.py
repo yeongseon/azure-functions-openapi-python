@@ -16,13 +16,14 @@ without anyone noticing.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 
 
-class WarningCode(StrEnum):
+class WarningCode(str, Enum):
     """Stable identifiers for structured spec-generation warnings.
 
-    A :class:`enum.StrEnum`, so the codes serialise as plain strings.
+    Inherits from ``str`` (rather than :class:`enum.StrEnum`, which is 3.11+) so
+    the codes serialise as plain strings on Python 3.10+.
     """
 
     VERSION_SKEW = "version-skew"
@@ -35,6 +36,9 @@ class WarningCode(StrEnum):
     VERSION_DOWNGRADE_DROP = "version-downgrade-drop"
     SCHEMA_SUBSTITUTION = "schema-substitution"
     OPERATION_SKIPPED = "operation-skipped"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.value
 
 
 @dataclass(frozen=True)

@@ -45,7 +45,7 @@ In this guide, you deploy example apps that provide:
 | Azure account | [portal.azure.com](https://portal.azure.com) | [Create free account](https://azure.microsoft.com/free/) |
 | Azure CLI | `az --version` | [Install Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) |
 | Azure Functions Core Tools v4 | `func --version` | [Install Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools) |
-| Python 3.11-3.13 | `python3 --version` | [python.org](https://www.python.org/downloads/) |
+| Python 3.10-3.13 | `python3 --version` | [python.org](https://www.python.org/downloads/) |
 | Package examples available | `ls examples` | Clone this repo again if missing |
 | Local example works | `func start` + local `curl` | See [README](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/README.md) |
 
