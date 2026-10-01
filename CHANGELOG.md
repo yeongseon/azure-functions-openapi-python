@@ -1,6 +1,32 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.27.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.26.0...v0.27.0) (2026-10-01)
+
+
+### Bug Fixes
+
+* **compat:** deprecate Python 3.10 ahead of its removal ([#676](https://github.com/yeongseon/azure-functions-openapi-python/issues/676)) ([c8365c8](https://github.com/yeongseon/azure-functions-openapi-python/commit/c8365c891a8af983983fce23d8ab112571feaf0d))
+* **infra:** default the Bicep runtime to a supported Python ([#669](https://github.com/yeongseon/azure-functions-openapi-python/issues/669)) ([323334b](https://github.com/yeongseon/azure-functions-openapi-python/commit/323334be2c57cb99af1632cfd170aee250b58444))
+* **metadata:** validate the top-level license object in strict mode ([#683](https://github.com/yeongseon/azure-functions-openapi-python/issues/683)) ([9667b80](https://github.com/yeongseon/azure-functions-openapi-python/commit/9667b8098255e016a399d4ec22aa93eb69b6abe5))
+* **parameters:** reject parameters without schema or content ([#682](https://github.com/yeongseon/azure-functions-openapi-python/issues/682)) ([93690f1](https://github.com/yeongseon/azure-functions-openapi-python/commit/93690f1b361a9730941858ad2172b35ec2afee6a))
+* **routes:** normalize required Azure inline constraints in OpenAPI paths ([#674](https://github.com/yeongseon/azure-functions-openapi-python/issues/674)) ([f534767](https://github.com/yeongseon/azure-functions-openapi-python/commit/f534767f4bb5760aeea14bd88c3c5ebe2cef1522)), closes [#612](https://github.com/yeongseon/azure-functions-openapi-python/issues/612)
+* **spec:** detach generated metadata and sibling operations ([#672](https://github.com/yeongseon/azure-functions-openapi-python/issues/672)) ([7ec4f6c](https://github.com/yeongseon/azure-functions-openapi-python/commit/7ec4f6c252859af72a929f676cdd1def85373932)), closes [#611](https://github.com/yeongseon/azure-functions-openapi-python/issues/611)
+* **spec:** down-convert const for OpenAPI 3.0 ([#677](https://github.com/yeongseon/azure-functions-openapi-python/issues/677)) ([f1087f4](https://github.com/yeongseon/azure-functions-openapi-python/commit/f1087f4deca6c0f2dcd4a78110c03345d27ca456))
+* **spec:** down-convert fixed-length tuples for OpenAPI 3.0 ([#680](https://github.com/yeongseon/azure-functions-openapi-python/issues/680)) ([4d67912](https://github.com/yeongseon/azure-functions-openapi-python/commit/4d679128ecf9c9530ca7e0cbb357c514d443e149))
+* **spec:** emit and validate valid OpenAPI 3.2 querystring parameters ([#675](https://github.com/yeongseon/azure-functions-openapi-python/issues/675)) ([8c0d4e2](https://github.com/yeongseon/azure-functions-openapi-python/commit/8c0d4e2c23e81e327b4382e356fc653c2dd68f26)), closes [#609](https://github.com/yeongseon/azure-functions-openapi-python/issues/609)
+* **spec:** expose explicit schema failures and skipped operations ([#673](https://github.com/yeongseon/azure-functions-openapi-python/issues/673)) ([ce3ec44](https://github.com/yeongseon/azure-functions-openapi-python/commit/ce3ec44a5b8f5fd4f89d6b69a611278d36d86b54)), closes [#610](https://github.com/yeongseon/azure-functions-openapi-python/issues/610)
+* **spec:** honour an explicit empty security requirement ([#678](https://github.com/yeongseon/azure-functions-openapi-python/issues/678)) ([d7b4a71](https://github.com/yeongseon/azure-functions-openapi-python/commit/d7b4a7154657b3c6f3621fc8e33e4a54c160d509))
+* **spec:** report a request model on a bodyless method ([#679](https://github.com/yeongseon/azure-functions-openapi-python/issues/679)) ([33b8a8b](https://github.com/yeongseon/azure-functions-openapi-python/commit/33b8a8b121c4396cd70643b9062412f4e4935792))
+* **spec:** represent null-only literals validly in OpenAPI 3.0 ([#681](https://github.com/yeongseon/azure-functions-openapi-python/issues/681)) ([47548c2](https://github.com/yeongseon/azure-functions-openapi-python/commit/47548c2d7952960780a8f018256461da6e61c9ec))
+* stop shipping docs images in the sdist, and make two checks real ([#666](https://github.com/yeongseon/azure-functions-openapi-python/issues/666)) ([1320204](https://github.com/yeongseon/azure-functions-openapi-python/commit/1320204f447c8d6de6169d7a092df317140e2a18))
+* **swagger-ui:** enable try-it-out for head and options ([#684](https://github.com/yeongseon/azure-functions-openapi-python/issues/684)) ([c606550](https://github.com/yeongseon/azure-functions-openapi-python/commit/c606550df62866dfcc18ee4f25bf0d913060fae6))
+
+
+### Miscellaneous Tasks
+
+* release 0.27.0 ([33f3196](https://github.com/yeongseon/azure-functions-openapi-python/commit/33f3196b8e690661f2902a898edfe97ac06eee89))
+
 ## [0.26.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.25.1...v0.26.0) (2026-09-29)
 
 
