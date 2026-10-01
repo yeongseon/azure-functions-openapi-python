@@ -420,7 +420,7 @@ def validate_route_path(route: Any) -> bool:
 
     # Allow alphanumeric, hyphens, underscores, slashes, and curly braces for path parameters
     # Whitespace is intentionally disallowed for route consistency and safety.
-    if not re.match(r"^/?[a-zA-Z0-9_\-/{}]*$", route):
+    if not re.match(r"^/?[a-zA-Z0-9_\-/{}:]*$", route):
         return False
     # Validate brace structure
     if not _validate_path_param_braces(route):
@@ -431,6 +431,62 @@ def validate_route_path(route: Any) -> bool:
 
 _PARAM_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Azure route templates may constrain a segment inline (``items/{id:int}``).
+# Only this required, simple subset is supported; anything else is rejected
+# rather than mistranslated, because the generated path, the parameter name and
+# the parameter schema all have to describe the same endpoint. ``alpha`` maps to
+# a plain string: it constrains Azure's routing, not the value's format, so
+# emitting a ``pattern`` would assert a payload contract the runtime does not
+# enforce.
+SUPPORTED_ROUTE_CONSTRAINTS: dict[str, dict[str, Any]] = {
+    "int": {"type": "integer"},
+    "alpha": {"type": "string"},
+}
+
+_ROUTE_PARAM_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z]+))?$")
+
+
+def _split_route_param(token: str) -> tuple[str, str | None] | None:
+    """Split ``name`` / ``name:constraint`` into its parts, or return None."""
+    match = _ROUTE_PARAM_RE.match(token)
+    if match is None:
+        return None
+    name, constraint = match.group(1), match.group(2)
+    if constraint is not None and constraint not in SUPPORTED_ROUTE_CONSTRAINTS:
+        return None
+    return name, constraint
+
+
+def parse_route_template(route: str) -> tuple[str, dict[str, str]]:
+    """Return the OpenAPI path and the inline constraints declared on it.
+
+    ``items/{id:int}`` yields ``("items/{id}", {"id": "int"})`` so the emitted
+    path matches the parameter name, which is what OpenAPI requires. A route
+    without constraints is returned unchanged with an empty mapping.
+    """
+    out: list[str] = []
+    constraints: dict[str, str] = {}
+    i = 0
+    while i < len(route):
+        if route[i] == "{":
+            j = route.find("}", i + 1)
+            if j == -1:
+                out.append(route[i:])
+                break
+            parsed = _split_route_param(route[i + 1 : j])
+            if parsed is None:
+                out.append(route[i : j + 1])
+            else:
+                name, constraint = parsed
+                out.append(f"{{{name}}}")
+                if constraint is not None:
+                    constraints[name] = constraint
+            i = j + 1
+        else:
+            out.append(route[i])
+            i += 1
+    return "".join(out), constraints
+
 
 def _validate_path_param_braces(route: str) -> bool:
     """Return False if brace structure is malformed (empty, nested, or invalid identifier)."""
@@ -440,8 +496,10 @@ def _validate_path_param_braces(route: str) -> bool:
             j = route.find("}", i + 1)
             if j == -1:
                 return False  # unclosed {
-            name = route[i + 1 : j]
-            if not name or "{" in name or "}" in name or not _PARAM_NAME_RE.match(name):
+            token = route[i + 1 : j]
+            if not token or "{" in token or "}" in token:
+                return False
+            if _split_route_param(token) is None:
                 return False
             i = j + 1
         elif route[i] == "}":

@@ -25,7 +25,13 @@ from azure_functions_openapi.routes import (
     apply_route_prefix,
     normalize_route_prefix,
 )
-from azure_functions_openapi.utils import hoist_inline_defs, model_to_schema, type_to_schema
+from azure_functions_openapi.utils import (
+    SUPPORTED_ROUTE_CONSTRAINTS,
+    hoist_inline_defs,
+    model_to_schema,
+    parse_route_template,
+    type_to_schema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -580,7 +586,12 @@ def generate_openapi_spec(
             try:
                 logical_name = meta.get("function_name") or func_name
                 # route & method --------------------------------------------------
-                raw_path = f"/{(meta.get('route') or logical_name).lstrip('/')}"
+                raw_route = (meta.get("route") or logical_name).lstrip("/")
+                # Azure inline constraints (``items/{id:int}``) must not reach the
+                # document: OpenAPI matches a path template variable to a
+                # parameter by name, so the path has to read ``{id}`` while the
+                # constraint becomes that parameter's schema.
+                raw_path, route_constraints = parse_route_template(f"/{raw_route}")
                 path = apply_route_prefix(raw_path, normalized_prefix)
                 # An unspecified method (``None``) expands to the full HTTP set
                 # ONLY when there is binding evidence that the Azure runtime
@@ -714,6 +725,43 @@ def generate_openapi_spec(
                         else param
                         for param in parameters
                     ]
+
+                # Inline route constraints become required path parameters, but
+                # never override what the caller declared: an explicit parameter
+                # with an incompatible schema is a contract conflict, not a
+                # default to be silently replaced.
+                if route_constraints:
+                    declared = {
+                        p["name"]: p
+                        for p in (op_parameters or [])
+                        if isinstance(p, dict) and p.get("in") == "path" and "name" in p
+                    }
+                    for _name, _constraint in route_constraints.items():
+                        _schema = dict(SUPPORTED_ROUTE_CONSTRAINTS[_constraint])
+                        _existing = declared.get(_name)
+                        if _existing is None:
+                            if op_parameters is None:
+                                op_parameters = []
+                            op_parameters.append(
+                                {
+                                    "name": _name,
+                                    "in": "path",
+                                    "required": True,
+                                    "schema": _schema,
+                                }
+                            )
+                            continue
+                        if _existing.get("schema") not in (None, _schema):
+                            _conflict = (
+                                f"Path parameter '{_name}' in {func_name} declares "
+                                f"{_existing.get('schema')!r} but the route constrains it "
+                                f"to ':{_constraint}' ({_schema!r}); keeping the explicit schema"
+                            )
+                            if strict:
+                                raise OpenAPISpecConfigError(_conflict)
+                            logger.warning(_conflict)
+                        elif _existing.get("schema") is None:
+                            _existing["schema"] = _schema
 
                 # querystring (OpenAPI 3.2 only) ---------------------------------
                 qs_model = meta.get("querystring_model")

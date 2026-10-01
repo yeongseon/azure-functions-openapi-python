@@ -108,6 +108,39 @@ These discrete parameters were **removed** from `@openapi`. Use the unified
 )
 ```
 
+### Route inline constraints
+
+Azure route templates may constrain a segment inline. A constrained segment is
+normalized into the OpenAPI path plus a required path parameter, because OpenAPI
+matches a template variable to a parameter **by name** — leaving `{id:int}` in
+the path would describe a different endpoint than the one the runtime serves.
+
+```python
+@openapi(summary="Get item", method="get", route="items/{id:int}")
+```
+
+produces the path `/api/items/{id}` and this parameter:
+
+```json
+{ "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+```
+
+Supported constraints:
+
+| constraint | schema | notes |
+| --- | --- | --- |
+| `:int` | `{"type": "integer"}` | |
+| `:alpha` | `{"type": "string"}` | No `pattern` is emitted. `alpha` constrains Azure's routing, not the value's format, so a pattern would assert a payload contract the runtime does not enforce. |
+
+Anything else — including optional constraints such as `{id:int?}` — is rejected
+by route validation rather than mistranslated, so an unsupported template fails
+loudly instead of producing a document that does not match the endpoint.
+
+**Precedence.** An explicit `parameters` entry always wins. If it declares a
+schema that disagrees with the route constraint, the explicit schema is kept and
+the disagreement is reported — as a warning normally, and as an error under
+`strict=True`. An explicit entry with no `schema` adopts the constraint's.
+
 ### Request/response models
 
 ```python
