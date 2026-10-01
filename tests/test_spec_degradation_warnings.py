@@ -11,8 +11,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
 import pytest
 
+from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
@@ -24,6 +26,10 @@ from azure_functions_openapi.spec import (
 
 class _Unconvertible:
     """Neither a Pydantic v2 model nor a usable type hint."""
+
+
+class _Filter(BaseModel):
+    query: str
 
 
 def _codes(spec: dict[str, Any], registry: OpenAPIRegistry) -> set[str]:
@@ -128,3 +134,27 @@ def test_warnings_do_not_leak_between_registries() -> None:
 
     assert "schema-substitution" in _codes(degraded_spec, degraded)
     assert "schema-substitution" not in _codes(healthy_spec, healthy)
+
+
+def test_strict_rejects_request_model_on_bodyless_method() -> None:
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/search", "GET", request_model=_Filter, registry=registry)
+
+    with pytest.raises(OpenAPISpecConfigError, match="GET /api/search"):
+        generate_openapi_spec(registry=registry, strict=True)
+
+
+def test_non_strict_warns_when_request_model_is_dropped() -> None:
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/search", "GET", request_model=_Filter, registry=registry)
+
+    spec = generate_openapi_spec(registry=registry)
+
+    assert "requestBody" not in spec["paths"]["/api/search"]["get"]
+    warning = next(
+        warning
+        for warning in collect_spec_warnings(spec, registry=registry)
+        if warning.code.value == "schema-substitution"
+    )
+    assert "request model" in warning.message
+    assert "GET /api/search" in warning.message

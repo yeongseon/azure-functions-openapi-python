@@ -916,6 +916,20 @@ def generate_openapi_spec(
                         }
 
                 for method in methods_to_emit:
+                    body_methods = {"post", "put", "patch", "delete", "query"}
+                    if (
+                        not methods_expanded
+                        and meta.get("request_model") is not None
+                        and method not in body_methods
+                    ):
+                        _bodyless_message = (
+                            f"{func_name}: explicit request model dropped from bodyless "
+                            f"operation {method.upper()} {path}"
+                        )
+                        if strict:
+                            raise OpenAPISpecConfigError(_bodyless_message)
+                        _diag_registry.add_schema_substitution(_bodyless_message)
+
                     # operation object --------------------------------------------
                     op: dict[str, Any] = {
                         "summary": meta.get("summary", ""),
@@ -936,7 +950,6 @@ def generate_openapi_spec(
                     # undefined there and many tools reject it). ``query`` (3.2)
                     # is safe/idempotent but explicitly carries a request
                     # payload, so it is body-bearing too.
-                    body_methods = {"post", "put", "patch", "delete", "query"}
                     if methods_expanded:
                         body_methods -= BODYLESS_HTTP_METHODS
                     if request_body_obj is not None and method in body_methods:
