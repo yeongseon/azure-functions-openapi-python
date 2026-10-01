@@ -159,7 +159,7 @@ This repository is **issue-based, not milestone-based**. Track and group work us
 
 - Plan and group multi-issue efforts with an **umbrella tracker issue** (see above) plus the existing `priority:*` labels. Do **not** create GitHub Milestones — none exist by design, and their absence is an intentional signal, not an oversight.
 - Do **not** invent new label taxonomies (e.g. `epic:*`, `vNext`, release-tag labels) to group work. Reuse `priority:*`, `area:*` (only where they already exist), and the umbrella issue. Propose any new label in discussion and wait for explicit approval before creating it.
-- Treat optional or tentative suggestions ("we could…", "it might be nice to…", "~해도 괜찮아") as **discussion, not a directive**. Confirm intent before making any structural change to how work is tracked (milestones, labels, project boards, issue hierarchies).
+- Treat optional or tentative suggestions ("we could…", "it might be nice to…", "it would be fine to…") as **discussion, not a directive**. Confirm intent before making any structural change to how work is tracked (milestones, labels, project boards, issue hierarchies).
 - Before adding any organizational structure, check whether the repository already has an established convention. A category being empty or unused (zero milestones, no `epic:*` labels) is evidence to follow the existing pattern, not to introduce a new one.
 
 ## Validation

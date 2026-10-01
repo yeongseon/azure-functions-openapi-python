@@ -75,6 +75,15 @@ sources = ["src"]
 
 [tool.hatch.build.targets.wheel]
 
+[tool.hatch.build.targets.sdist]
+# Documentation screenshots are 1.5 MB of the 1.7 MB sdist and are needed by
+# neither a build nor a test run, so a source install downloaded 20x the wheel
+# for no benefit.
+exclude = [
+  "docs/assets/*.png",
+  ".github",
+]
+
 [tool.hatch.version]
 path = "src/azure_functions_openapi/__init__.py"
 
