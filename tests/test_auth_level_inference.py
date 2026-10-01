@@ -170,6 +170,21 @@ def test_user_declared_security_wins_over_inference() -> None:
     assert AZURE_FUNCTION_KEY_SCHEME_NAME not in schemes
 
 
+def test_explicit_empty_security_disables_inference() -> None:
+    app = func.FunctionApp()
+
+    @openapi(summary="public", security=[])
+    @app.route(route="public", auth_level=func.AuthLevel.FUNCTION, methods=["GET"])
+    def public(req: func.HttpRequest) -> func.HttpResponse:  # pragma: no cover
+        return func.HttpResponse("ok")
+
+    reg = _scan(app)
+    spec = generate_openapi_spec(registry=reg, infer_auth_level=True)
+
+    assert spec["paths"]["/api/public"]["get"]["security"] == []
+    assert "securitySchemes" not in spec.get("components", {})
+
+
 def test_mixed_levels_share_single_scheme() -> None:
     app = func.FunctionApp()
 

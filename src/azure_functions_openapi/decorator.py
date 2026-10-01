@@ -750,6 +750,7 @@ def openapi(
                         "_expand_all_methods": expand_all_methods,
                         "parameters": validated_parameters,
                         "security": validated_security,
+                        "_security_declared": security is not None,
                         "security_scheme": validated_security_scheme,
                         # ── request / response schema ────────────────────────
                         "request_model": resolved_request_model,
@@ -969,6 +970,7 @@ def register_openapi_metadata(
                 "method": validated_method,
                 "parameters": validated_parameters,
                 "security": validated_security,
+                "_security_declared": security is not None,
                 "security_scheme": validated_security_scheme,
                 "request_model": request_model,
                 "request_body": request_body,
