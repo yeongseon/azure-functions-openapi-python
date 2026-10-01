@@ -42,6 +42,10 @@ class NullableModel(BaseModel):
     score: int | None = None
 
 
+class FixedTupleModel(BaseModel):
+    value: tuple[int, str]
+
+
 class NestedModel(BaseModel):
     user: SimpleModel
     tags: list[str] = []
@@ -220,6 +224,29 @@ class TestSpecValidity30:
             openapi_version="3.0.0",
             route_prefix="",
         )
+        validate(spec)
+
+    def test_fixed_tuple_model_3_0(self) -> None:
+        # Given
+        @openapi(route="/tuples", method="get", responses=FixedTupleModel)
+        def get_tuple() -> None:
+            pass
+
+        # When
+        spec = generate_openapi_spec(
+            title="Test API",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+
+        # Then
+        value_schema = spec["components"]["schemas"]["FixedTupleModel"]["properties"]["value"]
+        assert "prefixItems" not in value_schema
+        assert value_schema["items"] == {"oneOf": [{"type": "integer"}, {"type": "string"}]}
+        assert value_schema["minItems"] == 2
+        assert value_schema["maxItems"] == 2
         validate(spec)
 
     def test_manual_request_body_3_0(self) -> None:

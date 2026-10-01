@@ -322,6 +322,13 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
         }
     if "items" in result:
         result["items"] = _convert_schema_to_3_0(result["items"])
+    prefix_items = result.pop("prefixItems", None)
+    if isinstance(prefix_items, list) and prefix_items:
+        converted_items = [_convert_schema_to_3_0(item) for item in prefix_items]
+        if all(item == converted_items[0] for item in converted_items[1:]):
+            result["items"] = converted_items[0]
+        else:
+            result["items"] = {"oneOf": converted_items}
     for combinator in ("allOf", "anyOf", "oneOf"):
         if combinator in result and isinstance(result[combinator], list):
             result[combinator] = [_convert_schema_to_3_0(s) for s in result[combinator]]
