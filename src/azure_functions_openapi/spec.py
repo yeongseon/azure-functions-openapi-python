@@ -948,7 +948,6 @@ def generate_openapi_spec(
                 # convertible nullability no longer trips the warn/strict path.
                 components["schemas"] = _convert_schemas_to_3_0(components["schemas"])
                 compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
-                compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
                 for w in compat_warnings:
                     logger.warning("OpenAPI 3.0 compatibility: %s", w)
         if components.get("schemas") or components.get("securitySchemes"):
