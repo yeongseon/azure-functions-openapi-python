@@ -76,6 +76,22 @@ def test_generate_openapi_spec_info_and_top_level_metadata() -> None:
     assert spec["tags"] == [{"name": "items"}]
 
 
+def test_generate_openapi_spec_strict_rejects_license_without_name() -> None:
+    # Given
+    license_metadata = {"url": "https://example.com/license"}
+
+    # When / Then
+    with pytest.raises(
+        OpenAPISpecConfigError,
+        match="License Object must define a non-empty 'name'",
+    ):
+        generate_openapi_spec(
+            license=license_metadata,
+            strict=True,
+            registry=OpenAPIRegistry(),
+        )
+
+
 def test_generate_openapi_spec_uses_requested_openapi_version() -> None:
     """The 3.0.0 target stamps ``openapi: 3.0.0`` and omits the 3.1-only summary."""
     spec = generate_openapi_spec(openapi_version="3.0.0", registry=OpenAPIRegistry())
