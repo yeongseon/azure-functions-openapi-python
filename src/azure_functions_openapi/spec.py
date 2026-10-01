@@ -747,7 +747,12 @@ def generate_openapi_spec(
                         qs_resolved = hoist_inline_defs(
                             qs_schema, components, hoist_flat=hoist_flat_schemas
                         )
+                    # OpenAPI 3.2 requires ``name`` on every Parameter Object,
+                    # including ``in: querystring`` where the value plays no part
+                    # in serialization. A fixed, non-empty name keeps the output
+                    # deterministic and satisfies the schema.
                     qs_param = {
+                        "name": "querystring",
                         "in": "querystring",
                         "content": {qs_media_type: {"schema": qs_resolved}},
                     }
@@ -776,6 +781,30 @@ def generate_openapi_spec(
                             f"Operation for '{logical_name}' mixes 'query' and "
                             f"'querystring' parameters, which OpenAPI 3.2 forbids."
                         )
+                    for _p in op_parameters:
+                        if not (isinstance(_p, dict) and _p.get("in") == "querystring"):
+                            continue
+                        _where = f"Operation for '{logical_name}'"
+                        if not _p.get("name"):
+                            raise OpenAPISpecConfigError(
+                                f"{_where} declares a 'querystring' parameter without a "
+                                f"non-empty 'name'; OpenAPI 3.2 requires one on every "
+                                f"Parameter Object."
+                            )
+                        if "schema" in _p:
+                            raise OpenAPISpecConfigError(
+                                f"{_where} declares 'querystring' parameter "
+                                f"'{_p['name']}' with 'schema'; OpenAPI 3.2 requires "
+                                f"'content' for this location."
+                            )
+                        _content = _p.get("content")
+                        if not isinstance(_content, dict) or len(_content) != 1:
+                            raise OpenAPISpecConfigError(
+                                f"{_where} declares 'querystring' parameter "
+                                f"'{_p['name']}' whose 'content' must carry exactly one "
+                                f"media type (found "
+                                f"{len(_content) if isinstance(_content, dict) else 0})."
+                            )
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
@@ -1014,6 +1043,10 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     - Response status keys are 100–599 or ``'default'``.
     """
     _VALID_PARAM_LOCATIONS = {"path", "query", "header", "cookie"}
+    # ``querystring`` is a 3.2 location. Accept it only there, so a 3.0/3.1
+    # document still reports it while a valid 3.2 one stops being flagged.
+    if spec.get("openapi") == OPENAPI_VERSION_3_2:
+        _VALID_PARAM_LOCATIONS = _VALID_PARAM_LOCATIONS | {"querystring"}
 
     def _valid_response_status(status: str) -> bool:
         if status == "default":
