@@ -1149,6 +1149,10 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     seen_operation_ids: dict[str, str] = {}  # operationId → "METHOD path"
 
+    license_metadata = spec.get("info", {}).get("license")
+    if isinstance(license_metadata, dict) and not license_metadata.get("name", "").strip():
+        warnings.append("License Object must define a non-empty 'name'")
+
     for path, methods in spec.get("paths", {}).items():
         template_vars = set(_PATH_PARAM_RE.findall(path))
 
