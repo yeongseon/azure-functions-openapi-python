@@ -166,3 +166,23 @@ def test_collect_spec_warnings_empty_for_clean_spec() -> None:
     reg = _items_registry()
     spec = generate_openapi_spec(registry=reg)
     assert collect_spec_warnings(spec, registry=reg) == ()
+
+
+def test_parameter_without_schema_or_content_is_rejected() -> None:
+    # Given
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        "/search",
+        "GET",
+        parameters=[{"name": "q", "in": "query"}],
+        registry=reg,
+    )
+
+    # When
+    report = generate_openapi_report(registry=reg)
+
+    # Then
+    assert len(report.warnings) == 1
+    assert report.warnings[0].code.value == "spec-validation"
+    with pytest.raises(OpenAPISpecConfigError, match="exactly one of 'schema' or 'content'"):
+        generate_openapi_spec(registry=reg, strict=True)
