@@ -573,6 +573,7 @@ def generate_openapi_spec(
         _diag_registry = registry if registry is not None else _default_registry
         _diag_registry.clear_duplicate_operations()
         _diag_registry.clear_downgrade_drops()
+        _diag_registry.clear_generation_degradations()
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
@@ -686,8 +687,13 @@ def generate_openapi_spec(
 
                             json_content.setdefault("schema", model_schema)
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to generate response schema for {func_name}: {str(e)}"
+                        _schema_msg = f"Failed to generate response schema for {func_name}: {e}"
+                        if strict:
+                            raise OpenAPISpecConfigError(_schema_msg) from e
+                        logger.warning(_schema_msg)
+                        _diag_registry.add_schema_substitution(
+                            f"{func_name}: explicit response model replaced by the "
+                            f"default response ({e})"
                         )
                         _ensure_default_response(responses)
 
@@ -815,8 +821,13 @@ def generate_openapi_spec(
                             },
                         }
                     except Exception as e:
-                        logger.warning(
-                            f"Failed to generate request schema for {func_name}: {str(e)}"
+                        _schema_msg = f"Failed to generate request schema for {func_name}: {e}"
+                        if strict:
+                            raise OpenAPISpecConfigError(_schema_msg) from e
+                        logger.warning(_schema_msg)
+                        _diag_registry.add_schema_substitution(
+                            f"{func_name}: explicit request model replaced by a "
+                            f"generic object schema ({e})"
                         )
                         request_body_obj = {
                             "required": required,
@@ -868,11 +879,14 @@ def generate_openapi_spec(
                 # Configuration contract violations (e.g. querystring misuse)
                 # must always surface, regardless of strict mode.
                 raise
-            except (KeyError, TypeError, ValueError):
+            except (KeyError, TypeError, ValueError) as exc:
                 if strict:
                     logger.error("Failed to process function %s (strict mode)", func_name)
                     raise
                 logger.exception("Failed to process function %s", func_name)
+                _diag_registry.add_skipped_operation(
+                    f"{func_name}: operation omitted from the spec ({exc!r})"
+                )
                 continue
 
         spec: dict[str, Any] = {
@@ -1483,6 +1497,52 @@ def _collect_downgrade_drop_warnings(
     ]
 
 
+def _collect_schema_substitution_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive schema-substitution warnings from the registry's recorded failures.
+
+    Non-strict generation keeps emitting a document when an explicitly supplied
+    request/response model cannot be converted, substituting a generic object
+    schema or the default response. The substitution leaves no trace in the
+    finished spec, so :func:`collect_spec_warnings` cannot reconstruct it;
+    :meth:`OpenAPIRegistry.add_schema_substitution` records it during generation
+    instead (#610). Strict generation raises rather than substituting, so this
+    channel is empty there.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.SCHEMA_SUBSTITUTION,
+            message=message,
+            function_name=message.split(":", 1)[0] or None,
+        )
+        for message in reg.schema_substitutions
+    ]
+
+
+def _collect_skipped_operation_warnings(
+    registry: OpenAPIRegistry | None = None,
+) -> list[SpecWarning]:
+    """Derive skipped-operation warnings from the registry's recorded omissions.
+
+    Non-strict generation skips a registry entry that raises while being
+    processed. The operation is simply absent from the result, so a consumer
+    cannot tell it was ever expected; :meth:`OpenAPIRegistry.add_skipped_operation`
+    records the omission during generation (#610). Strict generation re-raises,
+    so this channel is empty there.
+    """
+    reg = registry if registry is not None else _default_registry
+    return [
+        SpecWarning(
+            code=WarningCode.OPERATION_SKIPPED,
+            message=message,
+            function_name=message.split(":", 1)[0] or None,
+        )
+        for message in reg.skipped_operations
+    ]
+
+
 def _collect_binding_mismatch_warnings(
     registry: OpenAPIRegistry | None = None,
 ) -> list[SpecWarning]:
@@ -1593,6 +1653,8 @@ def collect_spec_warnings(
     warnings_list.extend(_collect_empty_discovery_warnings(registry))
     warnings_list.extend(_collect_duplicate_operation_warnings(registry))
     warnings_list.extend(_collect_downgrade_drop_warnings(registry))
+    warnings_list.extend(_collect_schema_substitution_warnings(registry))
+    warnings_list.extend(_collect_skipped_operation_warnings(registry))
     warnings_list.extend(_collect_binding_mismatch_warnings(registry))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
