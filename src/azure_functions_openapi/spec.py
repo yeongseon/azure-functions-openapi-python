@@ -831,13 +831,13 @@ def generate_openapi_spec(
                         "operationId": _operation_id_for(
                             meta.get("operation_id"), method, logical_name, methods_expanded
                         ),
-                        "tags": meta.get("tags") or ["default"],
+                        "tags": copy.deepcopy(meta["tags"]) if meta.get("tags") else ["default"],
                         "responses": copy.deepcopy(responses),
                     }
                     if op_parameters is not None:
                         op["parameters"] = copy.deepcopy(op_parameters)
                     if security:
-                        op["security"] = security
+                        op["security"] = copy.deepcopy(security)
 
                     # requestBody: only body-bearing methods, and never on an
                     # auto-expanded GET/HEAD/DELETE (OpenAPI leaves the body
@@ -899,21 +899,21 @@ def generate_openapi_spec(
         # only when supplied; contact/license nest under ``info`` while
         # servers/externalDocs/tags sit at the document root.
         if contact is not None:
-            spec["info"]["contact"] = contact
+            spec["info"]["contact"] = copy.deepcopy(contact)
         if license is not None:
-            spec["info"]["license"] = license
+            spec["info"]["license"] = copy.deepcopy(license)
         if servers is not None:
-            spec["servers"] = servers
+            spec["servers"] = copy.deepcopy(servers)
         if external_docs is not None:
-            spec["externalDocs"] = external_docs
+            spec["externalDocs"] = copy.deepcopy(external_docs)
         if tags is not None:
-            spec["tags"] = tags
+            spec["tags"] = copy.deepcopy(tags)
 
         # Merge security schemes: explicit param + per-operation schemes from registry.
         # Raises OpenAPISpecConfigError on collision (same name, different definition).
         all_security_schemes: dict[str, dict[str, Any]] = {}
         if security_schemes:
-            all_security_schemes.update(security_schemes)
+            all_security_schemes.update(copy.deepcopy(security_schemes))
         for _fn, meta in registry_entries.items():
             scheme = meta.get("security_scheme")
             if isinstance(scheme, dict):
@@ -924,7 +924,7 @@ def generate_openapi_spec(
                             f"existing={all_security_schemes[name]!r}, "
                             f"new={definition!r}"
                         )
-                    all_security_schemes[name] = definition
+                    all_security_schemes[name] = copy.deepcopy(definition)
             # Add the inferred Azure function-key scheme for operations that
             # relied on auth_level inference (#482). Only when the operation
             # declared neither explicit security nor an explicit scheme, and
