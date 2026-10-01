@@ -862,11 +862,12 @@ def generate_openapi_spec(
 
                 # security --------------------------------------------------------
                 security: list[dict[str, list[str]]] = meta.get("security", [])
+                security_declared = bool(meta.get("_security_declared"))
                 # Infer from auth_level only when the operation declares no
                 # explicit security (user-declared security always wins) and the
                 # opt-in flag is set (#482). The binding-captured ``_auth_level``
                 # is only present on the FunctionApp-scan path.
-                if infer_auth_level and not security:
+                if infer_auth_level and not security_declared:
                     _inferred = _infer_auth_security(meta.get("_auth_level"))
                     if _inferred is not None:
                         security = _inferred[0]
@@ -924,7 +925,7 @@ def generate_openapi_spec(
                     }
                     if op_parameters is not None:
                         op["parameters"] = copy.deepcopy(op_parameters)
-                    if security:
+                    if security_declared or security:
                         op["security"] = copy.deepcopy(security)
 
                     # requestBody: only body-bearing methods, and never on an
@@ -1021,7 +1022,11 @@ def generate_openapi_spec(
             # declared neither explicit security nor an explicit scheme, and
             # only if the name is free — a user scheme of the same name always
             # wins (no collision error is raised for the inferred default).
-            if infer_auth_level and not meta.get("security") and not meta.get("security_scheme"):
+            if (
+                infer_auth_level
+                and not meta.get("_security_declared")
+                and not meta.get("security_scheme")
+            ):
                 _inferred = _infer_auth_security(meta.get("_auth_level"))
                 if _inferred is not None:
                     for name, definition in _inferred[1].items():
