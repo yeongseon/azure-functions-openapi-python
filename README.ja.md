@@ -1,5 +1,7 @@
 # Azure Functions OpenAPI
 
+> **翻訳について** — このドキュメントは英語版 [README.md](README.md) の翻訳であり、最新の内容と異なる場合があります。正確な内容は英語版をご確認ください。
+
 [![PyPI](https://img.shields.io/pypi/v/azure-functions-openapi.svg)](https://pypi.org/project/azure-functions-openapi/)
 [![Downloads](https://static.pepy.tech/badge/azure-functions-openapi/month)](https://pepy.tech/project/azure-functions-openapi)
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/azure-functions-openapi/)
