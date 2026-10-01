@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   # Lint, type-check and security run once on a single pinned interpreter
-  # (Python 3.11, matching the mypy/ruff target-version in pyproject). These
+  # (Python 3.10, matching the mypy/ruff target-version in pyproject). These
   # checks are interpreter-agnostic, so fanning them across the matrix would
   # only duplicate work.
   quality:
-    name: Lint, type-check & security (Py 3.11)
+    name: Lint, type-check & security (Py 3.10)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -24,10 +24,10 @@ jobs:
           # A PR can branch before the base tip; its merge-base needs full history.
           fetch-depth: 0
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.10
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
       - name: Install package with dev extras
         run: |
@@ -64,21 +64,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The 1.x line is supported on Python 3.11–3.12 (see the README SDK
+        # The 1.x line is supported on Python 3.10–3.12 (see the README SDK
         # Compatibility table). Python 3.13/3.14 are covered by the dedicated,
         # wheel-based `azure-functions-2x` lane below, because the 2.x line is
         # the only one installable there. Keeping 3.13/3.14 out of THIS matrix
         # avoids advertising an untested 1.x × 3.13/3.14 combination.
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12"]
         # 'latest' resolves whatever satisfies the pyproject.toml pin at CI time.
         azure-functions-version: ["latest"]
         include:
           # Extra SDK-version coverage on the lowest supported Python.
           # Keep in sync with the SDK compatibility matrix in README.md and
           # the version pin in pyproject.toml.
-          - python-version: "3.11"
+          - python-version: "3.10"
             azure-functions-version: "1.21.0"
-          - python-version: "3.11"
+          - python-version: "3.10"
             azure-functions-version: "1.24.0"
 
     steps:
@@ -131,15 +131,15 @@ jobs:
 
       - name: Run tests on the matrix interpreter
         # Raw pytest on the interpreter provisioned above (NOT through the
-        # pinned hatch env). The repo pytest config enables --cov
-        # with fail_under=95, but only the 3.11 x latest cell collects the full
+        # Python-3.10-pinned hatch env). The repo pytest config enables --cov
+        # with fail_under=95, but only the 3.10 x latest cell collects the full
         # suite: other cells skipif-guard optional-dependency tests (e.g. the
         # azure-functions-validation examples run only on 3.12), so their
         # coverage is legitimately lower. Enforce the coverage gate on the
-        # canonical 3.11 x latest cell and run the rest with --no-cov so a
+        # canonical 3.10 x latest cell and run the rest with --no-cov so a
         # version-variant cell cannot fail the build on a spurious coverage dip.
         env:
-          IS_COVERAGE_CELL: ${{ matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' }}
+          IS_COVERAGE_CELL: ${{ matrix.python-version == '3.10' && matrix.azure-functions-version == 'latest' }}
         run: |
           if [ "$IS_COVERAGE_CELL" = "true" ]; then
             pytest tests/
@@ -148,11 +148,11 @@ jobs:
           fi
 
       - name: Verify coverage output
-        if: matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest'
+        if: matrix.python-version == '3.10' && matrix.azure-functions-version == 'latest'
         run: ls -lh coverage.xml
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' && github.actor != 'dependabot[bot]'
+        if: matrix.python-version == '3.10' && matrix.azure-functions-version == 'latest' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -165,7 +165,7 @@ jobs:
   # The single required status check for branch protection.
   #
   # Branch protection matches required checks by literal name, so requiring
-  # matrix cells (`Test (Py 3.11, af latest)`, ...) couples it to the matrix:
+  # matrix cells (`Test (Py 3.10, af latest)`, ...) couples it to the matrix:
   # dropping a version removes the job that produced that name, the check is
   # then never reported, and GitHub holds it pending forever -- blocking every
   # PR, Dependabot and Release Please included, until an admin edits settings.
@@ -207,7 +207,7 @@ jobs:
   #
   # Why a wheel + dedicated job (not the main matrix): azure-functions 2.x
   # declares Requires-Python >=3.13, so it is only installable on 3.13/3.14 --
-  # interpreters the main `test` matrix (3.11-3.12) never covers. This lane
+  # interpreters the main `test` matrix (3.10-3.12) never covers. This lane
   # installs the built wheel directly (no hatch env) on real 3.13 AND 3.14
   #
   # Gating: this lane runs on every PR as a VISIBLE compatibility signal. The
@@ -237,7 +237,7 @@ jobs:
         # tree, mirroring the sibling proof lanes (azure-functions-validation
         # #351 / azure-functions-langgraph #350). Building the distribution
         # artifact also avoids hatch's default env, which is pinned to Python
-        # 3.11 in pyproject and cannot install azure-functions 2.x (Requires-
+        # 3.10 in pyproject and cannot install azure-functions 2.x (Requires-
         # Python >=3.13).
         run: |
           python -m pip install --upgrade pip build

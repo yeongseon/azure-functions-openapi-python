@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 import json
 from typing import Literal
 
@@ -20,7 +20,7 @@ from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.spec import generate_openapi_spec
 
 
-class Color(StrEnum):
+class Color(str, Enum):
     red = "red"
     blue = "blue"
 

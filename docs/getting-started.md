@@ -10,7 +10,7 @@ This quickstart takes you from zero to a working Azure Functions API with:
 
 Before you begin, make sure you have:
 
-- Python 3.11+
+- Python 3.10+
 - Azure Functions Core Tools v4
 - An Azure Functions Python v2 app (`func.FunctionApp`)
 
