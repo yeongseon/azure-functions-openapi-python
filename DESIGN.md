@@ -61,7 +61,7 @@ Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It retu
 
 ## Compatibility Policy
 
-- Minimum supported Python version: `3.10`
+- Minimum supported Python version: `3.11`
 - Supported runtime target: Azure Functions Python v2 programming model
 - Public APIs follow semantic versioning expectations
 

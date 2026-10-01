@@ -83,7 +83,7 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 ### Review process
 
 - At least one approval is required before merging.
-- CI must pass on all Python versions (3.10 -- 3.14).
+- CI must pass on all Python versions (3.11 -- 3.14).
 - Merge with "Squash and merge" to keep the commit history clean.
 
 ## Code Style
@@ -97,7 +97,7 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 ### Type annotations
 
 - All public functions must have complete type annotations.
-- Use Python 3.10+ syntax (PEP 604 `X | Y`, PEP 585 `list[T]`).
+- Use Python 3.11+ syntax (PEP 604 `X | Y`, PEP 585 `list[T]`).
 - `mypy` strict mode is enforced in CI.
 
 ### Naming conventions

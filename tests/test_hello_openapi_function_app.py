@@ -1,7 +1,7 @@
 # tests/test_webhook_receiver_example.py
 # (file kept as test_hello_openapi_function_app.py so CI mapping stays stable)
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import importlib
@@ -115,7 +115,7 @@ def test_receive_webhook_signature_valid() -> None:
         }
     ).encode("utf-8")
     secret = "test-secret"
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     sig = _make_signature(payload, timestamp, secret)
 
     req = func.HttpRequest(
@@ -138,7 +138,7 @@ def test_receive_webhook_signature_valid() -> None:
 
 def test_receive_webhook_signature_invalid() -> None:
     fa = _load_example_module()
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
     req = func.HttpRequest(
         method="POST",
         url="/api/webhooks/orders",
@@ -194,7 +194,7 @@ def test_receive_webhook_stale_timestamp() -> None:
     """Webhooks older than 5 minutes are rejected."""
     fa = _load_example_module()
     secret = "test-secret"
-    old_timestamp = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+    old_timestamp = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
     payload = json.dumps(
         {
             "event_type": "order.completed",

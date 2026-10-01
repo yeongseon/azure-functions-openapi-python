@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/azure-functions-openapi.svg)](https://pypi.org/project/azure-functions-openapi/)
 [![Downloads](https://static.pepy.tech/badge/azure-functions-openapi/month)](https://pepy.tech/project/azure-functions-openapi)
-[![Python Version](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/azure-functions-openapi/)
+[![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)](https://pypi.org/project/azure-functions-openapi/)
 [![CI](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/ci-test.yml)
 [![Release](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/publish-pypi.yml)
 [![Security Scans](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml/badge.svg)](https://github.com/yeongseon/azure-functions-openapi-python/actions/workflows/security.yml)
@@ -177,12 +177,12 @@ azure-functions-openapi
 
 This package discovers routes, methods, and handlers from the `azure-functions` SDK through a single isolated adapter (`azure_functions_openapi.adapters`). Discovery is **public-API-first**: it enumerates via the public, idempotent `FunctionBuilder.build()` and reads everything else through public `Function` accessors (`get_function_name` / `get_user_function` / `get_bindings` / `is_http_function`). The adapter never calls the non-idempotent `FunctionApp.get_functions()`. The **one** unavoidable private token — `app._function_builders`, which has no public substitute for enumeration — lives exclusively in the adapter and is covered by a mandatory guard test. We validate the package against an explicit matrix in CI. See [issue #258](https://github.com/yeongseon/azure-functions-openapi-python/issues/258) and [issue #327](https://github.com/yeongseon/azure-functions-openapi-python/issues/327) for background.
 
-| `azure-functions`  | Python 3.10 | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
-| ------------------ | :---------: | :---------: | :---------: | :---------: | :---------: |
-| `1.21.0` (floor)   | ✅ tested   |             |             |             |             |
-| `1.24.0`           | ✅ tested   |             |             |             |             |
-| `latest 1.x`       | ✅ tested   | ✅ tested   | ✅ tested   |             |             |
-| `2.x` (`>=2,<3`)   |             |             |             | ✅ tested   | ✅ tested   |
+| `azure-functions`  | Python 3.11 | Python 3.12 | Python 3.13 | Python 3.14 |
+| ------------------ | :---------: | :---------: | :---------: | :---------: |
+| `1.21.0` (floor)   | ✅ tested   |             |             |             |
+| `1.24.0`           | ✅ tested   |             |             |             |
+| `latest 1.x`       | ✅ tested   | ✅ tested   |             |             |
+| `2.x` (`>=2,<3`)   |             |             | ✅ tested   | ✅ tested   |
 
 The version pin in `pyproject.toml` is interpreter-aware:
 `azure-functions>=1.21.0,<2.0.0` on Python < 3.13, and `azure-functions>=1.21.0,<3.0.0`
