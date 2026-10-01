@@ -39,6 +39,8 @@ class OpenAPIRegistry:
         self._empty_discoveries: list[str] = []
         self._duplicate_operations: list[str] = []
         self._downgrade_drops: list[str] = []
+        self._schema_substitutions: list[str] = []
+        self._skipped_operations: list[str] = []
         self._lock = threading.RLock()
 
     @property
@@ -128,6 +130,8 @@ class OpenAPIRegistry:
             self._empty_discoveries.clear()
             self._duplicate_operations.clear()
             self._downgrade_drops.clear()
+            self._schema_substitutions.clear()
+            self._skipped_operations.clear()
 
     def clear_duplicate_operations(self) -> None:
         """Clear only the duplicate-operation channel, under :attr:`lock`.
@@ -296,6 +300,56 @@ class OpenAPIRegistry:
         """Return the recorded downgrade-drop messages, deduplicated and sorted."""
         with self._lock:
             return sorted(self._downgrade_drops)
+
+    def clear_generation_degradations(self) -> None:
+        """Clear the schema-substitution and skipped-operation channels.
+
+        Both are recomputed on every :func:`generate_openapi_spec` pass, so the
+        generator clears them at entry; otherwise a failure observed in an
+        earlier run would still be reported after the offending entry was fixed.
+        """
+        with self._lock:
+            self._schema_substitutions.clear()
+            self._skipped_operations.clear()
+
+    def add_schema_substitution(self, message: str) -> None:
+        """Record that an explicitly supplied model was replaced by a generic schema.
+
+        Non-strict generation keeps producing a document when conversion of an
+        explicit ``request_model``/``response_model`` fails, substituting a
+        generic object schema or the default response. That substitution leaves
+        no trace in the finished spec, so it cannot be reconstructed afterwards;
+        recording it here lets the generator surface a structured
+        ``schema-substitution`` warning. Identical messages are deduplicated.
+        """
+        with self._lock:
+            if message not in self._schema_substitutions:
+                self._schema_substitutions.append(message)
+
+    @property
+    def schema_substitutions(self) -> list[str]:
+        """Return the recorded schema-substitution messages, deduplicated and sorted."""
+        with self._lock:
+            return sorted(self._schema_substitutions)
+
+    def add_skipped_operation(self, message: str) -> None:
+        """Record that a malformed registry entry was omitted from the spec.
+
+        Non-strict generation skips an entry that raises while being processed.
+        The operation is simply absent from the result, so a consumer cannot tell
+        it was ever expected; recording it here lets the generator surface a
+        structured ``operation-skipped`` warning. Identical messages are
+        deduplicated.
+        """
+        with self._lock:
+            if message not in self._skipped_operations:
+                self._skipped_operations.append(message)
+
+    @property
+    def skipped_operations(self) -> list[str]:
+        """Return the recorded skipped-operation messages, deduplicated and sorted."""
+        with self._lock:
+            return sorted(self._skipped_operations)
 
 
 # Process-wide singleton. The ``@openapi`` decorator records metadata at import

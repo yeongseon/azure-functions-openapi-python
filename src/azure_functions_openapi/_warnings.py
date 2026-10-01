@@ -33,6 +33,8 @@ class WarningCode(StrEnum):
     EMPTY_DISCOVERY = "empty-discovery"
     METHOD_BINDING_MISMATCH = "method-binding-mismatch"
     VERSION_DOWNGRADE_DROP = "version-downgrade-drop"
+    SCHEMA_SUBSTITUTION = "schema-substitution"
+    OPERATION_SKIPPED = "operation-skipped"
 
 
 @dataclass(frozen=True)
