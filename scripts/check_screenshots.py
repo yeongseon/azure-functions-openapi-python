@@ -80,15 +80,9 @@ def _scan_text_for_secrets(text: str, label: str, allow: list[str]) -> list[str]
 def _scan_secrets(path: Path, manifest: dict[str, Any]) -> list[str]:
     """Scan the manifest text and every referenced screenshot for leaked secrets."""
     allow_raw = manifest.get("secret_scan_allow", [])
-    allow = (
-        [a for a in allow_raw if isinstance(a, str)]
-        if isinstance(allow_raw, list)
-        else []
-    )
+    allow = [a for a in allow_raw if isinstance(a, str)] if isinstance(allow_raw, list) else []
     findings: list[str] = []
-    findings.extend(
-        _scan_text_for_secrets(path.read_text(encoding="utf-8"), path.name, allow)
-    )
+    findings.extend(_scan_text_for_secrets(path.read_text(encoding="utf-8"), path.name, allow))
     for entry in manifest["screenshots"]:
         if not isinstance(entry, dict):
             continue
