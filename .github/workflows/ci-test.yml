@@ -162,6 +162,43 @@ jobs:
         env:
           CODECOV_RETRIES: 3
 
+  # The single required status check for branch protection.
+  #
+  # Branch protection matches required checks by literal name, so requiring
+  # matrix cells (`Test (Py 3.10, af latest)`, ...) couples it to the matrix:
+  # dropping a version removes the job that produced that name, the check is
+  # then never reported, and GitHub holds it pending forever -- blocking every
+  # PR, Dependabot and Release Please included, until an admin edits settings.
+  #
+  # This job's name survives matrix changes. `if: always()` guarantees it
+  # reports, and a skipped or cancelled dependency is not success, so it cannot
+  # pass by being skipped.
+  ci-required:
+    needs: [quality, test, azure-functions-2x]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate required checks
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          AF2X_RESULT: ${{ needs.azure-functions-2x.result }}
+        run: |
+          set -euo pipefail
+          echo "quality result: ${QUALITY_RESULT}"
+          echo "test result:    ${TEST_RESULT}"
+          echo "af 2.x result:  ${AF2X_RESULT}"
+
+          if [ "${QUALITY_RESULT}" = "success" ] \
+            && [ "${TEST_RESULT}" = "success" ] \
+            && [ "${AF2X_RESULT}" = "success" ]; then
+            echo "Quality, test matrix and azure-functions 2.x lane all succeeded. Passing."
+            exit 0
+          fi
+
+          echo "::error::Required checks did not all succeed -- quality='${QUALITY_RESULT}' test='${TEST_RESULT}' af2x='${AF2X_RESULT}'"
+          exit 1
+
   # azure-functions 2.x compatibility proof lane (issues #488 / #528),
   # following the sibling proof-lane pattern (azure-functions-validation #351 /
   # azure-functions-langgraph #350). It installs the package from a WHEEL, then
@@ -176,11 +213,9 @@ jobs:
   # Gating: this lane runs on every PR as a VISIBLE compatibility signal. The
   # pyproject cap is interpreter-aware (2.x is allowed on Python 3.13+), and the
   # two version-pin guard tests are likewise interpreter-aware, so they run
-  # (not deselected) and actively prove 2.x is permitted on 3.13+. Real-Azure
-  # certification of the 2.x path has already landed on Python 3.13 (see the
-  # SDK Compatibility section of README.md and the cap comment in pyproject.toml),
-  # so the only outstanding step is adding these two contexts to the required
-  # checks in branch protection -- an admin action no workflow edit can perform.
+  # (not deselected) and actively prove 2.x is permitted on 3.13+. This lane is
+  # gating: `ci-required` fails unless it succeeds, so it no longer depends on
+  # its two matrix-cell names being listed in branch protection.
   azure-functions-2x:
     name: azure-functions 2.x compat (Py ${{ matrix.python-version }})
     strategy:
