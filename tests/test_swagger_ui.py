@@ -15,6 +15,18 @@ def test_render_swagger_ui_returns_html_response() -> None:
     assert b"/api/openapi.json" in response.get_body()
 
 
+def test_render_swagger_ui_supports_all_generated_submit_methods() -> None:
+    # Given / When
+    body = render_swagger_ui().get_body()
+
+    # Then
+    assert (
+        b"supportedSubmitMethods: "
+        b"['get', 'post', 'put', 'delete', 'patch', 'head', 'options']" in body
+    )
+    assert b"'trace'" not in body
+
+
 def test_render_swagger_ui_pins_swagger_ui_dist_version() -> None:
     # Given
     response = render_swagger_ui()

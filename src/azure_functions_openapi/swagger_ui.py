@@ -115,7 +115,7 @@ def render_swagger_ui(
             layout: 'BaseLayout',
             validatorUrl: null,  // Disable external validator for security
             tryItOutEnabled: true,
-            supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+            supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'],
             requestInterceptor: function(request) {{
               // Add security headers to requests
               request.headers['X-Requested-With'] = 'XMLHttpRequest';
