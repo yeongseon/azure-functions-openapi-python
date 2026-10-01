@@ -1181,6 +1181,14 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
                         f"must be one of: {', '.join(sorted(_VALID_PARAM_LOCATIONS))}"
                     )
 
+                has_schema = "schema" in param
+                has_content = "content" in param
+                if has_schema == has_content:
+                    warnings.append(
+                        f"Parameter '{name}' in {op_label} must define exactly one of "
+                        "'schema' or 'content'"
+                    )
+
                 if location == "path":
                     path_param_names.add(name)
                     if not param.get("required", False):

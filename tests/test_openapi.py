@@ -1025,7 +1025,12 @@ class TestValidateSpec:
                     "get": {
                         "operationId": "get_item",
                         "parameters": [
-                            {"name": "id", "in": "path", "required": True},
+                            {
+                                "name": "id",
+                                "in": "path",
+                                "required": True,
+                                "schema": {"type": "string"},
+                            },
                         ],
                     }
                 },
@@ -1033,7 +1038,7 @@ class TestValidateSpec:
                     "get": {
                         "operationId": "list_items",
                         "parameters": [
-                            {"name": "q", "in": "query"},
+                            {"name": "q", "in": "query", "schema": {"type": "string"}},
                         ],
                     }
                 },
