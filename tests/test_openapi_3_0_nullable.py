@@ -11,12 +11,12 @@ nullable inline. Pydantic v2 emits ``Optional[T]`` as
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 import pytest
 
-from azure_functions_openapi.decorator import clear_openapi_registry
+from azure_functions_openapi.decorator import clear_openapi_registry, register_openapi_metadata
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
@@ -271,6 +271,10 @@ class User(BaseModel):
     name: str
 
 
+class Choice(BaseModel):
+    value: Literal["fixed"]
+
+
 def _list_optional_user_spec(version: str) -> dict[str, Any]:
     reg = OpenAPIRegistry()
     reg.set(
@@ -297,6 +301,27 @@ def _response_schema(spec: dict[str, Any]) -> dict[str, Any]:
 
 
 class TestListOptionalUserEndToEnd:
+    def test_30_converts_literal_const_to_enum(self) -> None:
+        validate_spec = pytest.importorskip("openapi_spec_validator").validate_spec
+        registry = OpenAPIRegistry()
+        register_openapi_metadata(
+            "/choice",
+            "POST",
+            request_model=Choice,
+            registry=registry,
+        )
+
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_0,
+            registry=registry,
+            strict=True,
+        )
+
+        value_schema = spec["components"]["schemas"]["Choice"]["properties"]["value"]
+        assert value_schema["enum"] == ["fixed"]
+        assert "const" not in value_schema
+        validate_spec(spec)
+
     def test_30_is_null_free_and_valid(self) -> None:
         spec = _list_optional_user_spec(OPENAPI_VERSION_3_0)
 

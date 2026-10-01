@@ -290,6 +290,9 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
 
     result = dict(schema)
 
+    if "const" in result:
+        result["enum"] = [result.pop("const")]
+
     # ``type: [T, "null"]`` -> ``type: T`` + ``nullable: true``. OpenAPI 3.0
     # requires ``type`` to be a single string, so a multi-type union is expressed
     # as ``anyOf`` of single-type schemas rather than a (3.0-invalid) type array.
