@@ -311,8 +311,15 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
     # ``enum: [None, ...]`` -> drop the null member + ``nullable: true``.
     enum_val = result.get("enum")
     if isinstance(enum_val, list) and None in enum_val:
-        result["enum"] = [e for e in enum_val if e is not None]
+        non_null_values = [e for e in enum_val if e is not None]
+        result["enum"] = non_null_values or [None]
         result["nullable"] = True
+
+    if result.get("type") == "null":
+        del result["type"]
+        result["nullable"] = True
+
+    result = _collapse_nullable_combinator(result)
 
     # Recurse into nested structures first so inner unions are converted before
     # the combinator at this level is collapsed.

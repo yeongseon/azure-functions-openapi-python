@@ -9,7 +9,7 @@ dicts that match our expectations. This catches subtle schema incompatibilities
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from openapi_spec_validator import validate
 from pydantic import BaseModel
@@ -44,6 +44,10 @@ class NullableModel(BaseModel):
 
 class FixedTupleModel(BaseModel):
     value: tuple[int, str]
+
+
+class NullLiteralModel(BaseModel):
+    value: Literal[None]
 
 
 class NestedModel(BaseModel):
@@ -247,6 +251,28 @@ class TestSpecValidity30:
         assert value_schema["items"] == {"oneOf": [{"type": "integer"}, {"type": "string"}]}
         assert value_schema["minItems"] == 2
         assert value_schema["maxItems"] == 2
+        validate(spec)
+
+    def test_null_only_literal_3_0(self) -> None:
+        # Given
+        @openapi(route="/null", method="get", responses=NullLiteralModel)
+        def get_null() -> None:
+            pass
+
+        # When
+        spec = generate_openapi_spec(
+            title="Test API",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+
+        # Then
+        value_schema = spec["components"]["schemas"]["NullLiteralModel"]["properties"]["value"]
+        assert value_schema["nullable"] is True
+        assert value_schema["enum"] == [None]
+        assert "type" not in value_schema
         validate(spec)
 
     def test_manual_request_body_3_0(self) -> None:
