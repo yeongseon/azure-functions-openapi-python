@@ -104,7 +104,7 @@ By default discovery seeds into the process-wide global registry, matching the c
 
 ### Mismatch consequences
 
-Because route and method are binding-first, `@openapi(route=...)` / `@openapi(method=...)` are enrichment hints, not routing controls. If they disagree with the handler's `@app.route(...)`, the binding still wins for what the host serves, but stale `@openapi` values can misdescribe the operation. Keep them identical to `@app.route(...)`; the documented endpoint shape is governed by the [endpoint contract](https://yeongseon.dev/contracts/endpoint/).
+Because route and method are binding-first, `@openapi(route=...)` / `@openapi(method=...)` are enrichment hints, not routing controls. If they disagree with the handler's `@app.route(...)`, the binding still wins for what the host serves, but stale `@openapi` values can misdescribe the operation. Keep them identical to `@app.route(...)`; the endpoint's shape (route, method, and documented parameters) must match the actual Azure binding.
 
 ## Module Boundaries
 
