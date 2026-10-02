@@ -9,6 +9,7 @@ This page documents the public runtime API exposed by `azure-functions-openapi`.
 from azure_functions_openapi import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
+    OPENAPI_VERSION_3_2,
     OpenAPIOperationMetadata,
     OpenAPIRegistry,
     OpenAPISpecConfigError,
@@ -25,6 +26,7 @@ from azure_functions_openapi import (
     register_openapi_metadata,
     render_swagger_ui,
     scan_endpoint_metadata,
+    scan_validation_metadata,
 )
 ```
 
