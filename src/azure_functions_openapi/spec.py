@@ -293,6 +293,22 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
     if "const" in result:
         result["enum"] = [result.pop("const")]
 
+    examples = result.pop("examples", None)
+    if isinstance(examples, list) and examples:
+        result["example"] = examples[0]
+
+    pattern_properties = result.pop("patternProperties", None)
+    if "additionalProperties" not in result and isinstance(pattern_properties, dict):
+        pattern_schemas = [
+            _convert_schema_to_3_0(value)
+            for value in pattern_properties.values()
+            if isinstance(value, dict)
+        ]
+        if len(pattern_schemas) == 1:
+            result["additionalProperties"] = pattern_schemas[0]
+        elif pattern_schemas:
+            result["additionalProperties"] = {"anyOf": pattern_schemas}
+
     for exclusive_key, bound_key in (
         ("exclusiveMinimum", "minimum"),
         ("exclusiveMaximum", "maximum"),
