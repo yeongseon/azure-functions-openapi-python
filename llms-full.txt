@@ -5,7 +5,7 @@
 ## Package Info
 
 - PyPI: `pip install azure-functions-openapi`
-- Version: 0.25.0
+- Version: 0.27.0
 - Python: >=3.10, <3.15
 - License: MIT
 - Docs: https://yeongseon.dev/azure-functions-python/openapi/
@@ -44,24 +44,28 @@ from azure_functions_openapi import (
 ```python
 def openapi(
     # Basic metadata
-    summary: str = "",
-    description: str = "",
+    summary: str | None = None,
+    description: str | None = None,
     tags: list[str] | None = None,
     operation_id: str | None = None,
     # Routing information
     route: str | None = None,
     method: str | None = None,
     parameters: list[dict[str, Any]] | None = None,
+    path: type[BaseModel] | None = None,
+    headers: type[BaseModel] | None = None,
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
     # Request/response schema
-    request_model: type[BaseModel] | None = None,
-    request_body: dict[str, Any] | None = None,
     requests: type[BaseModel] | dict[str, Any] | None = None,
     request_body_required: bool = True,
-    response_model: type[BaseModel] | None = None,
-    response: dict[int, dict[str, Any]] | None = None,
-    responses: type[BaseModel] | dict[int, dict[str, Any]] | None = None,
+    responses: type[BaseModel] | Mapping[int | Literal["default"], Any] | None = None,
+    # OpenAPI 3.2 querystring parameter
+    querystring: type[BaseModel] | dict[str, Any] | None = None,
+    querystring_media_type: str = "application/x-www-form-urlencoded",
+    # Inference toggles
+    infer_docstring: bool = False,
+    infer_return_types: bool = True,
 ) -> Callable[[F], F]: ...
 ```
 
@@ -75,13 +79,21 @@ def openapi(
 - `route`: URL path override (auto-detected if omitted)
 - `method`: HTTP method override (auto-detected if omitted)
 - `parameters`: Path/query/header parameter schemas
-- `request_model`: Pydantic model for request body validation and schema
-- `request_body`: Raw requestBody schema dict (alternative to `request_model`)
+- `path`: Pydantic model expanded into path parameters
+- `headers`: Pydantic model expanded into header parameters
+- `requests`: Pydantic model or raw requestBody schema dict
 - `request_body_required`: Whether request body is mandatory
-- `response_model`: Pydantic model for success response (200/201)
-- `response`: Dict mapping status codes to response schemas
+- `responses`: Pydantic model or dict mapping status codes to response schemas
+- `querystring`: OpenAPI 3.2 querystring parameter model or schema
+- `querystring_media_type`: Media type for `querystring` content
+- `infer_docstring`: Infer missing summary/description from the handler docstring
+- `infer_return_types`: Infer a response from the handler return annotation
 - `security`: List of security requirement dicts
 - `security_scheme`: Security scheme definitions
+
+The retired `request_model`, `request_body`, `response_model`, and `response`
+keywords raise an actionable error on `@openapi`; use `requests` and `responses`.
+They remain available on `register_openapi_metadata()` for bridge integrations.
 
 ### register_openapi_metadata
 
@@ -98,9 +110,12 @@ def register_openapi_metadata(
     request_body_required: bool = True,
     response_model: type[BaseModel] | None = None,
     response: dict[int, dict[str, Any]] | None = None,
+    querystring: type[BaseModel] | dict[str, Any] | None = None,
+    querystring_media_type: str = "application/x-www-form-urlencoded",
     parameters: list[dict[str, Any]] | None = None,
     security: list[dict[str, list[str]]] | None = None,
     security_scheme: dict[str, dict[str, Any]] | None = None,
+    registry: OpenAPIRegistry | None = None,
 ) -> None: ...
 ```
 
@@ -123,7 +138,13 @@ def clear_openapi_registry() -> None: ...
 ### scan_endpoint_metadata
 
 ```python
-def scan_endpoint_metadata(app: Any) -> None: ...
+def scan_endpoint_metadata(
+    app: Any,
+    route_prefix: str = "/api",
+    registry: OpenAPIRegistry | None = None,
+    infer_docstring: bool = False,
+    infer_return_types: bool = True,
+) -> None: ...
 ```
 
 **Purpose**: Scan a FunctionApp's registered HTTP functions for `@validate_http` metadata and auto-register them in the OpenAPI registry.
@@ -153,9 +174,19 @@ scan_endpoint_metadata(app)
 def generate_openapi_spec(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = "...",
     security_schemes: dict[str, dict[str, Any]] | None = None,
+    route_prefix: str = "/api",
+    strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]: ...
 ```
 
@@ -166,7 +197,7 @@ def generate_openapi_spec(
 **Parameters**:
 - `title`: API title (goes in info.title)
 - `version`: API version (goes in info.version)
-- `openapi_version`: OpenAPI spec version ("3.0.0" or "3.1.0")
+- `openapi_version`: OpenAPI spec version (`"3.0.0"`, `"3.1.0"`, or `"3.2.0"`)
 - `security_schemes`: Global security scheme definitions (e.g., {"BearerAuth": {"type": "http", "scheme": "bearer"}})
 
 ### get_openapi_json
@@ -175,9 +206,14 @@ def generate_openapi_spec(
 def get_openapi_json(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = "...",
     security_schemes: dict[str, dict[str, Any]] | None = None,
+    route_prefix: str = "/api",
+    strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
 ) -> str: ...
 ```
 
@@ -191,9 +227,14 @@ def get_openapi_json(
 def get_openapi_yaml(
     title: str = "API",
     version: str = "1.0.0",
-    openapi_version: str = OPENAPI_VERSION_3_0,
+    openapi_version: str = OPENAPI_VERSION_3_1,
     description: str = "...",
     security_schemes: dict[str, dict[str, Any]] | None = None,
+    route_prefix: str = "/api",
+    strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
 ) -> str: ...
 ```
 
