@@ -133,9 +133,14 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 
 ### Labels
 
-- Apply at least one of `bug`, `enhancement`, `documentation`, `chore`.
-- Apply exactly one priority label. The scale in use is `priority:critical` / `priority:high` / `priority:medium` / `priority:low`; `critical` is reserved for defects that reach package users, such as a broken published artifact or wrong product output.
-- Labels are applied by maintainers or authorized triage automation. An external contributor without label permissions should describe urgency in the issue body and leave labelling to triage.
+- Apply at least one type label: `bug`, `enhancement`, `documentation`, or `chore` (`ci`, `test`, `question` where they fit).
+- Every new issue gets `needs-triage` (issue forms and the `Triage new issues` workflow add it automatically; add it yourself with `gh issue create --label needs-triage` when creating issues from a workflow). Leave it for the maintainer, who removes it after confirming validity, scope, type, and priority.
+- Priority uses exactly one of `priority:critical` / `priority:high` / `priority:medium` / `priority:low`. Never write P0/P1/P2.
+  - `critical` — fix now: security issue, data loss, broken released package, or blocked release pipeline.
+  - `high` — address before the next planned release; serious impact or no reasonable workaround.
+  - `medium` — normal planned work; a workaround exists or scope is limited.
+  - `low` — opportunistic polish or non-urgent improvement.
+- Priority may be provisional while `needs-triage` is present. An external contributor without label permissions should describe urgency in the issue body.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 

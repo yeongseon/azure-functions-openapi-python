@@ -26,7 +26,7 @@ jobs:
           # Must stay in sync with the labels AGENTS.md requires on every
           # issue (bug/enhancement/documentation/chore); omitting one closes
           # issues that follow the documented convention.
-          exempt-issue-labels: "pinned,security,enhancement,bug,documentation,chore,good first issue,help wanted"
+          exempt-issue-labels: "needs-triage,pinned,security,enhancement,bug,documentation,chore,good first issue,help wanted"
           exempt-pr-labels: "pinned,security,enhancement,bug,documentation,wip"
           days-before-stale: 30
           # actions/stale has no close-issue/close-pr inputs; closing is
