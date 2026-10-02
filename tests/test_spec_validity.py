@@ -9,10 +9,10 @@ dicts that match our expectations. This catches subtle schema incompatibilities
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from openapi_spec_validator import validate
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 import pytest
 
 from azure_functions_openapi.decorator import _openapi_registry, _registry_lock, openapi
@@ -52,6 +52,14 @@ class NullLiteralModel(BaseModel):
 
 class ExclusiveBoundsModel(BaseModel):
     value: int = Field(gt=0, lt=10)
+
+
+class ExamplesModel(BaseModel):
+    value: str = Field(examples=["first", "second"])
+
+
+class PatternPropertiesModel(BaseModel):
+    values: dict[Annotated[str, StringConstraints(pattern=r"^item-")], int]
 
 
 class NestedModel(BaseModel):
@@ -300,6 +308,50 @@ class TestSpecValidity30:
         assert value_schema["exclusiveMinimum"] is True
         assert value_schema["maximum"] == 10
         assert value_schema["exclusiveMaximum"] is True
+        validate(spec)
+
+    def test_examples_3_0(self) -> None:
+        # Given
+        @openapi(route="/examples", method="get", responses=ExamplesModel)
+        def get_examples() -> None:
+            pass
+
+        # When
+        spec = generate_openapi_spec(
+            title="Test API",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+
+        # Then
+        value_schema = spec["components"]["schemas"]["ExamplesModel"]["properties"]["value"]
+        assert value_schema["example"] == "first"
+        assert "examples" not in value_schema
+        validate(spec)
+
+    def test_pattern_properties_3_0(self) -> None:
+        # Given
+        @openapi(route="/patterns", method="get", responses=PatternPropertiesModel)
+        def get_patterns() -> None:
+            pass
+
+        # When
+        spec = generate_openapi_spec(
+            title="Test API",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+
+        # Then
+        values_schema = spec["components"]["schemas"]["PatternPropertiesModel"]["properties"][
+            "values"
+        ]
+        assert "patternProperties" not in values_schema
+        assert values_schema["additionalProperties"] == {"type": "integer"}
         validate(spec)
 
     def test_manual_request_body_3_0(self) -> None:
