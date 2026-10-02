@@ -134,6 +134,37 @@ def test_scan_discovers_validation_metadata() -> None:
     assert entry.get("response_model") is None
 
 
+def test_scan_rejects_conflicting_public_parameter_contracts() -> None:
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        parameters=[{"name": "limit", "in": "query", "schema": {"type": "integer"}}],
+    )
+    handler = _make_endpoint_handler()
+    setattr(
+        handler,
+        _HANDLER_METADATA_ATTR,
+        {
+            "endpoint": {
+                "version": 1,
+                "parameters": [{"name": "limit", "in": "query", "schema": {"type": "string"}}],
+            }
+        },
+    )
+    function = MockFunction(
+        _name="create_user",
+        _func=handler,
+        _bindings=[MockBinding(route="users", methods=["POST"])],
+    )
+    app = MockApp(_function_builders=[MockBuilder(_function=function)])
+
+    with pytest.raises(
+        ValueError,
+        match="Conflicting validation and OpenAPI models for endpoint",
+    ):
+        scan_endpoint_metadata(app)
+
+
 def test_scan_skips_non_validated_functions() -> None:
     app = _make_app(metadata=None)
 

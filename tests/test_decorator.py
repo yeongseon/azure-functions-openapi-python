@@ -1,5 +1,7 @@
 # tests/test_decorator.py
 
+from typing import Any
+
 import azure.functions as func
 from azure.functions.decorators.function_app import FunctionBuilder
 from pydantic import BaseModel
@@ -90,6 +92,33 @@ def test_openapi_registers_security_metadata() -> None:
 
     registry = get_openapi_registry()
     assert registry["secured_dummy"]["security"] == [{"BearerAuth": []}]
+
+
+def test_openapi_rejects_invalid_requests_argument() -> None:
+    invalid: Any = object()
+    with pytest.raises(ValueError, match="'requests' must be either"):
+
+        @openapi(requests=invalid)
+        def invalid_requests() -> None:
+            pass
+
+
+def test_openapi_rejects_invalid_responses_argument() -> None:
+    invalid: Any = object()
+    with pytest.raises(ValueError, match="'responses' must be either"):
+
+        @openapi(responses=invalid)
+        def invalid_responses() -> None:
+            pass
+
+
+def test_openapi_rejects_invalid_querystring_argument() -> None:
+    invalid: Any = object()
+    with pytest.raises(ValueError, match="'querystring' must be either"):
+
+        @openapi(querystring=invalid)
+        def invalid_querystring() -> None:
+            pass
 
 
 def test_openapi_accepts_function_builder_when_decorator_is_outermost() -> None:
