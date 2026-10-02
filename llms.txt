@@ -76,4 +76,3 @@ Part of **Azure Functions Python DX Toolkit**:
 - `azure-functions-logging` — Structured logging
 - `azure-functions-doctor` — Pre-deploy diagnostics
 - `azure-functions-scaffold` — Project scaffolding
-- `azure-functions-durable-graph` — Manifest-first graph runtime
