@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.27.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.27.0...v0.27.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **spec:** down-convert examples and patternProperties for OpenAPI 3.0 ([#697](https://github.com/yeongseon/azure-functions-openapi-python/issues/697)) ([0fb730f](https://github.com/yeongseon/azure-functions-openapi-python/commit/0fb730f865eabf5d27e1c981e8d099d14377d0df))
+* **spec:** down-convert exclusive bounds for OpenAPI 3.0 ([#693](https://github.com/yeongseon/azure-functions-openapi-python/issues/693)) ([1724710](https://github.com/yeongseon/azure-functions-openapi-python/commit/172471021a38d01e8a7bcf79a19064027c9db67e))
+
 ## [0.27.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.26.0...v0.27.0) (2026-10-01)
 
 
