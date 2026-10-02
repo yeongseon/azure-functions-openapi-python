@@ -100,6 +100,39 @@ def test_generate_openapi_spec_uses_requested_openapi_version() -> None:
     assert spec["paths"] == {}
 
 
+def test_generate_openapi_spec_converts_multiple_pattern_schemas_for_3_0() -> None:
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        "/api/labels",
+        "GET",
+        response={
+            200: {
+                "description": "OK",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "patternProperties": {
+                                "^text_": {"type": "string"},
+                                "^count_": {"type": "integer"},
+                            },
+                        }
+                    }
+                },
+            }
+        },
+        registry=reg,
+    )
+
+    spec = generate_openapi_spec(openapi_version="3.0.0", registry=reg)
+
+    schema = spec["paths"]["/api/labels"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    assert schema["additionalProperties"] == {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+    assert "patternProperties" not in schema
+
+
 def test_registered_endpoint_emits_exact_operation() -> None:
     """A registered endpoint produces the exact operation object under its path."""
     spec = generate_openapi_spec(registry=_items_registry())
