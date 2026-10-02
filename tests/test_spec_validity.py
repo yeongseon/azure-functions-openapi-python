@@ -12,7 +12,7 @@ import json
 from typing import Any, Literal
 
 from openapi_spec_validator import validate
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import pytest
 
 from azure_functions_openapi.decorator import _openapi_registry, _registry_lock, openapi
@@ -48,6 +48,10 @@ class FixedTupleModel(BaseModel):
 
 class NullLiteralModel(BaseModel):
     value: Literal[None]
+
+
+class ExclusiveBoundsModel(BaseModel):
+    value: int = Field(gt=0, lt=10)
 
 
 class NestedModel(BaseModel):
@@ -273,6 +277,29 @@ class TestSpecValidity30:
         assert value_schema["nullable"] is True
         assert value_schema["enum"] == [None]
         assert "type" not in value_schema
+        validate(spec)
+
+    def test_exclusive_numeric_bounds_3_0(self) -> None:
+        # Given
+        @openapi(route="/bounds", method="get", responses=ExclusiveBoundsModel)
+        def get_bounds() -> None:
+            pass
+
+        # When
+        spec = generate_openapi_spec(
+            title="Test API",
+            version="1.0.0",
+            openapi_version="3.0.0",
+            route_prefix="",
+            strict=True,
+        )
+
+        # Then
+        value_schema = spec["components"]["schemas"]["ExclusiveBoundsModel"]["properties"]["value"]
+        assert value_schema["minimum"] == 0
+        assert value_schema["exclusiveMinimum"] is True
+        assert value_schema["maximum"] == 10
+        assert value_schema["exclusiveMaximum"] is True
         validate(spec)
 
     def test_manual_request_body_3_0(self) -> None:
