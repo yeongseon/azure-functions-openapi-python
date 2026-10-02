@@ -7,7 +7,7 @@ Part of the DX Toolkit CI hardening work
 Unlike ``tools/lint_release_workflows.py`` -- which enforces a single *canonical*
 SHA per action for the two release-gate workflows -- this lint applies a lighter
 **pin-hygiene** rule to *every* workflow file. It does not care *which* version an
-action is pinned to (that is Renovate's domain, #320); it only insists the pin is
+action is pinned to; it only insists the pin is
 a real, immutable commit SHA (or an explicitly justified exception).
 
 Rule -- every external ``uses:`` reference MUST be one of:
@@ -21,7 +21,7 @@ Rule -- every external ``uses:`` reference MUST be one of:
    copy-paste template file).
 
 Enforcing pin *hygiene* rather than a canonical SHA keeps non-gate workflows free
-to be bumped by Renovate/Dependabot without fighting a frozen central version.
+to be bumped by Dependabot without fighting a frozen central version.
 
 Stdlib-only on purpose: the lint must not itself depend on a package that can
 drift. Exit code 0 = clean, 1 = drift detected.
