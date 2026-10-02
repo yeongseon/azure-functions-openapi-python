@@ -143,6 +143,7 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 - Priority may be provisional while `needs-triage` is present. An external contributor without label permissions should describe urgency in the issue body.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
+- There is no work-in-progress label. Open unfinished pull requests as Draft PRs, and link the issue with `Fixes #N` so its in-progress state shows on the issue.
 
 ### Umbrella issues
 
