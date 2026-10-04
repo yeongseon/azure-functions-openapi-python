@@ -1,6 +1,24 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.28.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.27.1...v0.28.0) (2026-10-04)
+
+
+### Features
+
+* **spec:** accept top-level metadata in get_openapi_json and get_openapi_yaml ([#723](https://github.com/yeongseon/azure-functions-openapi-python/issues/723)) ([5babfb5](https://github.com/yeongseon/azure-functions-openapi-python/commit/5babfb5c4cd1fff926eecbfd388b817575120a4f))
+
+
+### Bug Fixes
+
+* **cli:** import app modules from the invocation directory ([#721](https://github.com/yeongseon/azure-functions-openapi-python/issues/721)) ([2f8799c](https://github.com/yeongseon/azure-functions-openapi-python/commit/2f8799c3489a06085ded7f8f0da4a6e1c0eec393))
+* **decorator:** do not freeze SDK routes before function_name is applied ([#717](https://github.com/yeongseon/azure-functions-openapi-python/issues/717)) ([4d058ad](https://github.com/yeongseon/azure-functions-openapi-python/commit/4d058ad8f97d62055e1dcb80926894dd9fdb6339))
+* **routes:** accept the full Azure route template syntax ([#719](https://github.com/yeongseon/azure-functions-openapi-python/issues/719)) ([ef7d995](https://github.com/yeongseon/azure-functions-openapi-python/commit/ef7d9958da63c4309531e6dd9301a04d846f91da))
+* **routes:** synthesize parameters for unconstrained route variables ([#718](https://github.com/yeongseon/azure-functions-openapi-python/issues/718)) ([48db642](https://github.com/yeongseon/azure-functions-openapi-python/commit/48db6425351a48464d688e76c6de182eed48b781))
+* **schema:** preserve parent identity across nested model collisions ([#715](https://github.com/yeongseon/azure-functions-openapi-python/issues/715)) ([275aa4d](https://github.com/yeongseon/azure-functions-openapi-python/commit/275aa4df939836a997ec9e1971fe4b2628627623))
+* **schema:** rewrite discriminator mapping refs when hoisting ([#720](https://github.com/yeongseon/azure-functions-openapi-python/issues/720)) ([77e8de3](https://github.com/yeongseon/azure-functions-openapi-python/commit/77e8de37c3286432b8b8778f727b03abd3189863))
+* **swagger:** handle absolute URLs and nonce-bearing custom CSP ([#722](https://github.com/yeongseon/azure-functions-openapi-python/issues/722)) ([4bd8f22](https://github.com/yeongseon/azure-functions-openapi-python/commit/4bd8f22f82616c6fa6c4cdf7e18c69778a71135e))
+
 ## [0.27.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.27.0...v0.27.1) (2026-10-02)
 
 
