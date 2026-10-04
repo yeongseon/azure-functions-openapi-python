@@ -8,7 +8,9 @@ serializers, and the ``SpecReport``/warning pipeline. All tests assert concrete
 observable results (exact values, exact structures, exact exception messages).
 """
 
+from collections.abc import Callable
 import json
+from typing import Any
 
 import pytest
 import yaml
@@ -199,6 +201,30 @@ def test_get_openapi_yaml_parses_to_expected_document() -> None:
     assert doc["openapi"] == "3.1.0"
     assert doc["info"]["title"] == "T"
     assert doc["paths"]["/api/items"]["get"]["operationId"] == "listItems"
+
+
+@pytest.mark.parametrize(
+    ("serializer", "loader"),
+    [(get_openapi_json, json.loads), (get_openapi_yaml, yaml.safe_load)],
+)
+def test_serializers_accept_top_level_metadata(
+    serializer: Callable[..., str], loader: Callable[[str], dict[str, Any]]
+) -> None:
+    metadata = {
+        "servers": [{"url": "https://api.example.test"}],
+        "tags": [{"name": "Users"}],
+        "license": {"name": "MIT"},
+        "contact": {"name": "Support"},
+        "external_docs": {"url": "https://docs.example.test"},
+    }
+
+    document = loader(serializer(registry=OpenAPIRegistry(), **metadata))
+
+    assert document["servers"] == metadata["servers"]
+    assert document["tags"] == metadata["tags"]
+    assert document["info"]["license"] == metadata["license"]
+    assert document["info"]["contact"] == metadata["contact"]
+    assert document["externalDocs"] == metadata["external_docs"]
 
 
 def test_generate_openapi_report_returns_spec_and_empty_warnings() -> None:

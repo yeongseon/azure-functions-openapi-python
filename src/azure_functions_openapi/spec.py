@@ -1372,6 +1372,11 @@ def get_openapi_json(
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
     infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
 ) -> str:
     """Return the spec as pretty-printed JSON (UTF-8).
 
@@ -1399,6 +1404,17 @@ def get_openapi_json(
         OpenAPI spec in JSON format.
     """
     try:
+        metadata: dict[str, Any] = {
+            key: value
+            for key, value in {
+                "servers": servers,
+                "contact": contact,
+                "license": license,
+                "external_docs": external_docs,
+                "tags": tags,
+            }.items()
+            if value is not None
+        }
         spec = generate_openapi_spec(
             title,
             version,
@@ -1410,6 +1426,7 @@ def get_openapi_json(
             hoist_flat_schemas=hoist_flat_schemas,
             infer_auth_level=infer_auth_level,
             registry=registry,
+            **metadata,
         )
         return json.dumps(spec, indent=2, ensure_ascii=False)
     except OpenAPISpecConfigError:
@@ -1430,6 +1447,11 @@ def get_openapi_yaml(
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
     infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
 ) -> str:
     """Return the spec as YAML.
 
@@ -1457,6 +1479,17 @@ def get_openapi_yaml(
         OpenAPI spec in YAML format.
     """
     try:
+        metadata: dict[str, Any] = {
+            key: value
+            for key, value in {
+                "servers": servers,
+                "contact": contact,
+                "license": license,
+                "external_docs": external_docs,
+                "tags": tags,
+            }.items()
+            if value is not None
+        }
         spec = generate_openapi_spec(
             title,
             version,
@@ -1468,6 +1501,7 @@ def get_openapi_yaml(
             hoist_flat_schemas=hoist_flat_schemas,
             infer_auth_level=infer_auth_level,
             registry=registry,
+            **metadata,
         )
         return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
     except OpenAPISpecConfigError:
