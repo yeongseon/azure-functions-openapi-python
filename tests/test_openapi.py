@@ -736,7 +736,7 @@ def test_strict_mode_raises_on_validation_warnings() -> None:
         route="/items/{id}",
         method="get",
         summary="Get item",
-        parameters=[],  # Missing path parameter for {id}
+        parameters=[{"name": "id", "in": "path", "required": False, "schema": {"type": "string"}}],
     )
     def strict_validation_func() -> None:
         pass
