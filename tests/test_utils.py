@@ -2,7 +2,8 @@
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from openapi_spec_validator import validate
+from pydantic import BaseModel, Field, create_model
 import pytest
 
 from azure_functions_openapi.utils import model_to_schema
@@ -38,3 +39,53 @@ def test_model_to_schema_non_pydantic_raises_type_error() -> None:
 
     with pytest.raises(TypeError, match="model_json_schema"):
         model_to_schema(NotAModel, {})
+
+
+def test_model_to_schema_preserves_parents_when_nested_names_collide() -> None:
+    # Given: two real Pydantic model trees whose parent and child names collide.
+    first_address = create_model("Address", street=(str, ...))
+    first_user = create_model("User", address=(first_address, ...))
+    second_address = create_model("Address", postcode=(str, ...))
+    second_user = create_model("User", address=(second_address, ...))
+    components: dict[str, Any] = {"schemas": {}}
+
+    # When: both trees are registered in the same OpenAPI components object.
+    first_ref = model_to_schema(first_user, components)
+    second_ref = model_to_schema(second_user, components)
+    document = {
+        "openapi": "3.1.0",
+        "info": {"title": "Nested collision", "version": "1.0.0"},
+        "paths": {
+            "/first": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {"application/json": {"schema": first_ref}},
+                        }
+                    }
+                }
+            },
+            "/second": {
+                "get": {
+                    "responses": {
+                        "200": {
+                            "description": "ok",
+                            "content": {"application/json": {"schema": second_ref}},
+                        }
+                    }
+                }
+            },
+        },
+        "components": components,
+    }
+
+    # Then: each parent retains its own child shape and the document is valid.
+    assert first_ref == {"$ref": "#/components/schemas/User"}
+    assert second_ref == {"$ref": "#/components/schemas/User_2"}
+    schemas = components["schemas"]
+    assert schemas["User"]["properties"]["address"]["$ref"] == "#/components/schemas/Address"
+    assert schemas["User_2"]["properties"]["address"]["$ref"] == "#/components/schemas/Address_2"
+    assert "street" in schemas["Address"]["properties"]
+    assert "postcode" in schemas["Address_2"]["properties"]
+    validate(document)

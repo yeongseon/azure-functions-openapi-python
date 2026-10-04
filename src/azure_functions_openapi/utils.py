@@ -323,10 +323,16 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
     local_schemas.update(definitions)
 
     name_map: dict[str, str] = {}
-    for name, local_schema in local_schemas.items():
-        resolved_name = _resolve_name_collision(name, local_schema, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
+    while True:
+        updated_name_map: dict[str, str] = {}
+        for name, local_schema in local_schemas.items():
+            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
+            resolved_name = _resolve_name_collision(name, rewritten_schema, schemas)
+            if resolved_name != name:
+                updated_name_map[name] = resolved_name
+        if updated_name_map == name_map:
+            break
+        name_map = updated_name_map
 
     if name_map:
         updated_local_schemas: dict[str, dict[str, Any]] = {}
