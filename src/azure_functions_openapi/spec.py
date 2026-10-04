@@ -788,7 +788,7 @@ def generate_openapi_spec(
                     for _name in route_variables:
                         _constraint = route_constraints.get(_name)
                         _schema = dict(
-                            SUPPORTED_ROUTE_CONSTRAINTS[_constraint]
+                            SUPPORTED_ROUTE_CONSTRAINTS.get(_constraint, {"type": "string"})
                             if _constraint is not None
                             else {"type": "string"}
                         )
