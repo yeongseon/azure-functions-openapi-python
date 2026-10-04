@@ -33,7 +33,6 @@ class TestRenderSwaggerUI:
         assert "Content-Security-Policy" in response.headers
         assert "X-Content-Type-Options" in response.headers
         assert "X-Frame-Options" in response.headers
-        assert "X-XSS-Protection" in response.headers
         assert "Referrer-Policy" in response.headers
         assert "Strict-Transport-Security" in response.headers
         assert "Cache-Control" in response.headers
@@ -66,6 +65,25 @@ class TestRenderSwaggerUI:
         # The HTTP header carries the raw (unescaped) CSP
         assert response.headers["Content-Security-Policy"] == custom_csp
 
+    def test_absolute_https_url_and_custom_csp_nonce_are_preserved(self) -> None:
+        # Given: an absolute specification URL and a custom CSP nonce slot.
+        url = "https://example.test/openapi.json"
+
+        # When: Swagger UI is rendered into a real HttpResponse.
+        response = render_swagger_ui(openapi_url=url, custom_csp="script-src 'nonce-{nonce}'")
+        body = response.get_body().decode()
+
+        # Then: the URL stays absolute, the nonce matches, and the obsolete header is absent.
+        assert f'url: "{url}"' in body
+        assert "/https://example.test/openapi.json" not in body
+        nonce = re.search(r'<script nonce="([^"]+)">', body)
+        assert nonce is not None
+        assert response.headers["Content-Security-Policy"] == (
+            f"script-src 'nonce-{nonce.group(1)}'"
+        )
+        assert "X-XSS-Protection" not in response.headers
+        assert 'http-equiv="X-XSS-Protection"' not in body
+
     def test_render_swagger_ui_security_headers(self) -> None:
         """Test that all security headers are present."""
         response = render_swagger_ui()
@@ -74,7 +92,6 @@ class TestRenderSwaggerUI:
             "Content-Security-Policy",
             "X-Content-Type-Options",
             "X-Frame-Options",
-            "X-XSS-Protection",
             "Referrer-Policy",
             "Strict-Transport-Security",
             "Cache-Control",
@@ -91,7 +108,6 @@ class TestRenderSwaggerUI:
 
         assert response.headers["X-Content-Type-Options"] == "nosniff"
         assert response.headers["X-Frame-Options"] == "DENY"
-        assert response.headers["X-XSS-Protection"] == "1; mode=block"
         assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
         assert "max-age=31536000" in response.headers["Strict-Transport-Security"]
         assert response.headers["Cache-Control"] == "no-cache, no-store, must-revalidate"
