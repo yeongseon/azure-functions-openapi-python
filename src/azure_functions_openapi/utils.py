@@ -28,6 +28,13 @@ def _rewrite_refs(obj: Any) -> Any:
         for key, value in obj.items():
             if key == "$ref" and isinstance(value, str):
                 rewritten[key] = _rewrite_ref(value)
+            elif key == "mapping" and isinstance(value, dict):
+                rewritten[key] = {
+                    mapping_key: _rewrite_ref(mapping_value)
+                    if isinstance(mapping_value, str)
+                    else _rewrite_refs(mapping_value)
+                    for mapping_key, mapping_value in value.items()
+                }
             else:
                 rewritten[key] = _rewrite_refs(value)
         return rewritten
