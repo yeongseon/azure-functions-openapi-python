@@ -210,6 +210,15 @@ def get_unbuilt_user_handler(builder: Any) -> Callable[..., Any] | None:
     return handler if callable(handler) else None
 
 
+def get_unbuilt_bindings(builder: Any) -> list[Any] | None:
+    """Return a builder's bindings without invoking ``build()``, or ``None``."""
+    function = getattr(builder, "_function", None)
+    get_bindings = getattr(function, "get_bindings", None)
+    if not callable(get_bindings):
+        return None
+    return list(get_bindings())
+
+
 def get_function_name(function: Any) -> str:
     """Return the function's registered name via the public accessor."""
     return str(function.get_function_name())
