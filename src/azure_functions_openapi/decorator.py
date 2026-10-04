@@ -85,23 +85,11 @@ def _reject_retired_kwargs(**candidates: Any) -> None:
 def _resolve_metadata_target(func: Any) -> tuple[Any, Callable[..., Any]]:
     """Return the original decorated object and the underlying callable used for metadata."""
     if adapters.is_function_builder(func):
-        # The user handler and bindings live on the SDK's FunctionBuilder, which
-        # only exposes them via private attributes. Route the access through the
-        # adapter so all SDK coupling (and the SDKIncompatibleError contract for
-        # renamed/restructured internals) stays in one place.
-        try:
-            function = adapters.build_function(func)
-        except ValueError:
-            # ``@openapi`` applied below ``@app.route``: the trigger is not
-            # registered yet, so build() reports "no trigger". This is a valid
-            # decorator ordering (accepted by 0.20.0), not an error. Recover the
-            # user handler off the unbuilt builder so metadata still registers;
-            # route/method stay unresolved until later discovery/spec generation.
-            handler = adapters.get_unbuilt_user_handler(func)
-            if handler is None:
-                raise
-            return func, handler
-        return func, adapters.get_user_handler(function)
+        handler = adapters.get_unbuilt_user_handler(func)
+        if handler is None:
+            adapters.build_function(func)
+            raise TypeError("Unable to read the user handler from FunctionBuilder")
+        return func, handler
 
     if not callable(func):
         raise TypeError(f"Unsupported decorated object: {type(func).__name__}")
@@ -126,14 +114,9 @@ def _extract_binding_hints(func: Any) -> tuple[str | None, str | None, bool, boo
     if not adapters.is_function_builder(func):
         return None, None, False, False
 
-    try:
-        function = adapters.build_function(func)
-    except ValueError:
-        # No trigger yet (``@openapi`` below ``@app.route``): route/method cannot
-        # be auto-detected at decoration time. Leave them unresolved; the caller
-        # already tolerates None and later discovery resolves the final binding.
+    bindings = adapters.get_unbuilt_bindings(func)
+    if bindings is None:
         return None, None, False, False
-    bindings = adapters.get_bindings(function)
 
     for binding in bindings:
         if str(getattr(binding, "type", "")).lower() != "httptrigger":
