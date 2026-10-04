@@ -778,14 +778,20 @@ def generate_openapi_spec(
                 # never override what the caller declared: an explicit parameter
                 # with an incompatible schema is a contract conflict, not a
                 # default to be silently replaced.
-                if route_constraints:
+                route_variables = re.findall(r"\{([^{}]+)\}", raw_path)
+                if route_variables:
                     declared = {
                         p["name"]: p
                         for p in (op_parameters or [])
                         if isinstance(p, dict) and p.get("in") == "path" and "name" in p
                     }
-                    for _name, _constraint in route_constraints.items():
-                        _schema = dict(SUPPORTED_ROUTE_CONSTRAINTS[_constraint])
+                    for _name in route_variables:
+                        _constraint = route_constraints.get(_name)
+                        _schema = dict(
+                            SUPPORTED_ROUTE_CONSTRAINTS[_constraint]
+                            if _constraint is not None
+                            else {"type": "string"}
+                        )
                         _existing = declared.get(_name)
                         if _existing is None:
                             if op_parameters is None:
@@ -799,7 +805,10 @@ def generate_openapi_spec(
                                 }
                             )
                             continue
-                        if _existing.get("schema") not in (None, _schema):
+                        if _constraint is not None and _existing.get("schema") not in (
+                            None,
+                            _schema,
+                        ):
                             _conflict = (
                                 f"Path parameter '{_name}' in {func_name} declares "
                                 f"{_existing.get('schema')!r} but the route constrains it "

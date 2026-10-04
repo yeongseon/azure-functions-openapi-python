@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from openapi_spec_validator import validate
 import pytest
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -78,6 +79,19 @@ def test_alpha_constraint_maps_to_a_plain_string_schema() -> None:
     (param,) = spec["paths"]["/api/cats/{category}"]["get"]["parameters"]
     assert param["schema"] == {"type": "string"}
     assert "pattern" not in param["schema"]
+
+
+def test_unconstrained_variable_becomes_a_required_string_parameter() -> None:
+    # Given: an Azure route variable without an inline constraint.
+    entry = {"summary": "s", "method": "get", "route": "users/{id}"}
+
+    # When: the OpenAPI document is generated.
+    spec = _spec_for(entry)
+
+    # Then: the variable has a matching required string parameter and validates.
+    (param,) = spec["paths"]["/api/users/{id}"]["get"]["parameters"]
+    assert param == {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
+    validate(spec)
 
 
 def test_multiple_constraints_in_one_route() -> None:
