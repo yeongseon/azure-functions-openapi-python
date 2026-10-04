@@ -59,7 +59,7 @@ def render_swagger_ui(
         "form-action 'self'"
     )
 
-    csp_policy = custom_csp or default_csp
+    csp_policy = custom_csp.replace("{nonce}", nonce) if custom_csp else default_csp
 
     # Validate and sanitize inputs
     sanitized_title = _sanitize_html_content(title)
@@ -92,7 +92,6 @@ def render_swagger_ui(
         <meta http-equiv="Content-Security-Policy" content="{safe_csp}">
         <meta http-equiv="X-Content-Type-Options" content="nosniff">
         <meta http-equiv="X-Frame-Options" content="DENY">
-        <meta http-equiv="X-XSS-Protection" content="1; mode=block">
         <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
         <title>{safe_title}</title>
         <link rel="stylesheet"
@@ -136,7 +135,6 @@ def render_swagger_ui(
         "Content-Security-Policy": csp_policy,
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
-        "X-XSS-Protection": "1; mode=block",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -172,8 +170,8 @@ def _sanitize_html_content(content: str) -> str:
 def _sanitize_url(url: str) -> str:
     """Sanitize URL to prevent injection attacks.
 
-    Returns a safe root-relative path.  Any URL that does not match the
-    allowed character set is replaced with the default ``/api/openapi.json``.
+    Returns a safe root-relative path or absolute HTTPS URL. Any URL that does
+    not match the allowed character set is replaced with the default.
     """
     if not url or not isinstance(url, str):
         return "/api/openapi.json"
@@ -185,8 +183,7 @@ def _sanitize_url(url: str) -> str:
             logger.warning("Potentially dangerous URL pattern detected: %s", pattern)
             return "/api/openapi.json"
 
-    # Ensure URL starts with /
-    sanitized = url if url.startswith("/") else "/" + url
+    sanitized = url if url.startswith(("/", "https://")) else "/" + url
 
     # Whitelist: only allow characters safe in a URL path + query string.
     # This blocks quotes, backslashes, angle brackets, and other characters
