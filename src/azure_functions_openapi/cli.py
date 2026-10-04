@@ -44,6 +44,10 @@ def _import_app_module(app: str) -> tuple[object | None, bool]:
         ImportError: If the module cannot be found or fails to import.
         AttributeError: If the named variable does not exist on the module.
     """
+    invocation_dir = str(Path.cwd())
+    if invocation_dir not in sys.path:
+        sys.path.insert(0, invocation_dir)
+
     module_name, sep, variable = app.partition(":")
     module_name = module_name.strip()
     if not module_name:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 from unittest import mock
@@ -14,6 +15,35 @@ import yaml
 
 from azure_functions_openapi.cli import _import_app_module, handle_generate, main
 import azure_functions_openapi.decorator as decorator_module
+
+
+@pytest.mark.parametrize("app_target", ["function_app", "function_app:app"])
+def test_installed_console_script_imports_app_from_invocation_directory(
+    tmp_path: Path, app_target: str
+) -> None:
+    # Given: a project outside the installed console script's directory.
+    (tmp_path / "function_app.py").write_text(
+        "from azure_functions_openapi import openapi\n"
+        "app = object()\n"
+        "@openapi(route='items', method='get', summary='Items')\n"
+        "def items(): pass\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "openapi.json"
+    console_script = Path(sys.executable).parent / "azure-functions-openapi"
+
+    # When: the installed console script runs from that project directory.
+    result = subprocess.run(
+        [str(console_script), "generate", "--app", app_target, "--output", str(output)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Then: cwd module import succeeds and the registered route is generated.
+    assert result.returncode == 0, result.stderr
+    assert "/api/items" in json.loads(output.read_text(encoding="utf-8"))["paths"]
 
 
 class TestMain:
