@@ -159,6 +159,38 @@ def test_openapi_auto_detects_route_and_method_from_function_builder() -> None:
     assert "post" in spec["paths"]["/users"]
 
 
+def test_openapi_does_not_freeze_default_route_before_function_name() -> None:
+    # Given: the SDK function-name decorator runs after @openapi sees the builder.
+    _clear_registry()
+    baseline_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+    openapi_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @baseline_app.function_name(name="custom_name")
+    @baseline_app.route()
+    def baseline_python_name(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("baseline")
+
+    @openapi_app.function_name(name="custom_name")
+    @openapi(summary="Custom route")
+    @openapi_app.route()
+    def openapi_python_name(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("openapi")
+
+    # When: the real FunctionApps build their registered functions.
+    baseline_function = baseline_app.get_functions()[0]
+    openapi_function = openapi_app.get_functions()[0]
+    baseline_trigger = baseline_function.get_trigger()
+    openapi_trigger = openapi_function.get_trigger()
+
+    # Then: @openapi preserves the SDK's no-openapi route/name behavior.
+    assert baseline_trigger is not None
+    assert openapi_trigger is not None
+    assert baseline_function.get_function_name() == "custom_name"
+    assert openapi_function.get_function_name() == baseline_function.get_function_name()
+    assert getattr(baseline_trigger, "route", None) == "custom_name"
+    assert getattr(openapi_trigger, "route", None) == getattr(baseline_trigger, "route", None)
+
+
 def test_openapi_explicit_route_overrides_binding() -> None:
     """Explicit route/method in @openapi should take precedence over binding."""
     _clear_registry()
