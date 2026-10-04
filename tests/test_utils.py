@@ -1,12 +1,12 @@
 # test/test_utils.py
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from openapi_spec_validator import validate
 from pydantic import BaseModel, Field, create_model
 import pytest
 
-from azure_functions_openapi.utils import model_to_schema
+from azure_functions_openapi.utils import model_to_schema, type_to_schema
 
 
 class MyModel(BaseModel):
@@ -88,4 +88,33 @@ def test_model_to_schema_preserves_parents_when_nested_names_collide() -> None:
     assert schemas["User_2"]["properties"]["address"]["$ref"] == "#/components/schemas/Address_2"
     assert "street" in schemas["Address"]["properties"]
     assert "postcode" in schemas["Address_2"]["properties"]
+    validate(document)
+
+
+def test_type_to_schema_rewrites_discriminator_mapping_for_generic_union() -> None:
+    class Cat(BaseModel):
+        kind: Literal["cat"]
+
+    class Dog(BaseModel):
+        kind: Literal["dog"]
+
+    # Given: a real Pydantic discriminated union nested in a generic container.
+    components: dict[str, Any] = {"schemas": {}}
+    animal = Annotated[Cat | Dog, Field(discriminator="kind")]
+
+    # When: the generic type is hoisted into shared OpenAPI components.
+    schema = type_to_schema(list[animal], components)
+    document = {
+        "openapi": "3.1.0",
+        "info": {"title": "Discriminator", "version": "1.0.0"},
+        "paths": {},
+        "components": components,
+    }
+
+    # Then: every discriminator mapping target resolves to a hoisted component.
+    mapping = schema["items"]["discriminator"]["mapping"]
+    assert mapping == {
+        "cat": "#/components/schemas/Cat",
+        "dog": "#/components/schemas/Dog",
+    }
     validate(document)
