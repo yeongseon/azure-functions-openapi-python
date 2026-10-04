@@ -424,9 +424,9 @@ def validate_route_path(route: Any) -> bool:
         if re.search(pattern, route, re.IGNORECASE):
             return False
 
-    # Allow alphanumeric, hyphens, underscores, slashes, and curly braces for path parameters
+    # Allow Azure static segments and route-template constraint syntax.
     # Whitespace is intentionally disallowed for route consistency and safety.
-    if not re.match(r"^/?[a-zA-Z0-9_\-/{}:]*$", route):
+    if not re.match(r"^/?[a-zA-Z0-9_.\-/{}:?*(),+]*$", route):
         return False
     # Validate brace structure
     if not _validate_path_param_braces(route):
@@ -449,7 +449,9 @@ SUPPORTED_ROUTE_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "alpha": {"type": "string"},
 }
 
-_ROUTE_PARAM_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z]+))?$")
+_ROUTE_PARAM_RE = re.compile(
+    r"^\*?([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z][A-Za-z0-9]*(?:\([^{}]*\))?))?\??$"
+)
 
 
 def _split_route_param(token: str) -> tuple[str, str | None] | None:
@@ -458,8 +460,6 @@ def _split_route_param(token: str) -> tuple[str, str | None] | None:
     if match is None:
         return None
     name, constraint = match.group(1), match.group(2)
-    if constraint is not None and constraint not in SUPPORTED_ROUTE_CONSTRAINTS:
-        return None
     return name, constraint
 
 

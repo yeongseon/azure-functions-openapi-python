@@ -44,17 +44,7 @@ def test_supported_constraints_are_accepted(route: str) -> None:
     assert validate_route_path(route) is True
 
 
-@pytest.mark.parametrize(
-    "route",
-    [
-        "items/{id:guid}",  # outside the supported set
-        "items/{id:int?}",  # optional constraints are not supported yet
-        "items/{id:}",  # empty constraint
-        "items/{:int}",  # missing name
-        "items/{id",  # unclosed brace
-        "items/{}",  # empty token
-    ],
-)
+@pytest.mark.parametrize("route", ["items/{id:}", "items/{:int}", "items/{id", "items/{}"])
 def test_unsupported_or_malformed_routes_are_rejected(route: str) -> None:
     assert validate_route_path(route) is False
 
@@ -91,6 +81,29 @@ def test_unconstrained_variable_becomes_a_required_string_parameter() -> None:
     # Then: the variable has a matching required string parameter and validates.
     (param,) = spec["paths"]["/api/users/{id}"]["get"]["parameters"]
     assert param == {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
+    validate(spec)
+
+
+@pytest.mark.parametrize(
+    ("route", "expected_path", "expected_constraints"),
+    [
+        ("items/{id:guid}", "items/{id}", {"id": "guid"}),
+        ("items/{id?}", "items/{id}", {}),
+        ("files/{*path}", "files/{path}", {}),
+        ("items/{id:unknown}", "items/{id}", {"id": "unknown"}),
+    ],
+)
+def test_full_azure_route_parameter_syntax_is_normalized(
+    route: str, expected_path: str, expected_constraints: dict[str, str]
+) -> None:
+    assert validate_route_path(route) is True
+    assert parse_route_template(route) == (expected_path, expected_constraints)
+
+
+def test_dotted_static_route_generates_a_valid_document() -> None:
+    spec = _spec_for({"summary": "s", "method": "get", "route": "v1.0/items"})
+
+    assert "/api/v1.0/items" in spec["paths"]
     validate(spec)
 
 
