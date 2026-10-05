@@ -30,8 +30,10 @@ jobs:
         id: runtime
         continue-on-error: true
         run: |
-          python -m pip_audit --format markdown --output runtime-audit.md
+          set +e
+          python -m pip_audit --format markdown > runtime-audit.md
           status=$?
+          set -e
           cat runtime-audit.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
@@ -42,8 +44,10 @@ jobs:
         id: development
         continue-on-error: true
         run: |
-          python -m pip_audit --format markdown --output development-audit.md
+          set +e
+          python -m pip_audit --format markdown > development-audit.md
           status=$?
+          set -e
           cat development-audit.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
