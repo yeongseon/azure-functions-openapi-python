@@ -64,12 +64,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The 1.x line is supported on Python 3.10–3.12 (see the README SDK
-        # Compatibility table). Python 3.13/3.14 are covered by the dedicated,
-        # wheel-based `azure-functions-2x` lane below, because the 2.x line is
-        # the only one installable there. Keeping 3.13/3.14 out of THIS matrix
-        # avoids advertising an untested 1.x × 3.13/3.14 combination.
-        python-version: ["3.10", "3.11", "3.12"]
+        # Run the full suite on every declared Python version. The package's
+        # environment markers resolve azure-functions 1.x on 3.10-3.12 and
+        # permit 2.x on 3.13-3.14; the dedicated wheel lanes below separately
+        # prove that the built distribution works against the 2.x line.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         # 'latest' resolves whatever satisfies the pyproject.toml pin at CI time.
         azure-functions-version: ["latest"]
         include:
@@ -114,17 +113,21 @@ jobs:
       - name: Install azure-functions ${{ matrix.azure-functions-version }}
         run: |
           if [ "${{ matrix.azure-functions-version }}" = "latest" ]; then
-            # Mirror the pyproject.toml constraint so 'latest' cannot install azure-functions 2.x when it releases (see README SDK Compatibility).
-            pip install --upgrade 'azure-functions>=1.21.0,<2.0.0'
+            if [[ "${{ matrix.python-version }}" == 3.1[34] ]]; then
+              pip install --upgrade 'azure-functions>=2.0.0,<3.0.0'
+            else
+              pip install --upgrade 'azure-functions>=1.21.0,<2.0.0'
+            fi
           else
             pip install --upgrade 'azure-functions==${{ matrix.azure-functions-version }}'
           fi
           python -c "import azure.functions, importlib.metadata as m; print('azure-functions installed:', m.version('azure-functions'))"
 
-      - name: Install azure-functions-validation (run bridge/validation example tests on one cell)
-        # These example tests are skipif-guarded on the optional azure-functions-validation
-        # import. Install it on a single matrix cell so they actually execute in CI (see #275).
-        if: matrix.python-version == '3.12' && matrix.azure-functions-version == 'latest'
+      - name: Install azure-functions-validation (run bridge/validation example tests)
+        # These example tests are skipif-guarded on the optional dependency.
+        # Install it in every latest-SDK cell so each Python lane exercises the
+        # integration; pinned legacy-SDK cells remain focused compatibility probes.
+        if: matrix.azure-functions-version == 'latest'
         run: |
           pip install --upgrade 'azure-functions-validation>=0.7.0'
           python -c "import azure_functions_validation, importlib.metadata as m; print('azure-functions-validation installed:', m.version('azure-functions-validation'))"
@@ -133,9 +136,7 @@ jobs:
         # Raw pytest on the interpreter provisioned above (NOT through the
         # Python-3.10-pinned hatch env). The repo pytest config enables --cov
         # with fail_under=95, but only the 3.10 x latest cell collects the full
-        # suite: other cells skipif-guard optional-dependency tests (e.g. the
-        # azure-functions-validation examples run only on 3.12), so their
-        # coverage is legitimately lower. Enforce the coverage gate on the
+        # suite. Enforce the coverage gate on the
         # canonical 3.10 x latest cell and run the rest with --no-cov so a
         # version-variant cell cannot fail the build on a spurious coverage dip.
         env:
