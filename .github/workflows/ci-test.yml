@@ -265,7 +265,7 @@ jobs:
           wait "$host_pid" 2>/dev/null || true
           cat "$RUNNER_TEMP/host-smoke.log"
 
-          if grep -Eq "0 functions|No job functions found|Executed 'Functions\..*' \(Failed" "$RUNNER_TEMP/host-smoke.log"; then
+          if grep -Eq "0 functions (loaded|found \(Worker\))|No job functions found|Executed 'Functions\..*' \(Failed" "$RUNNER_TEMP/host-smoke.log"; then
             echo "::error::The Functions host reported indexing or invocation errors"
             exit 1
           fi
