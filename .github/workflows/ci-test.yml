@@ -256,7 +256,7 @@ jobs:
           python -c 'import json, pathlib; assert json.loads(pathlib.Path("'"$RUNNER_TEMP"'/custom-route.json").read_text()) == {"function_name": "custom_name"}'
           curl --fail --silent http://127.0.0.1:7071/api/openapi.json \
             --output "$RUNNER_TEMP/openapi.json"
-          python -c 'import json, pathlib; spec = json.loads(pathlib.Path("'"$RUNNER_TEMP"'/openapi.json").read_text()); assert "/api/custom_name" in spec["paths"]'
+          python -c 'import json, pathlib; spec = json.loads(pathlib.Path("'"$RUNNER_TEMP"'/openapi.json").read_text()); assert "/custom_name" in spec["paths"]'
           curl --fail --silent http://127.0.0.1:7071/api/docs \
             --output "$RUNNER_TEMP/swagger.html"
           grep -q 'SwaggerUIBundle' "$RUNNER_TEMP/swagger.html"
