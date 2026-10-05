@@ -220,7 +220,8 @@ jobs:
           npm install --global azure-functions-core-tools@4 --unsafe-perm true
           python -m venv tests/host_smoke/.venv
           tests/host_smoke/.venv/bin/python -m pip install --upgrade pip
-          tests/host_smoke/.venv/bin/python -m pip install -r tests/host_smoke/requirements.txt
+          cd tests/host_smoke
+          .venv/bin/python -m pip install -r requirements.txt
 
       - name: Exercise OpenAPI routes on a real Functions host
         run: |
