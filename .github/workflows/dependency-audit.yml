@@ -1,0 +1,59 @@
+name: Dependency Audit
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install pip-audit and runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'pip-audit==2.10.1' .
+
+      - name: Audit runtime dependencies
+        id: runtime
+        continue-on-error: true
+        run: |
+          python -m pip_audit --format markdown --output runtime-audit.md
+          status=$?
+          cat runtime-audit.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Install development dependencies
+        run: python -m pip install '.[dev]'
+
+      - name: Audit runtime and development dependencies
+        id: development
+        continue-on-error: true
+        run: |
+          python -m pip_audit --format markdown --output development-audit.md
+          status=$?
+          cat development-audit.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+      - name: Summarize audit outcomes
+        env:
+          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
+          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+        run: |
+          {
+            echo "## Dependency audit outcomes"
+            echo "- Runtime dependencies: ${RUNTIME_OUTCOME}"
+            echo "- Runtime + development dependencies: ${DEVELOPMENT_OUTCOME}"
+          } >> "$GITHUB_STEP_SUMMARY"
