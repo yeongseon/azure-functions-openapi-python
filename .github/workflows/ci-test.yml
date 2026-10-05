@@ -174,7 +174,7 @@ jobs:
   # reports, and a skipped or cancelled dependency is not success, so it cannot
   # pass by being skipped.
   ci-required:
-    needs: [quality, test, azure-functions-2x]
+    needs: [quality, test, azure-functions-2x, host-smoke]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -183,21 +183,92 @@ jobs:
           QUALITY_RESULT: ${{ needs.quality.result }}
           TEST_RESULT: ${{ needs.test.result }}
           AF2X_RESULT: ${{ needs.azure-functions-2x.result }}
+          HOST_SMOKE_RESULT: ${{ needs.host-smoke.result }}
         run: |
           set -euo pipefail
           echo "quality result: ${QUALITY_RESULT}"
           echo "test result:    ${TEST_RESULT}"
           echo "af 2.x result:  ${AF2X_RESULT}"
+          echo "host smoke:     ${HOST_SMOKE_RESULT}"
 
           if [ "${QUALITY_RESULT}" = "success" ] \
             && [ "${TEST_RESULT}" = "success" ] \
-            && [ "${AF2X_RESULT}" = "success" ]; then
-            echo "Quality, test matrix and azure-functions 2.x lane all succeeded. Passing."
+            && [ "${AF2X_RESULT}" = "success" ] \
+            && [ "${HOST_SMOKE_RESULT}" = "success" ]; then
+            echo "Quality, test matrix, azure-functions 2.x and host smoke all succeeded. Passing."
             exit 0
           fi
 
-          echo "::error::Required checks did not all succeed -- quality='${QUALITY_RESULT}' test='${TEST_RESULT}' af2x='${AF2X_RESULT}'"
+          echo "::error::Required checks did not all succeed -- quality='${QUALITY_RESULT}' test='${TEST_RESULT}' af2x='${AF2X_RESULT}' host-smoke='${HOST_SMOKE_RESULT}'"
           exit 1
+
+  host-smoke:
+    name: Real Functions host smoke (Py 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Functions Core Tools v4 and smoke app
+        run: |
+          npm install --global azure-functions-core-tools@4 --unsafe-perm true
+          python -m venv tests/host_smoke/.venv
+          tests/host_smoke/.venv/bin/python -m pip install --upgrade pip
+          cd tests/host_smoke
+          .venv/bin/python -m pip install -r requirements.txt
+
+      - name: Exercise OpenAPI routes on a real Functions host
+        run: |
+          npx --yes azurite --silent > "$RUNNER_TEMP/azurite.log" 2>&1 &
+          azurite_pid=$!
+          trap 'kill "$azurite_pid" "$host_pid" 2>/dev/null || true' EXIT
+
+          cd tests/host_smoke
+          export PATH="$PWD/.venv/bin:$PATH"
+          timeout 120s func start --verbose > "$RUNNER_TEMP/host-smoke.log" 2>&1 &
+          host_pid=$!
+
+          ready=false
+          for _ in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:7071/api/custom_name \
+              --output "$RUNNER_TEMP/custom-route.json"; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "$host_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ready" != true ]; then
+            cat "$RUNNER_TEMP/host-smoke.log"
+            echo "::error::The custom-name route did not become ready"
+            exit 1
+          fi
+
+          python -c 'import json, pathlib; assert json.loads(pathlib.Path("'"$RUNNER_TEMP"'/custom-route.json").read_text()) == {"function_name": "custom_name"}'
+          curl --fail --silent http://127.0.0.1:7071/api/openapi.json \
+            --output "$RUNNER_TEMP/openapi.json"
+          python -c 'import json, pathlib; spec = json.loads(pathlib.Path("'"$RUNNER_TEMP"'/openapi.json").read_text()); assert spec["openapi"] and spec["paths"]'
+          curl --fail --silent http://127.0.0.1:7071/api/docs \
+            --output "$RUNNER_TEMP/swagger.html"
+          grep -q 'SwaggerUIBundle' "$RUNNER_TEMP/swagger.html"
+
+          kill "$host_pid" 2>/dev/null || true
+          wait "$host_pid" 2>/dev/null || true
+          cat "$RUNNER_TEMP/host-smoke.log"
+
+          if grep -Eq "0 functions (loaded|found \(Worker\))|No job functions found|Executed 'Functions\..*' \(Failed" "$RUNNER_TEMP/host-smoke.log"; then
+            echo "::error::The Functions host reported indexing or invocation errors"
+            exit 1
+          fi
 
   # azure-functions 2.x compatibility proof lane (issues #488 / #528),
   # following the sibling proof-lane pattern (azure-functions-validation #351 /
