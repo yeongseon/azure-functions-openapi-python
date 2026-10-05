@@ -235,7 +235,7 @@ jobs:
 
           ready=false
           for _ in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:7071/api/custom_name \
+            if curl --fail --silent http://127.0.0.1:7071/api/intentionally-broken \
               --output "$RUNNER_TEMP/custom-route.json"; then
               ready=true
               break
