@@ -6,7 +6,7 @@ This guide covers how to set up a local development environment, run tests, and 
 
 ## Prerequisites
 
-- **Python 3.10+** installed on your system
+- **Python 3.11+** installed on your system
 - **Git** for version control
 - **Hatch** as the build and environment manager (installed via `pip install hatch`)
 - **Make** for running the provided Makefile targets
@@ -144,7 +144,7 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 
 ## Tips
 
-- Ensure you're using Python 3.10+.
+- Ensure you're using Python 3.11+.
 - Use `make check-all` before committing to validate your changes.
 - Prefer `make` commands to ensure consistent dev experience across platforms.
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) for proper changelog generation.
