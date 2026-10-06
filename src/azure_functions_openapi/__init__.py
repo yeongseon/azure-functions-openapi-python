@@ -1,7 +1,4 @@
 # src/azure_functions_openapi/__init__.py
-import sys
-import warnings
-
 from azure_functions_openapi._warnings import SpecWarning, WarningCode
 import azure_functions_openapi.bridge as _bridge
 from azure_functions_openapi.decorator import (
@@ -51,13 +48,3 @@ __all__ = [
     "scan_endpoint_metadata",
     "scan_validation_metadata",
 ]
-
-
-if sys.version_info < (3, 11):
-    warnings.warn(
-        "azure-functions-openapi will drop support for Python 3.10 in its next minor release. "
-        "Python 3.10 reaches end of life in October 2026; upgrade to Python 3.11 "
-        "or newer to keep receiving updates.",
-        FutureWarning,
-        stacklevel=2,
-    )

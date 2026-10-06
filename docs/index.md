@@ -128,7 +128,7 @@ Generate programmatically with:
 
 | Component | Supported |
 | --- | --- |
-| Python | 3.10 to 3.14 |
+| Python | 3.11 to 3.14 |
 | Azure Functions model | Python v2 (`func.FunctionApp`) |
 | OpenAPI versions | 3.0.0, 3.1.0, and 3.2.0 |
 | Pydantic | v2 (≥2.0) |

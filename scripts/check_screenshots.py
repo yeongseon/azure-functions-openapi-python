@@ -45,7 +45,7 @@ _REQUIRED_CAPTURED = ("package_version", "git_sha", "date", "method")
 # artifact or its manifest. Kept deliberately narrow to avoid false positives on
 # ordinary docs content; reviewed, known-safe matches can be exempted via the
 # manifest-level ``secret_scan_allow`` list (substring match).
-_SECRET_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+_SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "azure subscription id",
         re.compile(
@@ -102,7 +102,8 @@ def _combined_source_hash(inputs: list[str]) -> str:
 
 
 def _image_hash(rel: str) -> str:
-    return "sha256:" + hashlib.sha256((REPO_ROOT / rel).read_bytes()).hexdigest()
+    with (REPO_ROOT / rel).open("rb") as image:
+        return "sha256:" + hashlib.file_digest(image, "sha256").hexdigest()
 
 
 def _load_manifest(path: Path) -> dict[str, Any]:

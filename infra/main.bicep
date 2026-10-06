@@ -1,7 +1,7 @@
 // infra/main.bicep
 // Minimal Azure resources for e2e testing.
 // Creates: Storage Account + Function App on a Flex Consumption (FC1) plan,
-// Linux/Python, version selectable via the pythonVersion parameter (default 3.11).
+// Linux/Python, version selectable via the pythonVersion parameter (default 3.12).
 // Optionally creates Application Insights (enableAppInsights=true).
 //
 // Flex Consumption (not the classic Y1 Consumption plan) is required because
@@ -29,7 +29,7 @@ param enableAppInsights bool = false
 param appInsightsName string = '${functionAppName}-ai'
 
 @description('Python runtime version for the Flex Consumption Function App (e.g. 3.11, 3.13).')
-param pythonVersion string = '3.11'
+param pythonVersion string = '3.12'
 
 @description('Per-instance memory (MB) for the Flex Consumption app.')
 param instanceMemoryMB int = 2048

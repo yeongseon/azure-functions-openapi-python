@@ -11,8 +11,8 @@ Demonstrates:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 import json
 import logging
 from typing import Any
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class ReportFormat(str, Enum):
+class ReportFormat(StrEnum):
     csv = "csv"
     pdf = "pdf"
     xlsx = "xlsx"
@@ -149,7 +149,7 @@ def submit_report(req: func.HttpRequest) -> func.HttpResponse:
     job = {
         "job_id": job_id,
         "status": "queued",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "request": body,
         "progress_pct": 0,
         "download_url": None,

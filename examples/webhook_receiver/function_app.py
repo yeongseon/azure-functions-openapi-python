@@ -9,7 +9,7 @@ Demonstrates:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import hashlib
 import hmac
 import json
@@ -129,7 +129,7 @@ def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
                     mimetype="application/json",
                     status_code=401,
                 )
-            age = (datetime.now(timezone.utc) - ts).total_seconds()
+            age = (datetime.now(UTC) - ts).total_seconds()
             if abs(age) > _MAX_WEBHOOK_AGE_SECONDS:
                 logger.warning("Webhook timestamp too old: %s (age=%.0fs)", timestamp, age)
                 return func.HttpResponse(
@@ -186,7 +186,7 @@ def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
     entry = {
         "delivery_id": f"dlv_{uuid.uuid4().hex[:12]}",
         "status": "accepted",
-        "received_at": datetime.now(timezone.utc).isoformat(),
+        "received_at": datetime.now(UTC).isoformat(),
     }
     _recent_deliveries.append(entry)
 
