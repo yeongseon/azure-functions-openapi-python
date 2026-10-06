@@ -186,7 +186,7 @@ def receive_order_webhook(req: func.HttpRequest) -> func.HttpResponse:
     entry = {
         "delivery_id": f"dlv_{uuid.uuid4().hex[:12]}",
         "status": "accepted",
-            "received_at": datetime.now(UTC).isoformat(),
+        "received_at": datetime.now(UTC).isoformat(),
     }
     _recent_deliveries.append(entry)
 

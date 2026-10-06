@@ -98,7 +98,7 @@ def send_notification(
     entry = {
         "notification_id": notification_id,
         "status": "queued",
-            "queued_at": datetime.now(UTC).isoformat(),
+        "queued_at": datetime.now(UTC).isoformat(),
     }
     _notifications[notification_id] = entry
 

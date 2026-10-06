@@ -103,7 +103,7 @@ def import_partners(req: func.HttpRequest, body: ImportBatchRequest) -> ImportBa
         "imported": imported,
         "skipped": skipped,
         "status": "dry_run" if body.dry_run else "completed",
-            "created_at": datetime.now(UTC).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     }
     _import_history.append(entry)
 
