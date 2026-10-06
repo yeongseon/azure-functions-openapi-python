@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.29.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.28.0...v0.29.0) (2026-10-06)
+
+
+### Features
+
+* **python:** require Python 3.11 or newer ([8c592db](https://github.com/yeongseon/azure-functions-openapi-python/commit/8c592dbbc77e74a2cffc2867d37f18d7c2658e24))
+
 ## [0.28.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.27.1...v0.28.0) (2026-10-04)
 
 
