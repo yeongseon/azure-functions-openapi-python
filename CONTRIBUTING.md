@@ -34,9 +34,9 @@ Recommended branch prefixes:
 
 ## Local development quickstart
 
-The package supports Python `>=3.10,<3.15` (currently Python 3.10 through 3.14).
+The package supports Python `>=3.11,<3.15` (currently Python 3.11 through 3.14).
 The default Hatch development environment is intentionally provisioned with
-Python 3.10, so `make install` may download or select Python 3.10 even when
+Python 3.11, so `make install` may download or select Python 3.11 even when
 your machine's default interpreter is newer. From the repository root, run:
 
 ```bash
