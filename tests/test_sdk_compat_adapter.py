@@ -4,7 +4,7 @@ After the adapter isolation (#325), all Azure Functions SDK discovery flows
 through :mod:`azure_functions_openapi.adapters.azure_functions`. This module
 pins that contract against the *installed* SDK so the CI matrix proves the
 package works on every supported line: ``azure-functions`` 1.21 → latest 1.x
-on Python 3.10–3.12, and the 2.x line on Python 3.13+ (the wheel-based compat
+on Python 3.11–3.12, and the 2.x line on Python 3.13+ (the wheel-based compat
 matrix in ci-test.yml).
 
 Verified support matrix (enforced by CI; see the interpreter-aware
@@ -12,9 +12,9 @@ Verified support matrix (enforced by CI; see the interpreter-aware
 
     azure-functions | Python
     --------------- | ----------------------------
-    1.21.0 (floor)  | 3.10
-    1.24.0          | 3.10
-    latest (<2.0)   | 3.10, 3.11, 3.12
+1.21.0 (floor)  | 3.11
+1.24.0          | 3.11
+latest (<2.0)   | 3.11, 3.12
     2.x (>=2,<3)    | 3.13, 3.14
 
 Three guarantees are asserted here:
