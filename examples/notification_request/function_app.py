@@ -9,7 +9,7 @@ Demonstrates:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 import logging
 import uuid
 
@@ -98,7 +98,7 @@ def send_notification(
     entry = {
         "notification_id": notification_id,
         "status": "queued",
-        "queued_at": datetime.now(timezone.utc).isoformat(),
+            "queued_at": datetime.now(UTC).isoformat(),
     }
     _notifications[notification_id] = entry
 
