@@ -128,8 +128,17 @@ def _isolate_registry() -> Any:
 
 
 class TestSpecWarning:
-    def test_warning_code_serialises_as_plain_string(self) -> None:
+    def test_warning_code_value_is_stable(self) -> None:
         assert WarningCode.VERSION_SKEW.value == "version-skew"
+
+    def test_warning_code_string_forms_are_stable(self) -> None:
+        assert str(WarningCode.VERSION_SKEW) == "version-skew"
+        assert f"{WarningCode.VERSION_SKEW}" == "version-skew"
+
+    def test_warning_code_remains_string_compatible(self) -> None:
+        code: str = WarningCode.VERSION_SKEW
+        assert code == "version-skew"
+        assert json.dumps({"code": WarningCode.VERSION_SKEW}) == '{"code": "version-skew"}'
 
     def test_to_dict_is_json_serialisable(self) -> None:
         warning = SpecWarning(
