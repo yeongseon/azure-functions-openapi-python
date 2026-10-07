@@ -123,6 +123,13 @@ RUN pip install -r /home/site/wwwroot/requirements.txt
 COPY . /home/site/wwwroot
 ```
 
+`4-python3.12` is just an example: `4` is the Functions runtime major version
+and `python3.12` is the interpreter baked into the image. Swap it for whichever
+supported interpreter your app targets. This package supports 3.11 through
+3.14, and `mcr.microsoft.com/azure-functions/python` publishes `4-python3.11`,
+`4-python3.12`, `4-python3.13`, and `4-python3.14`. Pick the tag that matches
+the version you test against, and keep it in sync with your CI matrix.
+
 ## Upgrading
 
 Upgrade to the latest release:

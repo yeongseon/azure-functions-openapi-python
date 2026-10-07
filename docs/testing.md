@@ -1,7 +1,8 @@
 # Testing Guide
 
-This project targets **85%+ total coverage** for core modules.
-Latest measured result (CI): **87%** (2026-02-09).
+Total coverage is **enforced at 95%**: `fail_under = 95` in `pyproject.toml`
+fails the build when the suite drops below it. Run `make cov` for the current
+measured number and an HTML report.
 
 ## Test Structure
 
@@ -57,15 +58,12 @@ hatch run pytest -k "security" -v
 - Coverage report is generated as `coverage.xml`.
 - Codecov upload runs in CI for the Python 3.11 job.
 
-### Coverage thresholds
+### Coverage threshold
 
-| Module | Target |
-| --- | --- |
-| `decorator.py` | 90%+ |
-| `openapi.py` | 85%+ |
-| `swagger_ui.py` | 85%+ |
-| `cli.py` | 80%+ |
-| `utils.py` | 90%+ |
+There is one threshold and it applies to the whole package: **95%**, configured
+as `fail_under` under `[tool.coverage.report]` in `pyproject.toml`. Per-module
+targets are not tracked separately; use `make cov` and the term-missing report
+to find uncovered lines.
 
 ## Test Categories
 

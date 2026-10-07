@@ -644,9 +644,9 @@ spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
 Under 3.0/3.1 there is no `query` path-item field, so the operation is dropped
 with a warning (and raises under `strict=True`).
 
-    ### Non-standard HTTP methods (OpenAPI 3.2)
+### Non-standard HTTP methods (OpenAPI 3.2)
 
-    OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
+OpenAPI 3.0/3.1 path items only accept the fixed verb set (`get`, `put`,
 `post`, `delete`, `options`, `head`, `patch`, `trace`). OpenAPI 3.2 adds an
 `additionalOperations` map for methods outside that set (for example `PURGE`
 or `LINK`). When you document a handler bound to a non-standard method and

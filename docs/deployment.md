@@ -389,7 +389,7 @@ From either example directory:
 
 ```bash
 azure-functions-openapi generate \
-  --app-path ./function_app.py \
+  --app function_app:app \
   --format json \
   --output ./openapi.json
 ```
@@ -398,7 +398,7 @@ Generate YAML instead:
 
 ```bash
 azure-functions-openapi generate \
-  --app-path ./function_app.py \
+  --app function_app:app \
   --format yaml \
   --output ./openapi.yaml
 ```
@@ -535,8 +535,8 @@ az group list --query "[?starts_with(name, 'rg-openapi')]" -o table
 
 - [Choose an Azure Functions Hosting Plan](choose-a-plan.md) — Plan selection guide with decision tree
 - [CLI guide](./cli.md)
-- [`azure-functions-scaffold`](https://github.com/yeongseon/azure-functions-scaffold)
-- [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation)
-- [`azure-functions-doctor`](https://github.com/yeongseon/azure-functions-doctor)
-- [`azure-functions-logging`](https://github.com/yeongseon/azure-functions-logging)
-- [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph)
+- [`azure-functions-scaffold`](https://github.com/yeongseon/azure-functions-scaffold-python)
+- [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)
+- [`azure-functions-doctor`](https://github.com/yeongseon/azure-functions-doctor-python)
+- [`azure-functions-logging`](https://github.com/yeongseon/azure-functions-logging-python)
+- [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph-python)

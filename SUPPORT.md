@@ -2,7 +2,7 @@
 
 ## Supported Environment
 
-* Python: 3.11 and above
+* Python: 3.11-3.14 (`>=3.11,<3.15`)
 * Runtime: Azure Functions (Python)
 
 ## Support Scope
