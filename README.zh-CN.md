@@ -166,6 +166,8 @@ from azure_functions_openapi import (
 
 app = func.FunctionApp()
 
+> 当 `@openapi` 位于 `@app.route` 下方（最内层）时，它会在路由绑定存在之前执行。使用此顺序时，请通过包根目录的 `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)` 或 `generate_openapi_report(app=app)` 扫描应用以获得正确路径。省略 `app=` 会对函数名回退路径发出警告；`strict=True` 时会报错。
+
 
 # 使用普通的 Pydantic 模型描述你的 API。
 class GreetRequest(BaseModel):
@@ -209,6 +211,7 @@ def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_json(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/json",
     )
@@ -220,6 +223,7 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_yaml(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/x-yaml",
     )
