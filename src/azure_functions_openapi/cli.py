@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 import sys
 
+from azure_functions_openapi import _prepare_generation
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -279,6 +280,12 @@ def handle_generate(args: argparse.Namespace) -> int:
         if not isinstance(description, str):
             description = DEFAULT_OPENAPI_INFO_DESCRIPTION
 
+        unresolved = _prepare_generation(
+            None,
+            getattr(args, "route_prefix", "/api"),
+            active_registry,
+            getattr(args, "strict", False),
+        )
         spec = generate_openapi_spec(
             args.title,
             args.version,
@@ -288,7 +295,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             strict=getattr(args, "strict", False),
             registry=active_registry,
         )
-        warnings = collect_spec_warnings(spec, registry=active_registry)
+        warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
         # Surface structured warnings (version skew / namespace fallback /
         # spec-validation) as JSON lines on stderr so CI can parse them, and
         # gate the exit code on them when --fail-on-warnings is set.

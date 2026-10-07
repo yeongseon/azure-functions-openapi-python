@@ -3,7 +3,9 @@
 
 Importing from ``azure_functions_openapi.openapi`` is preserved for
 backward compatibility with code written against versions <= 0.17.x.
-The canonical location is :mod:`azure_functions_openapi.spec`.
+The canonical low-level compiler remains :mod:`azure_functions_openapi.spec`.
+For backward compatibility, every generation function exported by this shim
+redirects to the package-root facade, where ``app=`` route discovery is available.
 
 Scheduled for removal in 1.0. See issue #194.
 """
@@ -12,14 +14,16 @@ from __future__ import annotations
 
 import warnings
 
-from azure_functions_openapi import generate_openapi_spec
+from azure_functions_openapi import (
+    generate_openapi_spec,
+    get_openapi_json,
+    get_openapi_yaml,
+)
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
-    get_openapi_json,
-    get_openapi_yaml,
 )
 
 warnings.warn(
