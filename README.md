@@ -152,7 +152,10 @@ Pass `module:variable` to resolve and scan the completed `FunctionApp`. This is
 required when `@openapi` is below `@app.route`, because the inner decorator runs
 before the route binding exists. The scan also discovers endpoint-metadata routes
 from producers like `@validate_http` or `azure-functions-langgraph`. With
-`module` alone, unresolved routes warn and fall back to the function name:
+`module` alone, routes that cannot be verified emit a non-fatal
+`unresolved-route` warning and fall back to the function name. This warning
+remains non-fatal under `strict=True`, because the fallback can be Azure's
+correct default route:
 
 ```bash
 azure-functions-openapi generate --app function_app:app --title "My API"
