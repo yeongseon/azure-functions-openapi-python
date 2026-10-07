@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.29.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.29.0...v0.29.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **spec:** resolve routes for either decorator order ([#736](https://github.com/yeongseon/azure-functions-openapi-python/issues/736)) ([c7cd677](https://github.com/yeongseon/azure-functions-openapi-python/commit/c7cd67768b533049a011a65107df32d7de0b6080)), closes [#735](https://github.com/yeongseon/azure-functions-openapi-python/issues/735)
+
 ## [0.29.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.28.0...v0.29.0) (2026-10-06)
 
 
