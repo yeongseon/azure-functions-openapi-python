@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import warnings
 
+from azure_functions_openapi import generate_openapi_spec
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
-    generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
 )
