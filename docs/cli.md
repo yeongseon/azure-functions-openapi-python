@@ -66,26 +66,28 @@ Generate OpenAPI 3.1 output:
 azure-functions-openapi generate --openapi-version 3.1 --output openapi-3.1.json
 ```
 
-Import your function app so routes are registered:
+Import and scan your function app so decorator routes use their real bindings:
 
 ```bash
-azure-functions-openapi generate --app function_app --title "Todo API"
+azure-functions-openapi generate --app function_app:app --title "Todo API"
 ```
 
 Pretty-print JSON output:
 
 ```bash
-azure-functions-openapi generate --app function_app --pretty --output openapi.json
+azure-functions-openapi generate --app function_app:app --pretty --output openapi.json
 ```
 
 ### Endpoint-metadata discovery (`module:variable`)
 
-`@openapi`-decorated routes register themselves the moment the module is
-imported, so `--app module` is enough to see them. Producers that register
-**only** through the shared endpoint-metadata namespace — `@validate_http`
-(azure-functions-validation), `azure-functions-langgraph`, and other
-third-party producers — are attached to the live `FunctionApp` object and are
-discovered by scanning it.
+`@openapi`-decorated routes register themselves when the module is imported,
+but an innermost `@openapi` (below `@app.route`) runs before its route binding
+exists. Therefore `--app module:variable` is required to recover the real route.
+It is also required for producers that register **only** through the shared
+endpoint-metadata namespace — `@validate_http`
+(azure-functions-validation), `azure-functions-langgraph`, and others — because
+their metadata is attached to the live `FunctionApp` object and discovered by
+scanning it.
 
 To include those endpoints, pass an explicit `module:variable` so the CLI can
 resolve the `FunctionApp` instance and run discovery on it:
@@ -98,10 +100,10 @@ azure-functions-openapi generate --app function_app:app --output openapi.json
 
 Discovery semantics:
 
-- **`--app function_app`** (module only): the module is imported so `@openapi`
-  decorators fire, but endpoint-metadata discovery is **not** run — the CLI
-  never guesses the `FunctionApp` variable name. A note is printed reminding
-  you to pass `module:variable` to also discover endpoint-metadata routes.
+- **`--app function_app`** (module only): decorators fire, but binding discovery
+  is **not** run. An innermost `@openapi` therefore emits an `unresolved-route`
+  warning and uses the historical function-name fallback. The CLI never guesses
+  the `FunctionApp` variable name.
 - **`--app function_app:app`** (module + variable): the named `FunctionApp`
   attribute is resolved and scanned, merging endpoint-metadata routes into the
   same registry as the decorator routes.
@@ -120,7 +122,7 @@ Discovery semantics:
 
 | Option | Alias | Values | Default | Description |
 | --- | --- | --- | --- | --- |
-| `--app` | - | `module` or `module:var` | - | Import module so `@openapi` decorators register routes; with `module:var`, also resolve the `FunctionApp` and discover endpoint-metadata routes (see [Endpoint-metadata discovery](#endpoint-metadata-discovery-modulevariable)) |
+| `--app` | - | `module` or `module:var` | - | Import the module; use `module:var` to scan route bindings (required for innermost `@openapi`) and endpoint metadata |
 | `--title` | - | any string | `API` | OpenAPI `info.title` |
 | `--version` | - | any string | `1.0.0` | OpenAPI `info.version` |
 | `--description` | - | any string | library default | OpenAPI `info.description` (Markdown / CommonMark supported) |
@@ -190,10 +192,10 @@ jobs:
 ### Empty `paths` in output
 
 - Ensure app handlers are decorated with `@openapi`
-- Pass `--app <module>` so decorated routes are registered before generation:
+- Pass `--app <module>:<variable>` so decorated routes and bindings are reconciled:
 
   ```bash
-  azure-functions-openapi generate --app function_app --title "My API"
+  azure-functions-openapi generate --app function_app:app --title "My API"
   ```
 
 - Use `module:variable` syntax when the `FunctionApp` instance is not named `app`:
