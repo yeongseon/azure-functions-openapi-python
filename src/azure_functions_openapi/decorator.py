@@ -726,6 +726,7 @@ def openapi(
                         # ── routing info ─────────────────────────────────────────
                         "route": validated_route,
                         "method": validated_method,
+                        "_route_evidence": route is not None or adapters.is_function_builder(func),
                         # Evidence that the runtime answers every HTTP method
                         # (binding present, ``methods=`` omitted). Gates all-method
                         # expansion in the spec generator; a bare @openapi stays

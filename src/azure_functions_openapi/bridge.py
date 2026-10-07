@@ -586,6 +586,8 @@ def scan_endpoint_metadata(
             explode_canonical = (
                 canonical_target is not None and canonical_target.get("method") is None
             )
+            if canonical_target is not None:
+                canonical_target["_route_evidence"] = True
             # An explicit @openapi(method=...) that the binding does not serve is
             # a mismatch: stamp the binding's specified method set on the entry so
             # spec.py can flag the unreachable operation (#362/#368). Unspecified

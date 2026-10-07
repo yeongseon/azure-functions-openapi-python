@@ -187,10 +187,11 @@ def generate_openapi_spec(
     license: dict[str, Any] | None = None,
     external_docs: dict[str, Any] | None = None,
     tags: list[dict[str, Any]] | None = None,
+    app: object | None = None,
 ) -> dict[str, Any]: ...
 ```
 
-**Purpose**: Compile all registered endpoints into an OpenAPI specification dictionary.
+**Purpose**: At the package root, optionally scan `app` and then compile all registered endpoints. Pass `app=app` when `@openapi` is below `@app.route`; the inner decorator runs before the binding exists. The JSON, YAML, and report facades accept the same option. Without route evidence, generation emits a non-fatal structured `unresolved-route` warning before using the function-name fallback, including under `strict=True`, because the fallback can be Azure's correct default route. `azure_functions_openapi.spec` remains the SDK-free low-level registry compiler.
 
 **Returns**: OpenAPI spec dict (can be JSON-serialized or converted to YAML).
 
@@ -214,6 +215,7 @@ def get_openapi_json(
     registry: OpenAPIRegistry | None = None,
     hoist_flat_schemas: bool = False,
     infer_auth_level: bool = False,
+    app: object | None = None,
 ) -> str: ...
 ```
 
@@ -384,7 +386,8 @@ def openapi_spec(req: func.HttpRequest) -> func.HttpResponse:
     spec = get_openapi_json(
         title="My API",
         version="1.0.0",
-        description="My Azure Functions API"
+        description="My Azure Functions API",
+        app=app,
     )
     return func.HttpResponse(spec, mimetype="application/json")
 

@@ -166,6 +166,8 @@ from azure_functions_openapi import (
 
 app = func.FunctionApp()
 
+> `@openapi` を `@app.route` の下（最内層）に置くと、ルートバインディングより先に実行されます。この順序では、正しいパスを検出するため、パッケージルートの `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)`、または `generate_openapi_report(app=app)` を使用してください。`app=` なしでは、検証できないルートに対して非致命的な `unresolved-route` 警告が発生し、関数名へフォールバックします。このフォールバックが Azure の正しい既定ルートである場合があるため、`strict=True` でもエラーにはなりません。
+
 
 # 普通の Pydantic モデルで API を記述します。
 class GreetRequest(BaseModel):
@@ -209,6 +211,7 @@ def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_json(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/json",
     )
@@ -220,6 +223,7 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_yaml(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/x-yaml",
     )

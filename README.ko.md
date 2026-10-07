@@ -166,6 +166,8 @@ from azure_functions_openapi import (
 
 app = func.FunctionApp()
 
+> `@openapi`가 `@app.route` 아래(가장 안쪽)에 있으면 라우트 바인딩보다 먼저 실행됩니다. 이 순서를 사용할 때는 정확한 경로를 검색하도록 패키지 루트의 `generate_openapi_spec(app=app)`, `get_openapi_json(app=app)`, `get_openapi_yaml(app=app)` 또는 `generate_openapi_report(app=app)`를 사용하세요. `app=` 없이 생성하면 확인할 수 없는 경로에 대해 치명적이지 않은 `unresolved-route` 경고가 발생하고 함수 이름으로 대체됩니다. 이 대체 경로가 Azure의 올바른 기본 경로일 수 있으므로 `strict=True`에서도 오류가 발생하지 않습니다.
+
 
 # 일반 Pydantic 모델로 API를 기술합니다.
 class GreetRequest(BaseModel):
@@ -209,6 +211,7 @@ def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_json(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/json",
     )
@@ -220,6 +223,7 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_yaml(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/x-yaml",
     )

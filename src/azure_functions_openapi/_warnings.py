@@ -35,6 +35,7 @@ class WarningCode(StrEnum):
     VERSION_DOWNGRADE_DROP = "version-downgrade-drop"
     SCHEMA_SUBSTITUTION = "schema-substitution"
     OPERATION_SKIPPED = "operation-skipped"
+    UNRESOLVED_ROUTE = "unresolved-route"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.value
