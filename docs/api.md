@@ -71,8 +71,10 @@ from azure_functions_openapi import (
     the route binding exists. Pass the completed app to the package-root
     `generate_openapi_spec(app=app)`, `get_openapi_json(app=app)`,
     `get_openapi_yaml(app=app)`, or `generate_openapi_report(app=app)`. Without
-    binding evidence, generation warns before falling back to the function name;
-    `strict=True` raises instead. The low-level functions in
+    binding evidence, generation emits a non-fatal `unresolved-route` warning
+    before falling back to the function name. The warning remains non-fatal
+    under `strict=True`, because the fallback can be Azure's correct default
+    route. The low-level functions in
     `azure_functions_openapi.spec` intentionally remain SDK-free registry compilers.
 
 ## Common usage patterns
