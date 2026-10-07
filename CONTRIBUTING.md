@@ -91,7 +91,7 @@ third-party Actions alike.
 **Rationale.** Mutable tags (including immutable-looking version tags
 like `@v6.0.1`) can be retroactively moved by an attacker who gains
 write access to the upstream repository. The
-[`tj-actions/changed-files` compromise (CVE-2025-30066, March 2025)](https://www.cisa.gov/news-events/alerts/2025/03/18/supply-chain-compromise-third-party-tj-actionschanged-files-cve-2025-30066)
+[`tj-actions/changed-files` compromise (CVE-2025-30066, March 2025)](https://github.com/advisories/GHSA-mrrh-fwg8-r2c3)
 demonstrated this exact failure mode: ~23,000 repositories had their CI
 secrets exfiltrated, and only workflows that pinned to a commit SHA were
 safe. GitHub's own guidance now identifies SHA pinning as

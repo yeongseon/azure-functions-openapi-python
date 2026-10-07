@@ -72,7 +72,7 @@ Titles for issues, pull requests, and commits follow the **Title Convention** in
 ### Before submitting
 
 - Run `make check-all` and verify it passes.
-- Ensure new code has test coverage (target: 85%+).
+- Ensure new code has test coverage. The suite is gated at 95% (`fail_under = 95` in `pyproject.toml`).
 - Update documentation if the change affects public API or behavior.
 - Keep the PR focused on a single concern.
 
@@ -82,7 +82,7 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 
 ### Review process
 
-- At least one approval is required before merging.
+- Branch protection does not require a review approval; the required CI checks are the merge gate. Maintainers still review anything beyond a trivial change.
 - CI must pass on all Python versions (3.11 -- 3.14).
 - Merge with "Squash and merge" to keep the commit history clean.
 
@@ -90,9 +90,8 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 
 ### Formatting
 
-- **Black** for code formatting (line length: default).
-- **Ruff** for linting and import sorting.
-- Both run as pre-commit hooks.
+- **Ruff** does everything: formatting, linting, and import sorting. There is no Black in this project.
+- `ruff format` and `ruff check` both run as pre-commit hooks.
 
 ### Type annotations
 
@@ -115,22 +114,31 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 
 | Target | Description |
 | --- | --- |
-| `make format` | Format code with Ruff and Black |
-| `make lint` | Run Ruff linter |
+| `make format` | Format code with `ruff format` |
+| `make format-check` | Check formatting without writing |
+| `make style` | `ruff check` + `ruff format --check` |
+| `make lint` | Run Ruff + mypy |
 | `make typecheck` | Run mypy type checking |
 | `make security` | Run Bandit security scan |
 | `make test` | Run pytest |
-| `make cov` | Run tests with coverage |
-| `make check-all` | Run lint + typecheck + test (full gate) |
+| `make cov` | Run tests with coverage (gated at 95%) |
+| `make lint-workflows` | Lint release workflows, action pins, Hatch matrix |
+| `make check` | Run lint + typecheck |
+| `make check-all` | Run lint-workflows + check + test + security (full gate) |
+| `make docs` | Build the MkDocs site |
+
+See [Development Guide](development.md#makefile-targets) for the complete list.
 
 ### Pre-commit hooks
 
-| Tool | Version | Purpose |
-| --- | --- | --- |
-| Black | 26.1.0 | Code formatter |
-| Ruff | v0.14.13 | Linter and import sorter |
-| mypy | v1.19.1 | Static type checker |
-| Bandit | 1.9.3 | Security scanner (src/ only) |
+| Tool | Purpose |
+| --- | --- |
+| Ruff | Formatter, linter, and import sorter |
+| mypy | Static type checker |
+| Bandit | Security scanner (`src/` only) |
+
+Pinned versions live in `.pre-commit-config.yaml` (hook `rev`) and
+`pyproject.toml` (the `dev` dependency pins), so they are not duplicated here.
 
 Run all hooks manually:
 

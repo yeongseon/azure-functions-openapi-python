@@ -219,7 +219,7 @@ The `_openapi_registry` is protected by `threading.RLock`, ensuring safe concurr
 
 The function accepts a similar core metadata shape to `@openapi(...)` (path, method, operation_id, summary, request/response schemas, etc.) and writes directly to the shared `_openapi_registry`. Once registered, routes appear in the generated spec alongside decorator-registered routes.
 
-**Reference consumer:** [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph) uses its bridge module (`azure_functions_langgraph.openapi.register_with_openapi`) to read route metadata from its `get_app_metadata()` API and forward it to `register_openapi_metadata()`. This pattern demonstrates how any Azure Functions package can contribute routes to the OpenAPI spec without depending on the `@openapi` decorator.
+**Reference consumer:** [`azure-functions-langgraph`](https://github.com/yeongseon/azure-functions-langgraph-python) uses its bridge module (`azure_functions_langgraph.openapi.register_with_openapi`) to read route metadata from its `get_app_metadata()` API and forward it to `register_openapi_metadata()`. This pattern demonstrates how any Azure Functions package can contribute routes to the OpenAPI spec without depending on the `@openapi` decorator.
 
 The architecture intentionally keeps bridge implementation in the *consumer* package (langgraph), not here. This package defines the contract; consumers decide when and how to call it.
 
@@ -260,8 +260,8 @@ The architecture intentionally keeps bridge implementation in the *consumer* pac
 
 ## See Also
 
-- [azure-functions-langgraph — Architecture](https://github.com/yeongseon/azure-functions-langgraph) — LangGraph deployment adapter (reference consumer of `register_openapi_metadata()`)
-- [azure-functions-validation — Architecture](https://github.com/yeongseon/azure-functions-validation) — Request/response validation pipeline
-- [azure-functions-logging — Architecture](https://github.com/yeongseon/azure-functions-logging) — Structured logging with contextvars
-- [azure-functions-doctor — Architecture](https://github.com/yeongseon/azure-functions-doctor) — Pre-deploy diagnostic CLI
-- [azure-functions-scaffold — Architecture](https://github.com/yeongseon/azure-functions-scaffold) — Project scaffolding CLI
+- [azure-functions-langgraph — Architecture](https://github.com/yeongseon/azure-functions-langgraph-python) — LangGraph deployment adapter (reference consumer of `register_openapi_metadata()`)
+- [azure-functions-validation — Architecture](https://github.com/yeongseon/azure-functions-validation-python) — Request/response validation pipeline
+- [azure-functions-logging — Architecture](https://github.com/yeongseon/azure-functions-logging-python) — Structured logging with contextvars
+- [azure-functions-doctor — Architecture](https://github.com/yeongseon/azure-functions-doctor-python) — Pre-deploy diagnostic CLI
+- [azure-functions-scaffold — Architecture](https://github.com/yeongseon/azure-functions-scaffold-python) — Project scaffolding CLI
