@@ -93,6 +93,8 @@ class TestAPISurface:
 
         assert isinstance(openapi_module, types.ModuleType)
         assert openapi_module.generate_openapi_spec is azure_functions_openapi.generate_openapi_spec
+        assert openapi_module.get_openapi_json is azure_functions_openapi.get_openapi_json
+        assert openapi_module.get_openapi_yaml is azure_functions_openapi.get_openapi_yaml
 
     def test_openapi_submodule_emits_deprecation_warning(self) -> None:
         import importlib

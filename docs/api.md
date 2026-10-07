@@ -66,6 +66,17 @@ from azure_functions_openapi import (
 !!! note
     `get_openapi_json()` and `get_openapi_yaml()` return strings, not `HttpResponse`. Wrap the returned value in `func.HttpResponse` in your Azure Function route.
 
+!!! warning
+    If `@openapi` is the innermost decorator (below `@app.route`), it runs before
+    the route binding exists. Pass the completed app to the package-root
+    `generate_openapi_spec(app=app)`, `get_openapi_json(app=app)`,
+    `get_openapi_yaml(app=app)`, or `generate_openapi_report(app=app)`. Without
+    binding evidence, generation emits a non-fatal `unresolved-route` warning
+    before falling back to the function name. The warning remains non-fatal
+    under `strict=True`, because the fallback can be Azure's correct default
+    route. The low-level functions in
+    `azure_functions_openapi.spec` intentionally remain SDK-free registry compilers.
+
 ## Common usage patterns
 
 ### Minimal endpoint
@@ -177,12 +188,12 @@ def search(req: func.HttpRequest) -> func.HttpResponse:
 ```python
 @app.route(route="openapi.json", methods=["GET"])
 def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(get_openapi_json(title="My API", version="1.0.0"), mimetype="application/json")
+    return func.HttpResponse(get_openapi_json(title="My API", version="1.0.0", app=app), mimetype="application/json")
 
 
 @app.route(route="openapi.yaml", methods=["GET"])
 def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(get_openapi_yaml(title="My API", version="1.0.0"), mimetype="application/x-yaml")
+    return func.HttpResponse(get_openapi_yaml(title="My API", version="1.0.0", app=app), mimetype="application/x-yaml")
 
 
 @app.route(route="docs", methods=["GET"])
