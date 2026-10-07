@@ -191,7 +191,7 @@ def generate_openapi_spec(
 ) -> dict[str, Any]: ...
 ```
 
-**Purpose**: At the package root, optionally scan `app` and then compile all registered endpoints. Pass `app=app` when `@openapi` is below `@app.route`; the inner decorator runs before the binding exists. The JSON, YAML, and report facades accept the same option. Without route evidence, generation warns before using the function name fallback, and `strict=True` raises. `azure_functions_openapi.spec` remains the SDK-free low-level registry compiler.
+**Purpose**: At the package root, optionally scan `app` and then compile all registered endpoints. Pass `app=app` when `@openapi` is below `@app.route`; the inner decorator runs before the binding exists. The JSON, YAML, and report facades accept the same option. Without route evidence, generation emits a non-fatal structured `unresolved-route` warning before using the function-name fallback, including under `strict=True`, because the fallback can be Azure's correct default route. `azure_functions_openapi.spec` remains the SDK-free low-level registry compiler.
 
 **Returns**: OpenAPI spec dict (can be JSON-serialized or converted to YAML).
 
