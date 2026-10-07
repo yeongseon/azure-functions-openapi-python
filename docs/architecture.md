@@ -86,7 +86,7 @@ The registry is consumed only when a client explicitly requests the spec (`GET /
 
 ## How Route Discovery Works
 
-Discovery is how this package finds every HTTP route on a `FunctionApp` and reconciles it with `@openapi(...)` metadata. It runs at **import time** inside `function_app.py` (via `scan_endpoint_metadata`) or on demand from the CLI (`generate --app module:variable`). Route and method come **binding-first**: the Azure `@app.route(...)` binding is the source of truth, and `@openapi(...)` only enriches the operation the binding already defines. For the shared `FunctionBuilder` background this relies on, see [How the worker binds handlers §2](https://yeongseon.dev/azure-functions-python/platform/how-the-worker-binds-handlers/).
+Discovery is how this package finds every HTTP route on a `FunctionApp` and reconciles it with `@openapi(...)` metadata. It runs at **import time** inside `function_app.py` (via `scan_endpoint_metadata`), when `generate_openapi_spec(app=app)` receives the app, or on demand from the CLI (`generate --app module:variable`). Route and method come **binding-first**: the Azure `@app.route(...)` binding is the source of truth, and `@openapi(...)` only enriches the operation the binding already defines. For the shared `FunctionBuilder` background this relies on, see [How the worker binds handlers §2](https://yeongseon.dev/azure-functions-python/platform/how-the-worker-binds-handlers/).
 
 ### Enumerating functions without breaking boot
 
@@ -96,7 +96,7 @@ Because `build()` is idempotent, **re-scanning is safe**: repeated scans neither
 
 ### `@openapi` below `@app.route`
 
-Decorator order is a valid degree of freedom. When `@openapi` is applied *below* `@app.route`, the builder has no trigger yet, so `FunctionBuilder.build()` raises `ValueError` and the function is skipped by the normal built-`Function` path. The user handler still exists on the builder, so `get_unbuilt_user_handler()` reads it defensively via the public `Function.get_user_function()` accessor — a guarded, **side-effect-free** inspection that leaves a later `build()` (once the outer `@app.route` applies the trigger) valid and idempotent (`src/azure_functions_openapi/adapters/azure_functions.py:182-206`). In this ordering `@openapi` never sees the HTTP binding and registers with `method=None`; discovery then explodes that single entry into one operation per bound method rather than collapsing every method into one.
+Decorator order is a valid degree of freedom. When `@openapi` is applied *below* `@app.route`, it runs before the route decorator and cannot see the binding. Generate with `generate_openapi_spec(app=app)` or call `scan_endpoint_metadata(app)` before generating so discovery can reconcile the registered metadata with the completed binding. It then uses the binding route and explodes the unresolved method into one operation per bound method. Without an app scan, a bare registry has no evidence of a decorator that has not run yet and keeps the historical function-name fallback.
 
 ### `--isolate-app` fails closed
 
