@@ -71,11 +71,19 @@ azure-functions-openapi/
 
 This project uses pre-commit to ensure consistent code quality across formatting, linting, typing, and security.
 
-| Tool   | Version  | Purpose                        |
-|--------|----------|--------------------------------|
-| ruff   | v0.15.5  | Formatter + linter + import sorter |
-| mypy   | v1.19.1  | Static type checker            |
-| bandit | 1.9.4    | Security checker on `src/` only |
+There is no Black in this project. Ruff handles both formatting and linting.
+
+| Tool   | Purpose                            |
+|--------|------------------------------------|
+| ruff   | Formatter + linter + import sorter |
+| mypy   | Static type checker                |
+| bandit | Security checker on `src/` only    |
+
+Pinned versions live in two places and are the source of truth, so this table
+deliberately does not repeat them:
+
+- `.pre-commit-config.yaml` — the `rev` of each hook
+- `pyproject.toml` — the `dev` optional-dependency pins used by `make` targets
 
 ### Bandit Configuration
 
@@ -121,22 +129,37 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | Target | Description |
 |--------|-------------|
 | `make install` | Create Hatch env and install pre-commit hooks |
-| `make format` | Format code (ruff) |
+| `make shell` | Open a shell inside the Hatch env |
+| `make format` | Format code (ruff format) |
+| `make format-check` | Check formatting without writing (ruff format --check) |
+| `make style` | Run `ruff check` + `ruff format --check` |
 | `make lint` | Run linter (ruff + mypy) |
 | `make typecheck` | Run mypy type checking |
 | `make security` | Run Bandit security scan |
 | `make test` | Run pytest |
-| `make cov` | Run tests with coverage |
+| `make cov` | Run tests with coverage (gate: `fail_under = 95`) |
+| `make e2e-local` | Run e2e tests against local Azurite on `:7071` |
+| `make e2e-azure` | Run e2e tests against Azure (`E2E_BASE_URL` required) |
+| `make lint-workflows` | Lint release workflows, action pins, and the Hatch matrix |
 | `make check` | Run lint + typecheck |
-| `make check-all` | Run lint + typecheck + test |
+| `make check-all` | Run lint-workflows + check + test + security |
+| `make docs` | Build the MkDocs site |
+| `make docs-serve` | Serve the docs locally with live reload |
+| `make demo` | Run the Swagger UI and example demos |
 | `make build` | Build package |
 | `make version` | Show the current version |
 | `make publish-test` | Publish to TestPyPI |
 | `make precommit` | Run all pre-commit hooks |
 | `make precommit-install` | Install pre-commit hooks |
 | `make doctor` | Show environment diagnostic info |
+| `make reset` | Deep clean, then reinstall the env |
+| `make hatch-clean` | Remove the Hatch environment |
 | `make clean` | Remove build artifacts |
 | `make clean-all` | Deep clean (caches, coverage, venv) |
+| `make help` | List available targets |
+
+Coverage is enforced at **95%** (`fail_under = 95` in `pyproject.toml`); a drop
+below that fails the build.
 
 > For the full release workflow, see [Release Process](release_process.md).
 

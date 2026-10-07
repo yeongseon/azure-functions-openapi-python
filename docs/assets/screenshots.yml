@@ -1,3 +1,11 @@
+# Screenshot provenance manifest.
+#
+# STATUS: every capture below is HISTORICAL. All images were taken at
+# package version 0.21.2 (2026-08-15) and have not been re-captured since.
+# They still illustrate the documented behaviour, but chrome, labels, and
+# minor spec details may differ from the current release. Re-capture and run
+# `python scripts/check_screenshots.py --update` before relying on them as a
+# pixel-accurate reference for the latest version.
 schema_version: 1
 screenshots:
 - id: deployment_report_jobs_openapi_json
@@ -7,6 +15,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/report_jobs/function_app.py
@@ -20,6 +29,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/report_jobs/function_app.py
@@ -33,6 +43,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/notification_request/function_app.py
@@ -46,6 +57,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/partner_import_bridge/function_app.py
@@ -59,6 +71,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/webhook_receiver/function_app.py
@@ -72,6 +85,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/webhook_receiver/function_app.py
@@ -85,6 +99,7 @@ screenshots:
     git_sha: 8310039aa73e91d45cc8389b356428071225eb5b
     date: '2026-08-15'
     method: manual
+    status: historical
   source:
     inputs:
     - examples/webhook_receiver/function_app.py
