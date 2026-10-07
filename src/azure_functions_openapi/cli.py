@@ -284,7 +284,6 @@ def handle_generate(args: argparse.Namespace) -> int:
             None,
             getattr(args, "route_prefix", "/api"),
             active_registry,
-            getattr(args, "strict", False),
         )
         spec = generate_openapi_spec(
             args.title,

@@ -19,7 +19,6 @@ from azure_functions_openapi import (
     get_openapi_yaml,
     openapi,
 )
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
 
 @pytest.fixture(autouse=True)
@@ -141,15 +140,21 @@ def test_report_warns_when_route_has_no_binding_evidence() -> None:
     ]
 
 
-def test_strict_generation_raises_when_route_has_no_binding_evidence() -> None:
-    # Given: a bare decorator has no evidence for its runtime route.
-    @openapi(summary="Unresolved")
-    def unresolved(req: func.HttpRequest) -> func.HttpResponse:
+def test_strict_generation_warns_when_default_route_cannot_be_verified() -> None:
+    # Given: Azure's implicit route is correct, but the inner decorator cannot verify it.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(methods=["GET"])
+    @openapi(summary="Implicit")
+    def implicit(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("OK")
 
-    # When/Then: strict generation refuses the silent function-name fallback.
-    with pytest.raises(OpenAPISpecConfigError, match="unresolved"):
-        generate_openapi_spec(strict=True)
+    # When: strict generation runs without the completed app.
+    with pytest.warns(RuntimeWarning, match="could not be verified"):
+        spec = generate_openapi_spec(strict=True)
+
+    # Then: the compatible function-name route remains available under strict mode.
+    assert set(spec["paths"]) == {"/api/implicit"}
 
 
 def test_cli_app_variable_uses_binding_route_for_innermost_openapi(tmp_path: Path) -> None:

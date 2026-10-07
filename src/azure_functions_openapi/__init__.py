@@ -36,7 +36,6 @@ def _prepare_generation(
     app: object | None,
     route_prefix: str,
     registry: OpenAPIRegistry | None,
-    strict: bool,
 ) -> tuple[SpecWarning, ...]:
     """Scan an app and diagnose registry routes that still lack binding evidence."""
     if app is not None:
@@ -47,16 +46,14 @@ def _prepare_generation(
         SpecWarning(
             code=WarningCode.UNRESOLVED_ROUTE,
             message=(
-                f"Route for '{entry.get('function_name') or key}' has no binding evidence; "
-                "using the function name fallback. Pass app=... or set route= on @openapi."
+                f"Route for '{entry.get('function_name') or key}' could not be verified; "
+                "if this function uses a custom route, pass app=... (or route=...)."
             ),
             function_name=entry.get("function_name") or key,
         )
         for key, entry in active_registry.snapshot().items()
         if entry.get("route") is None and not entry.get("_route_evidence")
     )
-    if unresolved and strict:
-        raise OpenAPISpecConfigError(unresolved[0].message)
     for item in unresolved:
         warnings.warn(item.message, RuntimeWarning, stacklevel=3)
     return unresolved
@@ -81,7 +78,7 @@ def generate_openapi_spec(
     app: object | None = None,
 ) -> dict[str, Any]:
     """Compile a spec, optionally reconciling routes from a FunctionApp first."""
-    _prepare_generation(app, route_prefix, registry, strict)
+    _prepare_generation(app, route_prefix, registry)
     return _generate_openapi_spec(
         title=title,
         version=version,
@@ -120,25 +117,30 @@ def get_openapi_json(
     app: object | None = None,
 ) -> str:
     """Return JSON after optionally reconciling routes from a completed FunctionApp."""
-    spec = generate_openapi_spec(
-        title,
-        version,
-        openapi_version,
-        description,
-        security_schemes,
-        route_prefix,
-        strict,
-        registry,
-        hoist_flat_schemas,
-        infer_auth_level,
-        servers,
-        contact,
-        license,
-        external_docs,
-        tags,
-        app,
-    )
-    return json.dumps(spec, indent=2, ensure_ascii=False)
+    try:
+        spec = generate_openapi_spec(
+            title,
+            version,
+            openapi_version,
+            description,
+            security_schemes,
+            route_prefix,
+            strict,
+            registry,
+            hoist_flat_schemas,
+            infer_auth_level,
+            servers,
+            contact,
+            license,
+            external_docs,
+            tags,
+            app,
+        )
+        return json.dumps(spec, indent=2, ensure_ascii=False)
+    except ValueError:
+        raise
+    except Exception as error:
+        raise RuntimeError("Failed to generate OpenAPI JSON") from error
 
 
 def get_openapi_yaml(
@@ -160,25 +162,30 @@ def get_openapi_yaml(
     app: object | None = None,
 ) -> str:
     """Return YAML after optionally reconciling routes from a completed FunctionApp."""
-    spec = generate_openapi_spec(
-        title,
-        version,
-        openapi_version,
-        description,
-        security_schemes,
-        route_prefix,
-        strict,
-        registry,
-        hoist_flat_schemas,
-        infer_auth_level,
-        servers,
-        contact,
-        license,
-        external_docs,
-        tags,
-        app,
-    )
-    return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
+    try:
+        spec = generate_openapi_spec(
+            title,
+            version,
+            openapi_version,
+            description,
+            security_schemes,
+            route_prefix,
+            strict,
+            registry,
+            hoist_flat_schemas,
+            infer_auth_level,
+            servers,
+            contact,
+            license,
+            external_docs,
+            tags,
+            app,
+        )
+        return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
+    except ValueError:
+        raise
+    except Exception as error:
+        raise RuntimeError("Failed to generate OpenAPI YAML") from error
 
 
 def generate_openapi_report(
@@ -200,7 +207,7 @@ def generate_openapi_report(
     app: object | None = None,
 ) -> SpecReport:
     """Return a spec report after optionally reconciling a completed FunctionApp."""
-    unresolved = _prepare_generation(app, route_prefix, registry, strict)
+    unresolved = _prepare_generation(app, route_prefix, registry)
     report = _generate_openapi_report(
         title,
         version,
