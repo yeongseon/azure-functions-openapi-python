@@ -148,11 +148,11 @@ azure-functions-openapi generate --app function_app --title "My API" --pretty --
 azure-functions-openapi generate --app function_app --format yaml --output openapi.yaml
 ```
 
-Pass `module:variable` to resolve the `FunctionApp` instance and also discover
-endpoint-metadata routes — those registered by producers like `@validate_http`
-or `azure-functions-langgraph` — merging them with your `@openapi` routes into a
-single spec. With `module` alone the CLI imports the module (firing `@openapi`
-decorators) but does not scan for endpoint metadata:
+Pass `module:variable` to resolve and scan the completed `FunctionApp`. This is
+required when `@openapi` is below `@app.route`, because the inner decorator runs
+before the route binding exists. The scan also discovers endpoint-metadata routes
+from producers like `@validate_http` or `azure-functions-langgraph`. With
+`module` alone, unresolved routes warn and fall back to the function name:
 
 ```bash
 azure-functions-openapi generate --app function_app:app --title "My API"
@@ -263,6 +263,7 @@ def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_json(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/json",
     )
@@ -274,6 +275,7 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_yaml(
             title="Sample API",
             description="OpenAPI document for the Sample API.",
+            app=app,
         ),
         mimetype="application/x-yaml",
     )
