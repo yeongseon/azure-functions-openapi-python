@@ -137,7 +137,7 @@ def get_openapi_json(
             app,
         )
         return json.dumps(spec, indent=2, ensure_ascii=False)
-    except ValueError:
+    except OpenAPISpecConfigError:
         raise
     except Exception as error:
         raise RuntimeError("Failed to generate OpenAPI JSON") from error
@@ -182,7 +182,7 @@ def get_openapi_yaml(
             app,
         )
         return yaml.safe_dump(spec, sort_keys=False, allow_unicode=True)
-    except ValueError:
+    except OpenAPISpecConfigError:
         raise
     except Exception as error:
         raise RuntimeError("Failed to generate OpenAPI YAML") from error

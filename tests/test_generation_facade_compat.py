@@ -76,3 +76,34 @@ def test_serialization_facades_preserve_configuration_errors(
     with pytest.raises(OpenAPISpecConfigError) as exc_info:
         facade()
     assert exc_info.value is error
+
+
+@pytest.mark.parametrize("module_fixture", ["root_api", "shim_api"])
+@pytest.mark.parametrize(
+    ("function_name", "message"),
+    [
+        ("get_openapi_json", "Failed to generate OpenAPI JSON"),
+        ("get_openapi_yaml", "Failed to generate OpenAPI YAML"),
+    ],
+)
+def test_serialization_facades_wrap_plain_value_errors(
+    module_fixture: str,
+    function_name: str,
+    message: str,
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: spec generation raises a plain ValueError (not a config error).
+    module = request.getfixturevalue(module_fixture)
+    cause = ValueError("plain value error")
+
+    def fail_generation(*args: object, **kwargs: object) -> dict[str, object]:
+        raise cause
+
+    monkeypatch.setattr(package_api, "generate_openapi_spec", fail_generation)
+    facade: Callable[[], str] = getattr(module, function_name)
+
+    # When/Then: it is wrapped exactly like the low-level spec.py facades.
+    with pytest.raises(RuntimeError, match=f"^{message}$") as exc_info:
+        facade()
+    assert exc_info.value.__cause__ is cause

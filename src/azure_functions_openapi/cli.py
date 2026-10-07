@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from azure_functions_openapi import _prepare_generation
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -331,7 +332,10 @@ def handle_generate(args: argparse.Namespace) -> int:
         # surfaced to stderr above for CI to parse). Placed AFTER the empty-paths
         # block so its diagnostic hint still prints and --fail-on-empty-paths
         # (exit 1) stays reachable when warnings and empty paths coincide.
-        if getattr(args, "fail_on_warnings", False) is True and warnings:
+        # unresolved-route is advisory: the implicit function-name route is often
+        # correct, so it never fails --fail-on-warnings.
+        gating_warnings = [w for w in warnings if w.code != WarningCode.UNRESOLVED_ROUTE]
+        if getattr(args, "fail_on_warnings", False) is True and gating_warnings:
             return 2
 
         if args.format == "json":

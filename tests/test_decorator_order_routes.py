@@ -220,6 +220,43 @@ def test_cli_module_warns_for_innermost_openapi_without_scan(tmp_path: Path) -> 
     assert any(warning["code"] == "unresolved-route" for warning in warnings)
 
 
+def test_cli_unresolved_route_does_not_trip_fail_on_warnings(tmp_path: Path) -> None:
+    # Given: a module-only import of an innermost @openapi with an implicit route.
+    (tmp_path / "function_app.py").write_text(
+        "import azure.functions as func\n"
+        "from azure_functions_openapi import openapi\n"
+        "app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)\n"
+        "@app.route(methods=['GET'])\n"
+        "@openapi(summary='Implicit')\n"
+        "def implicit_items(req: func.HttpRequest): return func.HttpResponse('OK')\n",
+        encoding="utf-8",
+    )
+
+    # When: the CLI runs with --strict --fail-on-warnings.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "azure_functions_openapi.cli",
+            "generate",
+            "--app",
+            "function_app",
+            "--strict",
+            "--fail-on-warnings",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Then: the advisory warning is reported but the spec is still emitted.
+    assert result.returncode == 0, result.stderr
+    assert "/api/implicit_items" in result.stdout
+    warnings = [json.loads(line) for line in result.stderr.splitlines() if line.startswith("{")]
+    assert any(warning["code"] == "unresolved-route" for warning in warnings)
+
+
 def test_spec_keeps_function_name_route_without_explicit_binding_route() -> None:
     # Given: neither decorator supplies an explicit route.
     app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
