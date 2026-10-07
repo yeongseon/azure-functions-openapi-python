@@ -102,8 +102,9 @@ Discovery semantics:
 
 - **`--app function_app`** (module only): decorators fire, but binding discovery
   is **not** run. An innermost `@openapi` therefore emits an `unresolved-route`
-  warning and uses the historical function-name fallback. The CLI never guesses
-  the `FunctionApp` variable name.
+  warning and uses the historical function-name fallback. This warning remains
+  non-fatal with `--strict`, because the fallback can be Azure's correct default
+  route. The CLI never guesses the `FunctionApp` variable name.
 - **`--app function_app:app`** (module + variable): the named `FunctionApp`
   attribute is resolved and scanned, merging endpoint-metadata routes into the
   same registry as the decorator routes.
