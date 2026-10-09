@@ -1,5 +1,7 @@
 # Azure Functions OpenAPI
 
+[Broken scenario link](definitely-missing.md)
+
 `azure-functions-openapi` adds OpenAPI documentation and Swagger UI to Azure Functions Python v2 apps without maintaining a separate spec file.
 
 !!! tip "5-second rule"
