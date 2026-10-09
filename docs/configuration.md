@@ -125,16 +125,29 @@ produces the path `/api/items/{id}` and this parameter:
 { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
 ```
 
-Supported constraints:
+The supported Azure route-template subset is:
+
+- literal segments, including dotted static segments such as `v1.0/items`
+- required variables such as `{id}`
+- required `int` and `alpha` constraints
 
 | constraint | schema | notes |
 | --- | --- | --- |
 | `:int` | `{"type": "integer"}` | |
 | `:alpha` | `{"type": "string"}` | No `pattern` is emitted. `alpha` constrains Azure's routing, not the value's format, so a pattern would assert a payload contract the runtime does not enforce. |
 
-Anything else — including optional constraints such as `{id:int?}` — is rejected
-by route validation rather than mistranslated, so an unsupported template fails
-loudly instead of producing a document that does not match the endpoint.
+All other Azure route-template syntax is unsupported. This includes optional
+parameters (`{id?}`, `{id:int?}`), catch-all parameters (`{*rest}`), and every
+other constraint, including `guid`, `bool`, `datetime`, `long`, `float`,
+`double`, `decimal`, `min`, `max`, `range`, `length`, `minlength`, `maxlength`,
+and `regex(...)`. These forms are rejected instead of being weakened to a
+required plain string.
+
+An authored route that is visible to `@openapi` raises `ValueError` immediately.
+If the route is resolved later from a scanned `FunctionApp` binding,
+`strict=True` raises during generation; non-strict generation follows the
+existing malformed-operation convention by skipping that operation and
+recording an `operation-skipped` structured warning.
 
 **Precedence.** An explicit `parameters` entry always wins. If it declares a
 schema that disagrees with the route constraint, the explicit schema is kept and
