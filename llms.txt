@@ -21,6 +21,7 @@ Renders Swagger UI with enterprise security headers (CSP, HSTS).
 
 - `@openapi(summary, description, ...)` — Decorator for HTTP handlers
 - `register_openapi_metadata(path, method, ...)` — Programmatic metadata registration
+- `register_openapi_routes(app, *, title, version, ...)` — Explicitly register JSON, YAML, and Swagger UI routes
 - `clear_openapi_registry()` — Clear registry for fresh start
 - Package-root `generate_openapi_spec(..., app=app)` — scan a completed FunctionApp, then generate a spec dict
 - Package-root `get_openapi_json(..., app=app)` / `get_openapi_yaml(..., app=app)` — scan then serialize; pass `app=` when `@openapi` is below `@app.route`
