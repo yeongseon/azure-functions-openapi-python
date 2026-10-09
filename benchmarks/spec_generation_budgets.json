@@ -1,0 +1,33 @@
+{
+  "scenarios": [
+    {
+      "operations": 10,
+      "models": 5,
+      "max_median_seconds": 0.25,
+      "max_peak_bytes": 1048576
+    },
+    {
+      "operations": 50,
+      "models": 25,
+      "max_median_seconds": 1.0,
+      "max_peak_bytes": 2097152
+    },
+    {
+      "operations": 200,
+      "models": 100,
+      "max_median_seconds": 4.0,
+      "max_peak_bytes": 6291456
+    },
+    {
+      "operations": 500,
+      "models": 100,
+      "max_median_seconds": 10.0,
+      "max_peak_bytes": 10485760
+    }
+  ],
+  "scaling": {
+    "from_operations": 50,
+    "to_operations": 200,
+    "max_time_ratio": 6.0
+  }
+}
