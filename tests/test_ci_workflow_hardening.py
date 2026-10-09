@@ -23,7 +23,9 @@ FULL_JOBS = (
 
 def gate_script() -> str:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return workflow["jobs"]["ci-required"]["steps"][0]["run"]
+    script = workflow["jobs"]["ci-required"]["steps"][0]["run"]
+    assert isinstance(script, str)
+    return script
 
 
 def needs(
