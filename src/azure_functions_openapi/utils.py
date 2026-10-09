@@ -9,7 +9,7 @@ from typing import Any, cast, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError, UnsupportedRouteTemplateError
 
 logger = logging.getLogger(__name__)
 
@@ -419,6 +419,9 @@ def validate_route_path(route: Any) -> bool:
     if not route or not isinstance(route, str):
         return False
 
+    if unsupported_route_token(route) is not None:
+        return False
+
     # Check for dangerous patterns
     dangerous_patterns = [
         r"\.\.",  # Path traversal
@@ -470,13 +473,34 @@ def _split_route_param(token: str) -> tuple[str, str | None] | None:
     return name, constraint
 
 
-def parse_route_template(route: str) -> tuple[str, dict[str, str]]:
+def unsupported_route_token(route: str) -> str | None:
+    """Return the first valid Azure token outside the supported OpenAPI subset."""
+    for match in re.finditer(r"\{([^{}]*)\}", route):
+        token = match.group(1)
+        parsed = _split_route_param(token)
+        if parsed is None:
+            continue
+        name, constraint = parsed
+        if token == name or token in {f"{name}:int", f"{name}:alpha"}:
+            continue
+        if constraint is not None or token.startswith("*") or token.endswith("?"):
+            return token
+    return None
+
+
+def parse_route_template(
+    route: str, function_name: str = "unknown function"
+) -> tuple[str, dict[str, str]]:
     """Return the OpenAPI path and the inline constraints declared on it.
 
     ``items/{id:int}`` yields ``("items/{id}", {"id": "int"})`` so the emitted
     path matches the parameter name, which is what OpenAPI requires. A route
     without constraints is returned unchanged with an empty mapping.
     """
+    unsupported = unsupported_route_token(route)
+    if unsupported is not None:
+        raise UnsupportedRouteTemplateError(function_name, route, unsupported)
+
     out: list[str] = []
     constraints: dict[str, str] = {}
     i = 0

@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import azure.functions as func
 from openapi_spec_validator import validate
 import pytest
 
+from azure_functions_openapi import openapi
+from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
-from azure_functions_openapi.spec import generate_openapi_spec
+from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
 from azure_functions_openapi.utils import parse_route_template, validate_route_path
 
 
@@ -84,20 +87,110 @@ def test_unconstrained_variable_becomes_a_required_string_parameter() -> None:
     validate(spec)
 
 
+_UNSUPPORTED_ROUTES = [
+    "items/{id?}",
+    "items/{id:int?}",
+    "files/{*rest}",
+    "items/{id:guid}",
+    "items/{enabled:bool}",
+    "items/{created:datetime}",
+    "items/{id:long}",
+    "items/{value:float}",
+    "items/{value:double}",
+    "items/{value:decimal}",
+    "items/{id:min(1)}",
+    "items/{id:max(10)}",
+    "items/{id:range(1,10)}",
+    "items/{name:length(8)}",
+    "items/{name:minlength(2)}",
+    "items/{name:maxlength(12)}",
+    "items/{slug:regex([a-z]+)}",
+]
+
+
+@pytest.mark.parametrize("route", _UNSUPPORTED_ROUTES)
+def test_authored_routes_reject_unsupported_azure_semantics(route: str) -> None:
+    # Given: an authored route using Azure syntax outside the supported subset.
+    # When/Then: decoration rejects the route and identifies its unsupported token.
+    with pytest.raises(ValueError, match="unsupported Azure route token") as excinfo:
+
+        @openapi(summary="Unsupported route", method="get", route=route)
+        def authored_route(_req: func.HttpRequest) -> func.HttpResponse:
+            return func.HttpResponse("OK")
+
+    assert "authored_route" in str(excinfo.value)
+    assert route in str(excinfo.value)
+
+
+@pytest.mark.parametrize("route", _UNSUPPORTED_ROUTES)
+def test_route_validator_rejects_unsupported_azure_semantics(route: str) -> None:
+    assert validate_route_path(route) is False
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("route", _UNSUPPORTED_ROUTES)
+def test_scanned_routes_do_not_weaken_unsupported_azure_semantics(route: str, strict: bool) -> None:
+    # Given: a real SDK binding whose route is only resolved during app scanning.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route=route, methods=["GET"])
+    @openapi(summary="Scanned route")
+    def scanned_route(_req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    registry = OpenAPIRegistry()
+    scan_endpoint_metadata(app, registry=registry)
+
+    # When/Then: strict mode raises; non-strict mode skips with a structured warning.
+    if strict:
+        with pytest.raises(ValueError, match="unsupported Azure route token") as excinfo:
+            generate_openapi_spec(title="T", registry=registry, strict=True)
+        assert "scanned_route" in str(excinfo.value)
+        assert route in str(excinfo.value)
+        return
+
+    spec = generate_openapi_spec(title="T", registry=registry)
+    warnings = collect_spec_warnings(spec, registry=registry)
+    assert spec["paths"] == {}
+    assert [(warning.code.value, warning.function_name) for warning in warnings] == [
+        ("operation-skipped", "scanned_route")
+    ]
+    assert route in warnings[0].message
+
+
 @pytest.mark.parametrize(
-    ("route", "expected_path", "expected_constraints"),
+    ("route", "parameter_name", "schema"),
     [
-        ("items/{id:guid}", "items/{id}", {"id": "guid"}),
-        ("items/{id?}", "items/{id}", {}),
-        ("files/{*path}", "files/{path}", {}),
-        ("items/{id:unknown}", "items/{id}", {"id": "unknown"}),
+        ("items/{id:int}", "id", {"type": "integer"}),
+        ("categories/{category:alpha}", "category", {"type": "string"}),
     ],
 )
-def test_full_azure_route_parameter_syntax_is_normalized(
-    route: str, expected_path: str, expected_constraints: dict[str, str]
+def test_scanned_routes_keep_supported_constraints(
+    route: str, parameter_name: str, schema: dict[str, str]
 ) -> None:
-    assert validate_route_path(route) is True
-    assert parse_route_template(route) == (expected_path, expected_constraints)
+    # Given: a real SDK binding using one of the two supported constraints.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route=route, methods=["GET"])
+    @openapi(summary="Supported route")
+    def scanned_supported_route(_req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    registry = OpenAPIRegistry()
+    scan_endpoint_metadata(app, registry=registry)
+
+    # When: the scanned operation is generated.
+    spec = generate_openapi_spec(title="T", registry=registry)
+
+    # Then: the constraint remains represented by its exact current schema.
+    normalized_route, _constraints = parse_route_template(route)
+    (parameter,) = spec["paths"][f"/api/{normalized_route}"]["get"]["parameters"]
+    assert parameter == {
+        "name": parameter_name,
+        "in": "path",
+        "required": True,
+        "schema": schema,
+    }
 
 
 def test_dotted_static_route_generates_a_valid_document() -> None:

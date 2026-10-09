@@ -634,7 +634,9 @@ def generate_openapi_spec(
                 # document: OpenAPI matches a path template variable to a
                 # parameter by name, so the path has to read ``{id}`` while the
                 # constraint becomes that parameter's schema.
-                raw_path, route_constraints = parse_route_template(f"/{raw_route}")
+                raw_path, route_constraints = parse_route_template(
+                    f"/{raw_route}", function_name=str(logical_name)
+                )
                 path = apply_route_prefix(raw_path, normalized_prefix)
                 # An unspecified method (``None``) expands to the full HTTP set
                 # ONLY when there is binding evidence that the Azure runtime
@@ -1027,7 +1029,7 @@ def generate_openapi_spec(
                     raise
                 logger.exception("Failed to process function %s", func_name)
                 _diag_registry.add_skipped_operation(
-                    f"{func_name}: operation omitted from the spec ({exc!r})"
+                    f"{logical_name}: operation omitted from the spec ({exc!r})"
                 )
                 continue
 

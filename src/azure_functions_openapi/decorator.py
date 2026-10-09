@@ -23,13 +23,17 @@ from typing import (
 from pydantic import BaseModel
 
 from azure_functions_openapi import adapters
-from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError, UnsupportedRouteTemplateError
 from azure_functions_openapi.registry import (
     OpenAPIRegistry,
     ensure_canonical_identity,
     registry,
 )
-from azure_functions_openapi.utils import sanitize_operation_id, validate_route_path
+from azure_functions_openapi.utils import (
+    sanitize_operation_id,
+    unsupported_route_token,
+    validate_route_path,
+)
 
 # Define a generic type variable for functions
 F = TypeVar("F", bound=Callable[..., Any])
@@ -1011,6 +1015,10 @@ def _validate_and_sanitize_route(route: str | None, func_name: str) -> str | Non
     """Validate and sanitize route path."""
     if not route:
         return None
+
+    unsupported = unsupported_route_token(route)
+    if unsupported is not None:
+        raise UnsupportedRouteTemplateError(func_name, route, unsupported)
 
     if not validate_route_path(route):
         logger.warning(
