@@ -1,4 +1,5 @@
 # src/azure_functions_openapi/__init__.py
+# CI scenario: source-only change.
 import json
 from typing import Any
 import warnings
