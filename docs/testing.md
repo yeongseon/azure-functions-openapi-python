@@ -38,6 +38,14 @@ Run tests with coverage reporting:
 make cov
 ```
 
+Run the opt-in spec-generation performance budgets:
+
+```bash
+make perf
+```
+
+Performance tests carry the `perf` marker and are excluded from `make test` so shared-runner timing cannot make the default suite slow or flaky. `make perf` runs the benchmark with warmed-up repeats and compares median wall time, peak traced memory, and scaling against `benchmarks/spec_generation_budgets.json`.
+
 Run a specific test file:
 
 ```bash
