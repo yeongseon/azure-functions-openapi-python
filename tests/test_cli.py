@@ -266,27 +266,49 @@ class TestHandleGenerate:
         spec = json.loads(output)
         assert spec["openapi"] == "3.0.0"
 
-    def test_generate_with_output_file(self) -> None:
-        """Test generation with output file."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = Path(tmpdir) / "openapi.json"
+    @pytest.mark.parametrize("output_format", ["json", "yaml"])
+    def test_generate_replaces_output_atomically_without_temp_files(
+        self, tmp_path: Path, output_format: str
+    ) -> None:
+        output_path = tmp_path / f"openapi.{output_format}"
+        output_path.write_text("stale specification", encoding="utf-8")
+        args = mock.Mock(
+            title="File API",
+            version="1.0.0",
+            format=output_format,
+            output=str(output_path),
+            pretty=False,
+            openapi_version="3.0",
+            app=None,
+        )
 
-            args = mock.Mock()
-            args.title = "File API"
-            args.version = "1.0.0"
-            args.format = "json"
-            args.output = str(output_path)
-            args.pretty = False
-            args.openapi_version = "3.0"
-            args.app = None
+        result = handle_generate(args)
 
+        assert result == 0
+        content = output_path.read_text(encoding="utf-8")
+        spec = json.loads(content) if output_format == "json" else yaml.safe_load(content)
+        assert spec["info"]["title"] == "File API"
+        assert list(tmp_path.glob(f".{output_path.name}.*")) == []
+
+    def test_serialization_failure_preserves_existing_output(self, tmp_path: Path) -> None:
+        output_path = tmp_path / "openapi.json"
+        output_path.write_text("trusted specification", encoding="utf-8")
+        args = mock.Mock(
+            title="Broken API",
+            version="1.0.0",
+            format="json",
+            output=str(output_path),
+            pretty=False,
+            openapi_version="3.0",
+            app=None,
+        )
+
+        with mock.patch("json.dumps", side_effect=TypeError("not serializable")):
             result = handle_generate(args)
 
-            assert result == 0
-            assert output_path.exists()
-            content = output_path.read_text()
-            spec = json.loads(content)
-            assert spec["info"]["title"] == "File API"
+        assert result == 1
+        assert output_path.read_text(encoding="utf-8") == "trusted specification"
+        assert list(tmp_path.glob(f".{output_path.name}.*")) == []
 
     def test_generate_yaml_with_openapi_3_1(self) -> None:
         """Test YAML generation with OpenAPI 3.1."""
@@ -349,7 +371,7 @@ class TestHandleGenerate:
             "azure_functions_openapi.cli.generate_openapi_spec",
             return_value=spec_return,
         ):
-            with mock.patch.object(Path, "write_text", side_effect=OSError("disk full")):
+            with mock.patch("os.replace", side_effect=OSError("disk full")):
                 with mock.patch("builtins.print") as mock_print:
                     result = handle_generate(args)
 

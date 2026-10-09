@@ -429,6 +429,17 @@ class TestCliFailOnWarnings:
         assert rc == 2
         assert not out.exists()
 
+    def test_fail_on_warnings_does_not_modify_existing_output(self, tmp_path: Any) -> None:
+        scan_endpoint_metadata(_make_app(_skewed_namespaces()))
+        out = tmp_path / "openapi.json"
+        out.write_text("trusted specification", encoding="utf-8")
+
+        rc = handle_generate(_args(fail_on_warnings=True, output=str(out)))
+
+        assert rc == 2
+        assert out.read_text(encoding="utf-8") == "trusted specification"
+        assert list(tmp_path.glob(f".{out.name}.*")) == []
+
     def test_output_written_when_flag_absent(self, tmp_path: Any) -> None:
         # Without the gate, warnings do not block the artifact.
         scan_endpoint_metadata(_make_app(_skewed_namespaces()))
