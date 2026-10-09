@@ -14,12 +14,14 @@ while IFS= read -r f || [ -n "$f" ]; do
   [ -z "$f" ] && continue
   count=$((count + 1))
   case "$f" in
-    mkdocs.yml | pyproject.toml | docs/*.py | docs/*.yml | docs/*.yaml | docs/*.json | \
-    docs/*.toml | docs/*.js | docs/*.css | docs/*.html | docs/*.txt)
+    mkdocs.yml | pyproject.toml | src/* | scripts/lint_mermaid.py | \
+    scripts/check_screenshots.py | tests/test_screenshot_manifest.py | \
+    .github/workflows/ci-test.yml | docs/*.py | docs/*.yml | docs/*.yaml | \
+    docs/*.json | docs/*.toml | docs/*.js | docs/*.css | docs/*.html | docs/*.txt)
       docs_only=false
       docs_changed=true
       ;;
-    src/* | tests/* | examples/* | scripts/* | tools/* | benchmarks/* | infra/* | \
+    tests/* | examples/* | scripts/* | tools/* | benchmarks/* | infra/* | \
     .github/* | Makefile | Dockerfile* | docker-compose* | requirements*.txt | *.lock | \
     hatch.toml | tox.ini | setup.cfg | setup.py | MANIFEST.in | .pre-commit-config.yaml | \
     host.json | local.settings*.json | *.py | *.sh)

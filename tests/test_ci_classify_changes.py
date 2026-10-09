@@ -76,6 +76,25 @@ def test_docs_build_inputs_run_the_matrix_and_the_docs_build(files: list[str]) -
     assert classify(files)["docs_changed"] == "true"
 
 
+@pytest.mark.parametrize(
+    "files",
+    [
+        ["src/azure_functions_openapi/openapi.py"],
+        ["scripts/lint_mermaid.py"],
+        ["scripts/check_screenshots.py"],
+        ["tests/test_screenshot_manifest.py"],
+        ["docs/assets/screenshots.yml"],
+        [".github/workflows/ci-test.yml"],
+    ],
+)
+def test_docs_check_inputs_run_the_matrix_and_the_docs_build(files: list[str]) -> None:
+    assert classify(files) == {
+        "docs_only": "false",
+        "docs_changed": "true",
+        "full_required": "true",
+    }
+
+
 def test_mixed_docs_and_code_run_both() -> None:
     assert classify(["README.md", "src/pkg/module.py"]) == {
         "docs_only": "false",
