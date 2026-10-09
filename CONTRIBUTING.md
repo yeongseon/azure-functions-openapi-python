@@ -228,3 +228,4 @@ See `AGENTS.md` for the maintainer-only release procedure.
 ## Code of Conduct
 
 Be respectful and inclusive. See our [Code of Conduct](CODE_OF_CONDUCT.md) for details.
+<!-- post-merge CI verification 1 -->
