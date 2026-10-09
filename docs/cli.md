@@ -76,6 +76,21 @@ Import and scan your function app so decorator routes use their real bindings:
 azure-functions-openapi generate --app function_app:app --title "Todo API"
 ```
 
+Infer each operation's security requirement from its Azure Functions
+`auth_level` binding:
+
+```bash
+azure-functions-openapi generate \
+  --app function_app:app \
+  --infer-auth-level \
+  --output openapi.json
+```
+
+`--infer-auth-level` is opt-in and requires the scan-capable
+`--app module:variable` form. `ANONYMOUS` routes remain public, while
+`FUNCTION` and `ADMIN` routes use the `AzureFunctionKey` `x-functions-key`
+scheme. Explicit operation `security=` metadata keeps precedence.
+
 Pretty-print JSON output:
 
 ```bash
@@ -139,6 +154,7 @@ Discovery semantics:
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
 | `--strict` | - | flag | `false` | Fail on any malformed registry entry instead of skipping it. Recommended for CI where a missing path should break the build |
 | `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, or spec-validation issues; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
+| `--infer-auth-level` | - | flag | `false` | Infer operation security from scanned Azure Functions `auth_level` bindings. Requires `--app module:variable`; explicit operation security wins |
 | `--isolate-app` | - | flag | `false` | Scan the `--app` `FunctionApp` into a fresh, app-scoped registry instead of the shared global one. Requires `--app module:variable`. Use when several apps are imported in one process to avoid cross-app route leakage |
 
 ## Exit codes

@@ -514,6 +514,24 @@ spec = generate_openapi_spec(title="My API", infer_auth_level=True)
 # get_openapi_yaml(..., infer_auth_level=True) accept the same flag.
 ```
 
+The CLI exposes the same opt-in when it can scan a concrete `FunctionApp`:
+
+```bash
+azure-functions-openapi generate \
+  --app function_app:app \
+  --infer-auth-level \
+  --output openapi.json
+```
+
+Inference paths:
+
+| Generation path | Binding scan available | Auth-level inference |
+| --- | --- | --- |
+| Decorator-only registry / CLI `--app module` | No | Not available; no binding can be observed |
+| Package API with `app=<FunctionApp>` | Yes | Pass `infer_auth_level=True` |
+| Direct `scan_endpoint_metadata(app)` followed by generation | Yes | Pass `infer_auth_level=True` to the generator |
+| CLI `--app module:variable` | Yes | Add `--infer-auth-level` |
+
 Mapping:
 
 | `auth_level`         | Injected security                                      |
@@ -538,10 +556,10 @@ components:
 **Notes:**
 
 - The flag defaults to `False`, so existing specs are unchanged unless you opt in.
-- Inference only works on the **binding-scan path** — i.e. when the spec is built by
-  scanning a `FunctionApp` instance (the CLI `module:variable` form, or
-  `scan_endpoint_metadata`). The plain `@openapi`-only path cannot see the HTTP
-  trigger binding, so no `auth_level` is available there.
+- Inference only works on the **binding-scan path**. The plain
+  `@openapi`-only path cannot see the HTTP trigger binding, so no `auth_level`
+  is available there. The CLI rejects `--infer-auth-level` unless
+  `--app module:variable` supplies a scan-capable `FunctionApp`.
 - User-supplied values always win: inference injects `security` / `security_scheme`
   only for operations that have none.
 - **`ADMIN` = host master key.** `FUNCTION` accepts a per-function or host key,
