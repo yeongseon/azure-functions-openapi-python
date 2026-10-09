@@ -26,7 +26,9 @@ def gate_script() -> str:
     return workflow["jobs"]["ci-required"]["steps"][0]["run"]
 
 
-def needs(*, docs_changed: str = "true", full_required: str = "false") -> dict[str, dict[str, str | dict[str, str]]]:
+def needs(
+    *, docs_changed: str = "true", full_required: str = "false"
+) -> dict[str, dict[str, str | dict[str, str]]]:
     jobs: dict[str, dict[str, str | dict[str, str]]] = {
         "changes": {
             "result": "success",
