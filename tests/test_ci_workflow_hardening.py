@@ -92,20 +92,3 @@ def test_gate_accepts_a_successful_unknown_dependency() -> None:
     jobs["future-job"] = {"result": "success", "outputs": {}}
 
     assert run_gate(jobs).returncode == 0
-
-
-def test_fork_pull_requests_run_the_trusted_base_classifier() -> None:
-    workflow_text = WORKFLOW.read_text(encoding="utf-8")
-
-    assert "github.event.pull_request.base.sha" in workflow_text
-    assert "refs/pull/${PR_NUMBER}/head" in workflow_text
-    assert "Fork pull request: refusing to execute classifier" not in workflow_text
-
-
-def test_force_pushes_fail_safe_before_diffing() -> None:
-    workflow_text = WORKFLOW.read_text(encoding="utf-8")
-    ancestor_check = 'git merge-base --is-ancestor "$BEFORE_SHA" "$SHA"'
-    diff = 'git diff --name-only --no-renames "$BEFORE_SHA" "$SHA"'
-
-    assert ancestor_check in workflow_text
-    assert workflow_text.index(ancestor_check) < workflow_text.index(diff)

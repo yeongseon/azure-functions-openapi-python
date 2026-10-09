@@ -43,19 +43,16 @@ jobs:
           fail_safe() {
             printf 'docs_only=false\ndocs_changed=true\nfull_required=true\n' >> "$GITHUB_OUTPUT"
           }
+          fail_safe
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
             if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
-              if ! git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"; then
-                fail_safe
-                exit 0
-              fi
+              git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head" || exit 0
               HEAD_SHA=refs/remotes/pull/head
             fi
             if ! git cat-file -e "${BASE_SHA}^{commit}" \
               || ! git cat-file -e "${HEAD_SHA}^{commit}" \
               || ! git diff --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > changed-files.txt; then
-              fail_safe
               exit 0
             fi
           else
@@ -65,14 +62,11 @@ jobs:
               || ! git cat-file -e "${SHA}^{commit}" \
               || ! git merge-base --is-ancestor "$BEFORE_SHA" "$SHA" \
               || ! git diff --name-only --no-renames "$BEFORE_SHA" "$SHA" > changed-files.txt; then
-              fail_safe
               exit 0
             fi
           fi
 
-          if ! tools/ci_classify_changes.sh < changed-files.txt >> "$GITHUB_OUTPUT"; then
-            fail_safe
-          fi
+          tools/ci_classify_changes.sh < changed-files.txt >> "$GITHUB_OUTPUT" || exit 0
 
   # Lint, type-check and security run once on a single pinned interpreter
   # (Python 3.11, matching the mypy/ruff target-version in pyproject). These
