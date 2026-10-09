@@ -77,11 +77,14 @@ def create_user(req):
     ...
 
 # Auto-generated endpoints:
-# GET /api/openapi.json  — always in sync
+# GET /api/openapi.json  — generated from registered metadata and bindings
 # GET /api/docs          — Swagger UI included
 ```
 
-Spec matches code. Always. Swagger UI out of the box.
+The spec reflects metadata registered via `@openapi` or `register_openapi_metadata`
+and discovered Azure Functions bindings. It does not verify that runtime request
+parsing, status codes, or response bodies match unless a validation layer such as
+`azure-functions-validation` is also applied. Swagger UI works out of the box.
 
 ## What it does
 
@@ -388,7 +391,7 @@ The web preview below is generated from the same representative example and capt
 - You have HTTP-triggered Azure Functions and need API documentation
 - You want Swagger UI for browser-based API testing
 - You need OpenAPI specs for client code generation or CI validation
-- You want to keep docs in sync with handler code automatically
+- You want generated docs to reflect registered endpoint metadata and discovered bindings
 
 ## Documentation
 
