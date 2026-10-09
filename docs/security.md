@@ -129,7 +129,17 @@ Tags are validated to:
 
 ### Caching
 
-Caching should be handled at the application or platform level.
+Caching should be handled at the application or platform level. Per-request generation is acceptable for a small registry or an infrequently requested documentation endpoint. For a larger registry or a frequently requested endpoint, generate the serialized spec after imports complete (or on the first request), store it in a module global, and return that immutable string on later requests. Invalidate it only if the application deliberately registers operations after import. The library does not cache because it cannot know when an application's registry is complete.
+
+```python
+_OPENAPI_JSON = get_openapi_json(title="Sample API", app=app)
+
+
+def openapi_json(req):
+    return func.HttpResponse(_OPENAPI_JSON, mimetype="application/json")
+```
+
+Use platform response caching only when its access controls and invalidation policy match the sensitivity of the generated document. See [Architecture](architecture.md#spec-generation-performance-budgets) for measured costs and regression budgets.
 
 ## Security Best Practices
 

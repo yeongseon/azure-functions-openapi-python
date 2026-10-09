@@ -199,6 +199,36 @@ No function source parsing. All metadata is captured through the `@openapi(...)`
 
 The registry exists in process memory only. There is no file, database, or external cache. This keeps the architecture simple but requires that all function modules are imported before spec generation.
 
+Spec compilation is intentionally on demand and has no library-level cache. Generating on every request is reasonable for small registries or infrequently requested documentation endpoints. For larger registries or frequently requested specs, cache the serialized result at the application or platform layer after all function modules have imported; the registry is normally static after import:
+
+```python
+from azure_functions_openapi import get_openapi_json
+
+_OPENAPI_JSON = get_openapi_json(title="Sample API", app=app)
+
+
+@app.route(route="openapi.json", methods=["GET"])
+def openapi_json(req):
+    return func.HttpResponse(_OPENAPI_JSON, mimetype="application/json")
+```
+
+The cache belongs to the application because only it knows when registration is complete or later changes. Recompute the value when an application intentionally mutates its registry after import.
+
+### Spec Generation Performance Budgets
+
+`make perf` builds synthetic registries with nested, repeated Pydantic models, measures five warmed-up generations with `time.perf_counter()` and `tracemalloc`, and checks `benchmarks/spec_generation_budgets.json`. The default `make test` excludes the timing-sensitive `perf` marker; it retains only a small, always-on functional smoke test of the benchmark command.
+
+The initial baseline was measured on 2026-10-09 from commit `2a9d4dd` on the development machine available for issue #759. Times are medians; memory is the largest traced peak across five repeats. Hardware, Python, Pydantic, and shared-runner load can change absolute numbers, so these are regression reference points rather than production SLAs.
+
+| Operations | Distinct models | Median | Peak traced memory | Committed time ceiling | Committed memory ceiling |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 | 5 | 61.31 ms | 0.18 MiB | 250 ms | 1 MiB |
+| 50 | 25 | 285.79 ms | 0.51 MiB | 1,000 ms | 2 MiB |
+| 200 | 100 | 1,141.77 ms | 1.53 MiB | 4,000 ms | 6 MiB |
+| 500 | 100 | 2,956.71 ms | 2.60 MiB | 10,000 ms | 10 MiB |
+
+Every ceiling is more than three times the measured baseline. A separate, noise-tolerant scaling guard requires the 50-to-200-operation increase (4x operations) to stay at or below 6x median time. Update budgets only from repeated measurements with an explanation of the changed machine, dependency, or implementation.
+
 ### Separate Spec Generation and UI Rendering
 
 `openapi.py` and `cli.py` are registry consumers that compile the spec on demand. `swagger_ui.py` is independent — it does not access the registry. It returns HTML that instructs the browser to fetch the spec from a configured URL. This means the spec endpoint and docs endpoint can be deployed or disabled independently.
