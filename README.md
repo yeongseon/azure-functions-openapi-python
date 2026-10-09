@@ -294,6 +294,9 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 
 </details>
 
+The anonymous documentation routes above are intended for local development;
+review [production exposure and protection options](docs/security.md#protecting-documentation-routes) before deployment.
+
 <details>
 <summary>Advanced: describe the schema with raw JSON Schema instead of Pydantic</summary>
 
