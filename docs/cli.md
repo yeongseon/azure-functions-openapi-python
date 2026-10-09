@@ -117,6 +117,19 @@ resolve the `FunctionApp` instance and run discovery on it:
 azure-functions-openapi generate --app function_app:app --output openapi.json
 ```
 
+!!! warning "`--app` executes module-level code"
+    The CLI **imports** every `--app` module target, so all module-level code
+    runs, not only decorators. Use only trusted modules. Import-time effects can
+    include creating network clients or connections, environment-variable
+    validation that raises, file writes, global initialization, and
+    telemetry or logging side effects.
+
+    There is no sandbox: decorator registration and binding discovery require
+    executing normal Python imports, and the CLI does not isolate or restrict
+    them. Keep module-level code free of destructive side effects and provide
+    build-time-safe defaults, for example by guarding external initialization
+    with an environment flag when generating a spec in CI.
+
 Discovery semantics:
 
 - **`--app function_app`** (module only): decorators fire, but binding discovery
@@ -181,6 +194,9 @@ openapi-spec-validator openapi.yaml
 ```
 
 ## CI example
+
+When passing `--app` in CI, first review the
+[`--app` import-execution warning](#endpoint-metadata-discovery-modulevariable).
 
 ```yaml
 name: OpenAPI Validation
