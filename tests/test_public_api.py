@@ -12,6 +12,7 @@ class TestAPISurface:
             "OPENAPI_VERSION_3_0",
             "OPENAPI_VERSION_3_1",
             "OPENAPI_VERSION_3_2",
+            "DocsRoutes",
             "OpenAPISpecConfigError",
             "SDKIncompatibleError",
             "OpenAPIOperationMetadata",
@@ -26,6 +27,7 @@ class TestAPISurface:
             "get_openapi_yaml",
             "openapi",
             "register_openapi_metadata",
+            "register_openapi_routes",
             "render_swagger_ui",
             "scan_endpoint_metadata",
             "scan_validation_metadata",
@@ -44,6 +46,7 @@ class TestAPISurface:
         from azure_functions_openapi import (  # noqa: F401
             OPENAPI_VERSION_3_0,
             OPENAPI_VERSION_3_1,
+            DocsRoutes,
             OpenAPIOperationMetadata,
             OpenAPIRegistry,
             OpenAPISpecConfigError,
@@ -58,6 +61,7 @@ class TestAPISurface:
             get_openapi_yaml,
             openapi,
             register_openapi_metadata,
+            register_openapi_routes,
             render_swagger_ui,
             scan_endpoint_metadata,  # noqa: F401
             scan_validation_metadata,

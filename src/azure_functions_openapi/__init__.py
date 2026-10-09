@@ -12,6 +12,7 @@ from azure_functions_openapi.decorator import (
     openapi,
     register_openapi_metadata,
 )
+from azure_functions_openapi.docs_routes import DocsRoutes, register_openapi_routes
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.registry import registry as _default_registry
@@ -233,6 +234,7 @@ __all__ = [
     "OPENAPI_VERSION_3_0",
     "OPENAPI_VERSION_3_1",
     "OPENAPI_VERSION_3_2",
+    "DocsRoutes",
     "OpenAPISpecConfigError",
     "SDKIncompatibleError",
     "OpenAPIOperationMetadata",
@@ -247,6 +249,7 @@ __all__ = [
     "get_openapi_yaml",
     "openapi",
     "register_openapi_metadata",
+    "register_openapi_routes",
     "render_swagger_ui",
     "scan_endpoint_metadata",
     "scan_validation_metadata",
