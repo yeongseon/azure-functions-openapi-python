@@ -89,6 +89,12 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     return render_swagger_ui(title="Echo API Docs", openapi_url="/api/openapi.json")
 ```
 
+!!! warning "Choose documentation-route access deliberately"
+    `AuthLevel.ANONYMOUS` exposes the OpenAPI JSON/YAML and Swagger UI publicly,
+    disclosing endpoint shapes, schemas, and security scheme names. It is useful
+    for local development; make production exposure a deliberate decision and
+    follow [Protecting documentation routes](security.md#protecting-documentation-routes).
+
 ## Understanding `@openapi`
 
 `@openapi` captures metadata and stores it in a registry consumed by spec generators.
