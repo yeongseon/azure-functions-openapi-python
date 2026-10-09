@@ -176,6 +176,15 @@ Examples:
         ),
     )
     generate_parser.add_argument(
+        "--infer-auth-level",
+        action="store_true",
+        default=False,
+        help=(
+            "Infer OpenAPI security from each route binding's auth_level. "
+            "Requires --app 'module:variable' so bindings can be scanned."
+        ),
+    )
+    generate_parser.add_argument(
         "--isolate-app",
         action="store_true",
         default=False,
@@ -192,6 +201,17 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    app_target = getattr(args, "app", None)
+    if (
+        args.command == "generate"
+        and getattr(args, "infer_auth_level", False) is True
+        and (not isinstance(app_target, str) or ":" not in app_target)
+    ):
+        generate_parser.error(
+            "--infer-auth-level requires --app module:variable so the FunctionApp bindings "
+            "can be scanned (for example, --app function_app:app)"
+        )
 
     if not args.command:
         parser.print_help()
@@ -295,6 +315,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             route_prefix=getattr(args, "route_prefix", "/api"),
             strict=getattr(args, "strict", False),
             registry=active_registry,
+            infer_auth_level=getattr(args, "infer_auth_level", False) is True,
         )
         warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
         # Surface structured warnings (version skew / namespace fallback /
