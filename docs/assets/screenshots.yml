@@ -6,7 +6,7 @@
 # minor spec details may differ from the current release. Re-capture and run
 # `python scripts/check_screenshots.py --update` before relying on them as a
 # pixel-accurate reference for the latest version.
-schema_version: 1
+schema_version: 2
 screenshots:
 - id: deployment_report_jobs_openapi_json
   image: docs/assets/deployment_report_jobs_openapi_json.png
