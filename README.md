@@ -217,6 +217,7 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_routes,
     render_swagger_ui,
 )
 
@@ -258,8 +259,17 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 > **Want structured logging too? (optional)** Pair your documented endpoints with [`azure-functions-logging`](https://github.com/yeongseon/azure-functions-logging-python) for structured, correlation-aware logs and observability. It attaches request/response context to every log line without changing your `@openapi` contracts. Like validation, it is an optional companion, not a dependency — this package works fully on its own. See the [logging README](https://github.com/yeongseon/azure-functions-logging-python#readme) for details.
 
+Register the three documentation endpoints explicitly with one call:
+
+```python
+register_openapi_routes(app, title="Sample API", version="1.0.0")
+```
+
+This opt-in helper adds ordinary routes to your existing `FunctionApp`; it does
+not replace Azure Functions routing or register anything at import by itself.
+
 <details>
-<summary>Wire up the spec + Swagger UI endpoints (openapi.json / openapi.yaml / docs)</summary>
+<summary>Manual alternative: wire up openapi.json / openapi.yaml / docs</summary>
 
 ```python
 # Serve the generated spec and Swagger UI as ordinary HTTP routes.
