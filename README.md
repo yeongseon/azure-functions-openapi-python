@@ -1,6 +1,7 @@
 # Azure Functions OpenAPI
 
 <!-- CI scenario: documentation-only change -->
+<!-- CI scenario: cancellation push one -->
 
 > Part of the **Azure Functions Python DX Toolkit** — dogfood-tested by [azure-functions-cookbook-python](https://github.com/yeongseon/azure-functions-cookbook-python).
 
