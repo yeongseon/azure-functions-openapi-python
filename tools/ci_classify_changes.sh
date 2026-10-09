@@ -16,6 +16,8 @@ while IFS= read -r f || [ -n "$f" ]; do
   case "$f" in
     mkdocs.yml | pyproject.toml | src/* | scripts/lint_mermaid.py | \
     scripts/check_screenshots.py | tests/test_screenshot_manifest.py | \
+    tests/test_ci_changes_job.py | tests/test_ci_workflow_hardening.py | \
+    tests/test_ci_classify_changes.py | tools/ci_classify_changes.sh | \
     .github/workflows/ci-test.yml | docs/*.py | docs/*.yml | docs/*.yaml | \
     docs/*.json | docs/*.toml | docs/*.js | docs/*.css | docs/*.html | docs/*.txt)
       docs_only=false
