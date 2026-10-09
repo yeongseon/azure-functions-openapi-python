@@ -2,6 +2,102 @@
 
 The canonical security policy is maintained in the root [SECURITY.md](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/SECURITY.md).
 
+## Protecting documentation routes
+
+OpenAPI JSON/YAML and Swagger UI are ordinary HTTP-triggered functions. A route
+registered with `auth_level=func.AuthLevel.ANONYMOUS` is public after deployment
+unless another platform layer restricts it. The specification reveals endpoint
+shapes, request and response schemas, and security scheme names, so anonymous
+documentation is a convenient local-development choice but should be deliberate
+in production.
+
+OpenAPI `security` declarations and `security_schemes` describe how clients
+authenticate to documented API operations. They **do not** protect the
+`openapi.json`, `openapi.yaml`, or `docs` routes that serve the specification and
+UI. Protect those HTTP routes separately with one of these patterns.
+
+### 1. Omit documentation routes in production
+
+Azure Functions registers decorators when `function_app.py` is imported. Put
+the route definitions behind an app setting so no documentation functions are
+registered unless the setting is explicitly enabled:
+
+```python
+import os
+
+import azure.functions as func
+
+from azure_functions_openapi import get_openapi_json, get_openapi_yaml, render_swagger_ui
+
+app = func.FunctionApp()
+
+if os.getenv("ENABLE_API_DOCS") == "true":
+
+    @app.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+    def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse(
+            get_openapi_json(title="My API", app=app),
+            mimetype="application/json",
+        )
+
+    @app.route(route="openapi.yaml", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+    def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse(
+            get_openapi_yaml(title="My API", app=app),
+            mimetype="application/x-yaml",
+        )
+
+    @app.route(route="docs", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+    def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
+        return render_swagger_ui(openapi_url="/api/openapi.json")
+```
+
+Set `ENABLE_API_DOCS=true` only in environments where these routes should
+exist. Any other value, including an unset setting, omits them at import time.
+
+### 2. Require an Azure Functions key
+
+Register every documentation route with Functions authentication instead of
+anonymous access:
+
+```python
+@app.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse(
+        get_openapi_json(title="My API", app=app),
+        mimetype="application/json",
+    )
+
+
+@app.route(route="docs", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
+    return render_swagger_ui(openapi_url="/api/openapi.json")
+```
+
+Call protected routes with an `x-functions-key` header or a `?code=` query
+parameter. Apply the same `FUNCTION` level to the JSON/YAML route consumed by
+Swagger UI; otherwise the page can load while its specification request fails.
+Avoid putting keys in URLs when a header is practical because URLs are commonly
+recorded in browser history and logs.
+
+### 3. Enforce access at the platform edge
+
+For identity-aware or policy-based access, keep the documentation endpoints
+behind Azure API Management, Microsoft Entra ID through App Service
+Authentication (Easy Auth), or equivalent ingress controls. Configure the edge
+to require the intended identity or policy for `/api/docs`,
+`/api/openapi.json`, and `/api/openapi.yaml`, and prevent a direct Function App
+URL from bypassing that control (for example, with access restrictions or
+private networking).
+
+### Swagger UI Try-it-out behavior
+
+`render_swagger_ui()` enables Try-it-out and allows all supported submit methods:
+`GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, and `OPTIONS`. Anyone who can
+open the UI can therefore initiate browser-originated calls to documented API
+operations. Those calls still follow the deployment's API authentication and
+CORS configuration; exposing Swagger UI does not bypass either control.
+
 #### Operation ID Sanitization
 
 Operation IDs are sanitized to:
