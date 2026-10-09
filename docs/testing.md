@@ -108,6 +108,19 @@ def test_spec_contains_paths():
     assert "get" in spec["paths"]["/api/hello"]
 ```
 
+Generated OpenAPI 3.0, 3.1, and 3.2 documents are also checked with
+`openapi-spec-validator` in the default `make test` suite. Version 0.9.0 or
+newer bundles the official OpenAPI 3.2 schema, including validation for
+`querystring` parameters, the `query` method, `additionalOperations`, and
+streaming `itemSchema` media types. The generator's strict-mode diagnostics
+remain complementary: they report authoring and downgrade problems that an
+external document-schema validator cannot infer.
+
+The serializer contract tests load JSON and YAML output back into Python and
+require exact dictionary equality with `generate_openapi_spec()` for all three
+supported OpenAPI versions. Tests use no network access; validator schemas are
+installed with the development dependency.
+
 ### Pydantic model tests
 
 Verify schema generation from Pydantic v2 models:
