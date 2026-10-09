@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && github.event.pull_request.base.sha || github.event.pull_request.head.sha || github.sha }}
 
       - name: Classify changed files
         id: classify
@@ -35,6 +35,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           BEFORE_SHA: ${{ github.event.before }}
           SHA: ${{ github.sha }}
         run: |
@@ -45,9 +46,11 @@ jobs:
 
           if [ "$EVENT_NAME" = "pull_request" ]; then
             if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
-              echo "Fork pull request: refusing to execute classifier from untrusted input"
-              fail_safe
-              exit 0
+              if ! git fetch --no-tags origin "refs/pull/${PR_NUMBER}/head:refs/remotes/pull/head"; then
+                fail_safe
+                exit 0
+              fi
+              HEAD_SHA=refs/remotes/pull/head
             fi
             if ! git cat-file -e "${BASE_SHA}^{commit}" \
               || ! git cat-file -e "${HEAD_SHA}^{commit}" \
@@ -288,65 +291,51 @@ jobs:
     steps:
       - name: Evaluate required checks
         env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          DOCS_CHECK_RESULT: ${{ needs.docs-check.result }}
-          DOCS_CHANGED: ${{ needs.changes.outputs.docs_changed }}
-          FULL_REQUIRED: ${{ needs.changes.outputs.full_required }}
-          QUALITY_RESULT: ${{ needs.quality.result }}
-          TEST_RESULT: ${{ needs.test.result }}
-          MINIMUM_DEPENDENCIES_RESULT: ${{ needs.minimum-dependencies.result }}
-          ARTIFACT_BUILD_RESULT: ${{ needs.artifact-build.result }}
-          ARTIFACT_PY310_RESULT: ${{ needs.artifact-python310-negative.result }}
-          ARTIFACT_PY311_RESULT: ${{ needs.artifact-python311.result }}
-          AF2X_RESULT: ${{ needs.azure-functions-2x.result }}
-          HOST_SMOKE_RESULT: ${{ needs.host-smoke.result }}
+          NEEDS_JSON: ${{ toJson(needs) }}
         run: |
           set -euo pipefail
-          echo "changes result: ${CHANGES_RESULT}"
-          echo "docs check:     ${DOCS_CHECK_RESULT}"
-          echo "docs changed:   ${DOCS_CHANGED}"
-          echo "full required:  ${FULL_REQUIRED}"
-          echo "quality result: ${QUALITY_RESULT}"
-          echo "test result:    ${TEST_RESULT}"
-          echo "minimum deps:   ${MINIMUM_DEPENDENCIES_RESULT}"
-          echo "artifact build: ${ARTIFACT_BUILD_RESULT}"
-          echo "artifact 3.10:  ${ARTIFACT_PY310_RESULT}"
-          echo "artifact 3.11:  ${ARTIFACT_PY311_RESULT}"
-          echo "af 2.x result:  ${AF2X_RESULT}"
-          echo "host smoke:     ${HOST_SMOKE_RESULT}"
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
 
-          expect_result() {
-            local name=$1
-            local actual=$2
-            local expected=$3
-            if [ "$actual" != "$expected" ]; then
-              echo "::error::${name} result '${actual}' did not match expected '${expected}'"
-              return 1
-            fi
+          needs = json.loads(os.environ["NEEDS_JSON"])
+          for name, job in needs.items():
+              print(f"{name}: {job['result']}")
+
+          changes = needs["changes"]
+          docs_changed = changes.get("outputs", {}).get("docs_changed", "")
+          full_required = changes.get("outputs", {}).get("full_required", "")
+          if docs_changed not in {"true", "false"} or full_required not in {"true", "false"}:
+              sys.exit("classifier outputs must be exactly true or false")
+          if docs_changed == "false" and full_required == "false":
+              sys.exit("classifier selected no CI work")
+
+          expected = {
+              "changes": "success",
+              "docs-check": "success" if docs_changed == "true" else "skipped",
           }
-
-          expect_result changes "$CHANGES_RESULT" success
-
-          if [ "$DOCS_CHANGED" = true ]; then
-            expect_result docs-check "$DOCS_CHECK_RESULT" success
-          else
-            expect_result docs-check "$DOCS_CHECK_RESULT" skipped
-          fi
-
-          if [ "$FULL_REQUIRED" = true ]; then
-            expected_full=success
-          else
-            expected_full=skipped
-          fi
-
-          expect_result quality "$QUALITY_RESULT" "$expected_full"
-          expect_result test "$TEST_RESULT" "$expected_full"
-          expect_result minimum-dependencies "$MINIMUM_DEPENDENCIES_RESULT" "$expected_full"
-          expect_result artifact-build "$ARTIFACT_BUILD_RESULT" "$expected_full"
-          expect_result artifact-python310-negative "$ARTIFACT_PY310_RESULT" "$expected_full"
-          expect_result artifact-python311 "$ARTIFACT_PY311_RESULT" "$expected_full"
-          expect_result azure-functions-2x "$AF2X_RESULT" "$expected_full"
-          expect_result host-smoke "$HOST_SMOKE_RESULT" "$expected_full"
+          full_jobs = {
+              "quality",
+              "test",
+              "minimum-dependencies",
+              "artifact-build",
+              "artifact-python310-negative",
+              "artifact-python311",
+              "azure-functions-2x",
+              "host-smoke",
+          }
+          expected.update(
+              {name: "success" if full_required == "true" else "skipped" for name in full_jobs}
+          )
+          failures = [
+              f"{name}={job['result']} (expected {expected.get(name, 'success')})"
+              for name, job in needs.items()
+              if job["result"] != expected.get(name, "success")
+          ]
+          if failures:
+              sys.exit("unexpected required results: " + ", ".join(failures))
+          PY
           echo "All required jobs matched their classification expectations."
 
   minimum-dependencies:
