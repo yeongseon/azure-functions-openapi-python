@@ -52,7 +52,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "ruff==0.16.10",
-    "openapi-spec-validator>=0.7.0",
+    "openapi-spec-validator>=0.9.0",
     "types-PyYAML",
     "requests",
     "types-requests",
