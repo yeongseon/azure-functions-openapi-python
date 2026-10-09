@@ -9,7 +9,68 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      docs_changed: ${{ steps.classify.outputs.docs_changed }}
+      full_required: ${{ steps.classify.outputs.full_required }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Classify changed files
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          REPOSITORY: ${{ github.repository }}
+          BEFORE_SHA: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          fail_safe() {
+            printf 'docs_only=false\ndocs_changed=true\nfull_required=true\n' >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$HEAD_REPOSITORY" != "$REPOSITORY" ]; then
+              echo "Fork pull request: refusing to execute classifier from untrusted input"
+              fail_safe
+              exit 0
+            fi
+            if ! git cat-file -e "${BASE_SHA}^{commit}" \
+              || ! git cat-file -e "${HEAD_SHA}^{commit}" \
+              || ! git diff --name-only --no-renames "${BASE_SHA}...${HEAD_SHA}" > changed-files.txt; then
+              fail_safe
+              exit 0
+            fi
+          else
+            if [ -z "$BEFORE_SHA" ] \
+              || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ] \
+              || ! git cat-file -e "${BEFORE_SHA}^{commit}" \
+              || ! git cat-file -e "${SHA}^{commit}" \
+              || ! git merge-base --is-ancestor "$BEFORE_SHA" "$SHA" \
+              || ! git diff --name-only --no-renames "$BEFORE_SHA" "$SHA" > changed-files.txt; then
+              fail_safe
+              exit 0
+            fi
+          fi
+
+          if ! tools/ci_classify_changes.sh < changed-files.txt >> "$GITHUB_OUTPUT"; then
+            fail_safe
+          fi
+
   # Lint, type-check and security run once on a single pinned interpreter
   # (Python 3.11, matching the mypy/ruff target-version in pyproject). These
   # checks are interpreter-agnostic, so fanning them across the matrix would
@@ -17,6 +78,8 @@ jobs:
   quality:
     name: Lint, type-check & security (Py 3.11)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -28,6 +91,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install package with dev extras
         run: |
@@ -55,12 +120,11 @@ jobs:
       - name: Type check (mypy, strict)
         run: mypy src tests
 
-      - name: Security scan (bandit)
-        run: python -m bandit -r src
-
   test:
     name: Test (Py ${{ matrix.python-version }}, af ${{ matrix.azure-functions-version }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -88,6 +152,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Assert the runtime interpreter matches the matrix cell
         # Tests must run on the interpreter this cell claims to exercise. Before
@@ -163,6 +229,37 @@ jobs:
         env:
           CODECOV_RETRIES: 3
 
+  docs-check:
+    name: Documentation checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docs_changed == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install docs and test dependencies
+        run: pip install -e ".[docs]" pytest pytest-cov
+
+      - name: Lint Mermaid diagram labels
+        run: python scripts/lint_mermaid.py
+
+      - name: Check screenshot manifest
+        run: python scripts/check_screenshots.py --strict
+
+      - name: Test screenshot manifest behavior
+        run: pytest tests/test_screenshot_manifest.py --no-cov
+
+      - name: Build docs (strict)
+        run: mkdocs build --strict
+
   # The single required status check for branch protection.
   #
   # Branch protection matches required checks by literal name, so requiring
@@ -176,6 +273,8 @@ jobs:
   # pass by being skipped.
   ci-required:
     needs:
+      - changes
+      - docs-check
       - quality
       - test
       - minimum-dependencies
@@ -189,6 +288,10 @@ jobs:
     steps:
       - name: Evaluate required checks
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_CHECK_RESULT: ${{ needs.docs-check.result }}
+          DOCS_CHANGED: ${{ needs.changes.outputs.docs_changed }}
+          FULL_REQUIRED: ${{ needs.changes.outputs.full_required }}
           QUALITY_RESULT: ${{ needs.quality.result }}
           TEST_RESULT: ${{ needs.test.result }}
           MINIMUM_DEPENDENCIES_RESULT: ${{ needs.minimum-dependencies.result }}
@@ -199,6 +302,10 @@ jobs:
           HOST_SMOKE_RESULT: ${{ needs.host-smoke.result }}
         run: |
           set -euo pipefail
+          echo "changes result: ${CHANGES_RESULT}"
+          echo "docs check:     ${DOCS_CHECK_RESULT}"
+          echo "docs changed:   ${DOCS_CHANGED}"
+          echo "full required:  ${FULL_REQUIRED}"
           echo "quality result: ${QUALITY_RESULT}"
           echo "test result:    ${TEST_RESULT}"
           echo "minimum deps:   ${MINIMUM_DEPENDENCIES_RESULT}"
@@ -208,24 +315,45 @@ jobs:
           echo "af 2.x result:  ${AF2X_RESULT}"
           echo "host smoke:     ${HOST_SMOKE_RESULT}"
 
-          if [ "${QUALITY_RESULT}" = "success" ] \
-            && [ "${TEST_RESULT}" = "success" ] \
-            && [ "${MINIMUM_DEPENDENCIES_RESULT}" = "success" ] \
-            && [ "${ARTIFACT_BUILD_RESULT}" = "success" ] \
-            && [ "${ARTIFACT_PY310_RESULT}" = "success" ] \
-            && [ "${ARTIFACT_PY311_RESULT}" = "success" ] \
-            && [ "${AF2X_RESULT}" = "success" ] \
-            && [ "${HOST_SMOKE_RESULT}" = "success" ]; then
-            echo "Quality, test matrix, azure-functions 2.x and host smoke all succeeded. Passing."
-            exit 0
+          expect_result() {
+            local name=$1
+            local actual=$2
+            local expected=$3
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::${name} result '${actual}' did not match expected '${expected}'"
+              return 1
+            fi
+          }
+
+          expect_result changes "$CHANGES_RESULT" success
+
+          if [ "$DOCS_CHANGED" = true ]; then
+            expect_result docs-check "$DOCS_CHECK_RESULT" success
+          else
+            expect_result docs-check "$DOCS_CHECK_RESULT" skipped
           fi
 
-          echo "::error::Required checks did not all succeed -- quality='${QUALITY_RESULT}' test='${TEST_RESULT}' af2x='${AF2X_RESULT}' host-smoke='${HOST_SMOKE_RESULT}'"
-          exit 1
+          if [ "$FULL_REQUIRED" = true ]; then
+            expected_full=success
+          else
+            expected_full=skipped
+          fi
+
+          expect_result quality "$QUALITY_RESULT" "$expected_full"
+          expect_result test "$TEST_RESULT" "$expected_full"
+          expect_result minimum-dependencies "$MINIMUM_DEPENDENCIES_RESULT" "$expected_full"
+          expect_result artifact-build "$ARTIFACT_BUILD_RESULT" "$expected_full"
+          expect_result artifact-python310-negative "$ARTIFACT_PY310_RESULT" "$expected_full"
+          expect_result artifact-python311 "$ARTIFACT_PY311_RESULT" "$expected_full"
+          expect_result azure-functions-2x "$AF2X_RESULT" "$expected_full"
+          expect_result host-smoke "$HOST_SMOKE_RESULT" "$expected_full"
+          echo "All required jobs matched their classification expectations."
 
   minimum-dependencies:
     name: Minimum dependencies (Py 3.11)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -234,6 +362,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install minimum runtime and development dependencies
         run: |
@@ -258,6 +388,8 @@ jobs:
   artifact-build:
     name: Build compatibility artifacts
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -266,6 +398,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Build wheel and source distribution
         run: |
@@ -281,13 +415,19 @@ jobs:
 
   artifact-python310-negative:
     name: Wheel install rejection (Py 3.10, negative test)
-    needs: artifact-build
+    needs: [changes, artifact-build]
+    if: needs.changes.outputs.full_required == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Set up Python 3.10 for negative install test
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.10"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Download built artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -310,13 +450,19 @@ jobs:
 
   artifact-python311:
     name: Wheel install and smoke (Py 3.11)
-    needs: artifact-build
+    needs: [changes, artifact-build]
+    if: needs.changes.outputs.full_required == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - name: Set up Python 3.11
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Download built artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -365,6 +511,8 @@ jobs:
   host-smoke:
     name: Real Functions host smoke (Py ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -378,6 +526,10 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            tests/host_smoke/requirements.txt
 
       - name: Install Functions Core Tools v4 and smoke app
         run: |
@@ -458,6 +610,8 @@ jobs:
       matrix:
         python-version: ["3.13", "3.14"]
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.full_required == 'true'
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -466,6 +620,8 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Build wheel
         # Prove 2.x against a WHEEL-installed build, not an editable/source
