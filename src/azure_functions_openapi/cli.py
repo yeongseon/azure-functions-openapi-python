@@ -113,7 +113,8 @@ Examples:
             "Python module to import before generating the spec "
             "(e.g. 'function_app' or 'function_app:app'). "
             "Importing the module executes @openapi decorators so that "
-            "all routes are visible to the generator."
+            "all routes are visible to the generator. Warning: importing "
+            "executes all module-level code; use only trusted modules."
         ),
     )
     generate_parser.add_argument("--title", default="API", help="API title (default: API)")

@@ -403,7 +403,8 @@ azure-functions-openapi generate \
   --output ./openapi.yaml
 ```
 
-See [`docs/cli.md`](./cli.md) for full CLI options.
+See [`docs/cli.md`](./cli.md) for full CLI options and review the `--app`
+import-execution warning before running generation in CI.
 
 ## If you need a different plan
 

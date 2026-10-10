@@ -788,4 +788,4 @@ submodules.
 
 - Deep-dive decorator options: [Configuration](configuration.md)
 - Auto-generated signatures and docstrings: [API Reference](api.md)
-- Generate specs in CI/CD: [CLI](cli.md)
+- Generate specs in CI/CD: [CLI](cli.md), including the `--app` import-execution warning
