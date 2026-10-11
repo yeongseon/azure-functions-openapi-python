@@ -269,7 +269,7 @@ You can also verify visually by opening these URLs in a browser:
 
 ![OpenAPI JSON document served at /api/openapi.json](assets/deployment_report_jobs_openapi_json.png)
 
-*Generated OpenAPI spec at `/api/openapi.json` — always in sync with your `@openapi` decorators.*
+*Generated OpenAPI spec at `/api/openapi.json` — reflects registered endpoint metadata and discovered Azure Functions bindings, not unvalidated runtime behavior.*
 
 ### Step 13 — Optional: watch live logs
 
