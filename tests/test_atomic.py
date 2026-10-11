@@ -10,11 +10,14 @@ import pytest
 from azure_functions_openapi._atomic import write_text_atomic
 
 
-def test_write_failure_preserves_output_and_removes_temp_file(tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure_point", ["fsync", "replace"])
+def test_write_failure_preserves_output_and_removes_temp_file(
+    tmp_path: Path, failure_point: str
+) -> None:
     output_path = tmp_path / "openapi.json"
     output_path.write_text("trusted specification", encoding="utf-8")
 
-    with mock.patch("os.replace", side_effect=OSError("disk full")):
+    with mock.patch(f"os.{failure_point}", side_effect=OSError("disk full")):
         with pytest.raises(OSError, match="disk full"):
             write_text_atomic(output_path, "replacement specification")
 
@@ -34,9 +37,11 @@ def test_write_preserves_existing_output_mode(tmp_path: Path) -> None:
 
 def test_new_output_uses_process_default_mode(tmp_path: Path) -> None:
     output_path = tmp_path / "openapi.json"
-    current_umask = os.umask(0)
-    os.umask(current_umask)
+    previous_umask = os.umask(0o027)
 
-    write_text_atomic(output_path, "new specification")
+    try:
+        write_text_atomic(output_path, "new specification")
+    finally:
+        os.umask(previous_umask)
 
-    assert stat.S_IMODE(output_path.stat().st_mode) == 0o666 & ~current_umask
+    assert stat.S_IMODE(output_path.stat().st_mode) == 0o640
