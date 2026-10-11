@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from typing import Protocol
 
 import azure.functions as func
 import pytest
@@ -21,13 +22,18 @@ from azure_functions_openapi.adapters.azure_functions import (
 )
 
 
+class _BlueprintFactory(Protocol):
+    def __call__(self) -> func.Blueprint: ...
+
+
 @pytest.fixture(autouse=True)
 def _clear_registry() -> None:
     clear_openapi_registry()
 
 
-def _request(url: str) -> func.HttpRequest:
-    return func.HttpRequest(method="GET", url=url, body=b"", params={}, headers={})
+def _request(url: str, *, code: str | None = None) -> func.HttpRequest:
+    params = {} if code is None else {"code": code}
+    return func.HttpRequest(method="GET", url=url, body=b"", params=params, headers={})
 
 
 def _documented_app() -> func.FunctionApp:
@@ -138,6 +144,35 @@ def test_register_openapi_routes_supports_custom_routes_names_auth_and_options()
     )
 
 
+@pytest.mark.parametrize(
+    ("auth_level", "code", "expected_url"),
+    [
+        (func.AuthLevel.FUNCTION, "host key/+", "/api/openapi.json?code=host+key%2F%2B"),
+        (func.AuthLevel.FUNCTION, None, "/api/openapi.json"),
+        (func.AuthLevel.ANONYMOUS, "ignored", "/api/openapi.json"),
+    ],
+)
+def test_docs_handler_forwards_code_only_for_protected_routes(
+    auth_level: func.AuthLevel,
+    code: str | None,
+    expected_url: str,
+) -> None:
+    # Given
+    routes = register_openapi_routes(
+        func.FunctionApp(),
+        title="Widget API",
+        version="1.0.0",
+        auth_level=auth_level,
+    )
+    assert routes.docs is not None
+
+    # When
+    response = routes.docs(_request("/api/docs", code=code))
+
+    # Then
+    assert f'url: "{expected_url}"' in response.get_body().decode()
+
+
 def test_register_openapi_routes_disabled_registers_nothing() -> None:
     app = _documented_app()
     before = tuple(iter_functions(app))
@@ -169,6 +204,47 @@ def test_register_openapi_routes_rejects_duplicate_routes() -> None:
             version="1.0.0",
             docs_route="openapi.json",
         )
+
+
+def test_register_openapi_routes_rejects_sanitized_name_collisions_before_registration() -> None:
+    # Given
+    app = func.FunctionApp()
+
+    # When / Then
+    with pytest.raises(ValueError, match="function names must be distinct"):
+        register_openapi_routes(
+            app,
+            title="Widget API",
+            version="1.0.0",
+            json_route="Docs",
+            docs_route="docs",
+        )
+
+    assert iter_functions(app) == []
+
+
+def test_register_openapi_routes_supports_blueprint_handlers() -> None:
+    # Given
+    module = importlib.import_module("azure.functions")
+    blueprint_factory: _BlueprintFactory = getattr(module, "Blueprint")
+    blueprint = blueprint_factory()
+    routes = register_openapi_routes(blueprint, title="Blueprint API", version="1.0.0")
+    app = func.FunctionApp()
+    app.register_functions(blueprint)
+    assert routes.json is not None
+    assert routes.yaml is not None
+    assert routes.docs is not None
+
+    # When
+    json_response = routes.json(_request("/api/openapi.json"))
+    yaml_response = routes.yaml(_request("/api/openapi.yaml"))
+    docs_response = routes.docs(_request("/api/docs"))
+
+    # Then
+    assert len(iter_functions(app)) == 3
+    assert json.loads(json_response.get_body())["info"]["title"] == "Blueprint API"
+    assert yaml.safe_load(yaml_response.get_body())["info"]["title"] == "Blueprint API"
+    assert 'url: "/api/openapi.json"' in docs_response.get_body().decode()
 
 
 def test_register_openapi_routes_rejects_invalid_auth_level() -> None:

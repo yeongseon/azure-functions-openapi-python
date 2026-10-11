@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import re
 from typing import Any
+from urllib.parse import urlencode
 
 import azure.functions as func
 
@@ -49,6 +50,10 @@ def register_openapi_routes(
 
     The supplied app remains the routing authority. No routes are registered
     until this function is called, and ``enabled=False`` performs no mutation.
+    For protected routes, a ``code`` query value on the docs request is copied
+    into the specification URL. The key must authorize the JSON route; host or
+    master keys span functions, while function-scoped keys do not. Keys in page
+    URLs may be retained in browser history and logs.
     """
     routes = (json_route, yaml_route, docs_route)
     for route in routes:
@@ -60,6 +65,10 @@ def register_openapi_routes(
         raise TypeError("auth_level must be an azure.functions.AuthLevel")
     if not name_prefix.strip():
         raise ValueError("name_prefix must be non-empty")
+    suffixes = tuple(_function_suffix(route) for route in routes)
+    function_names = tuple(f"{name_prefix}_{suffix}" for suffix in suffixes)
+    if len(set(suffixes)) != len(suffixes) or len(set(function_names)) != len(function_names):
+        raise ValueError("Generated documentation function names must be distinct")
 
     if not enabled:
         return DocsRoutes(json=None, yaml=None, docs=None)
@@ -98,9 +107,13 @@ def register_openapi_routes(
             mimetype="application/x-yaml",
         )
 
-    def swagger_ui(_req: func.HttpRequest) -> func.HttpResponse:
+    def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
         prefix = normalize_route_prefix(route_prefix)
         openapi_url = apply_route_prefix(f"/{json_route}", prefix)
+        code = req.params.get("code")
+        if auth_level is not func.AuthLevel.ANONYMOUS and code is not None:
+            separator = "&" if "?" in openapi_url else "?"
+            openapi_url = f"{openapi_url}{separator}{urlencode({'code': code})}"
         return render_swagger_ui(title=f"{title} Docs", openapi_url=openapi_url)
 
     registered_json = _register_handler(app, openapi_json, json_route, auth_level, name_prefix)
@@ -116,7 +129,11 @@ def _register_handler(
     auth_level: func.AuthLevel,
     name_prefix: str,
 ) -> DocsHandler:
-    function_suffix = re.sub(r"[^0-9A-Za-z]+", "_", route).strip("_").lower()
+    function_suffix = _function_suffix(route)
     routed = app.route(route=route, methods=["GET"], auth_level=auth_level)(handler)
     app.function_name(name=f"{name_prefix}_{function_suffix}")(routed)
     return handler
+
+
+def _function_suffix(route: str) -> str:
+    return re.sub(r"[^0-9A-Za-z]+", "_", route).strip("_").lower()
