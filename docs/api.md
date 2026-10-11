@@ -81,6 +81,15 @@ defaults conflict with existing functions. `route_prefix` controls both the
 generated spec paths and the URL fetched by Swagger UI. Additional generation
 arguments such as `description`, `strict`, or `servers` can be supplied through
 `spec_options`.
+
+When `auth_level` is not `ANONYMOUS`, the docs handler forwards a `code` query
+parameter from the docs request to the JSON specification URL so Swagger UI can
+load it. The key must authorize the JSON route: a host/master key spans
+functions, while a function-scoped key authorizes only its own function. The
+key remains in the page URL and can appear in browser history and logs, so use
+this only in trusted/internal environments; prefer edge-managed session or
+cookie authentication for broader access.
+
 ## Decorator behavior model
 
 `@openapi` stores metadata in a thread-safe registry and the spec functions read from that registry to generate output.
