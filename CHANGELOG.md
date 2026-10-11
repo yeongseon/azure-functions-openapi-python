@@ -1,6 +1,26 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.30.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.29.1...v0.30.0) (2026-10-11)
+
+
+### Features
+
+* **cli:** expose auth-level inference ([#763](https://github.com/yeongseon/azure-functions-openapi-python/issues/763)) ([833897c](https://github.com/yeongseon/azure-functions-openapi-python/commit/833897c05cf68953f526cdb825a82ef738716814))
+* **routes:** add a documentation-route registration helper ([#768](https://github.com/yeongseon/azure-functions-openapi-python/issues/768)) ([6066008](https://github.com/yeongseon/azure-functions-openapi-python/commit/60660086d7b97a7c8096aa6334e09a58c2982003))
+
+
+### Bug Fixes
+
+* **cli:** write generated specifications atomically ([#762](https://github.com/yeongseon/azure-functions-openapi-python/issues/762)) ([a63ca50](https://github.com/yeongseon/azure-functions-openapi-python/commit/a63ca5091a73f3c78aad8b714a75f593f2b50a33))
+* **routes:** reject unsupported Azure route semantics ([#760](https://github.com/yeongseon/azure-functions-openapi-python/issues/760)) ([cd27c8e](https://github.com/yeongseon/azure-functions-openapi-python/commit/cd27c8e4350518fd6cd2f4b456a2a149eef9e5c9))
+* **spec:** include operation context in schema failures ([#761](https://github.com/yeongseon/azure-functions-openapi-python/issues/761)) ([64995d8](https://github.com/yeongseon/azure-functions-openapi-python/commit/64995d88c2a24bbf768df6c607f1399430c7b912))
+
+
+### Performance
+
+* **spec:** establish generation regression budgets ([#769](https://github.com/yeongseon/azure-functions-openapi-python/issues/769)) ([a9c0d4c](https://github.com/yeongseon/azure-functions-openapi-python/commit/a9c0d4c5f30c778d4c6e6f2c6b72693fe8c44a19))
+
 ## [0.29.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.29.0...v0.29.1) (2026-10-07)
 
 
