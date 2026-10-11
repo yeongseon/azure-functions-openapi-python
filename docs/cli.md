@@ -60,6 +60,10 @@ Write YAML to file:
 azure-functions-openapi generate --output openapi.yaml --format yaml
 ```
 
+File output is written atomically, so a failed serialization or write leaves an
+existing specification unchanged. `--fail-on-warnings` exits before file output
+and therefore neither creates nor modifies the requested artifact.
+
 Generate OpenAPI 3.1 output:
 
 ```bash

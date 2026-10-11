@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from azure_functions_openapi import _prepare_generation
+from azure_functions_openapi._atomic import write_text_atomic
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -350,7 +351,7 @@ def handle_generate(args: argparse.Namespace) -> int:
 
         if args.output:
             output_path = Path(args.output)
-            output_path.write_text(content, encoding="utf-8")
+            write_text_atomic(output_path, content)
             print(f"OpenAPI specification written to {output_path}")
         else:
             print(content)
