@@ -17,6 +17,7 @@ Part of the **Azure Functions Python DX Toolkit**. Decorate HTTP-triggered funct
 
 ## Reference
 - [API Reference](https://yeongseon.dev/azure-functions-python/openapi/api/): Public API surface.
+- `register_openapi_routes(app, *, title, version, ...)`: opt-in JSON, YAML, and Swagger UI route registration.
 - [FAQ](https://yeongseon.dev/azure-functions-python/openapi/faq/): Frequently asked questions.
 - [Troubleshooting](https://yeongseon.dev/azure-functions-python/openapi/troubleshooting/): Common issues and fixes.
 

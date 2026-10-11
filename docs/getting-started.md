@@ -94,7 +94,22 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 ## Add spec endpoints
 
-Add JSON and YAML routes to publish the generated spec:
+The opt-in helper registers the JSON, YAML, and Swagger UI routes on your
+existing `FunctionApp`:
+
+```python
+from azure_functions_openapi import register_openapi_routes
+
+register_openapi_routes(app, title="Hello API", version="1.0.0")
+```
+
+Pass the same `route_prefix` configured in `host.json` when it differs from
+the default `/api`. Use `enabled=False` to register nothing in environments
+where runtime documentation must stay unavailable.
+
+### Manual alternative
+
+You can instead add JSON and YAML routes directly:
 
 !!! warning "Choose documentation-route access deliberately"
     The `AuthLevel.ANONYMOUS` routes below expose the OpenAPI JSON/YAML and
@@ -134,6 +149,8 @@ def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
     `get_openapi_json()` and `get_openapi_yaml()` return strings. Wrap them in `func.HttpResponse` as shown above.
 
 ## Add Swagger UI endpoint
+
+When using the manual alternative, add the UI route too:
 
 ```python
 @app.function_name(name="swagger_ui")

@@ -10,6 +10,7 @@ from azure_functions_openapi import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
+    DocsRoutes,
     OpenAPIOperationMetadata,
     OpenAPIRegistry,
     OpenAPISpecConfigError,
@@ -24,6 +25,7 @@ from azure_functions_openapi import (
     get_openapi_yaml,
     openapi,
     register_openapi_metadata,
+    register_openapi_routes,
     render_swagger_ui,
     scan_endpoint_metadata,
     scan_validation_metadata,
@@ -36,6 +38,7 @@ from azure_functions_openapi import (
 | --- | --- | --- |
 | `openapi` | decorator | Attach operation metadata to function handlers |
 | `register_openapi_metadata` | function | Register metadata for dynamically-created endpoints |
+| `register_openapi_routes` | function | Explicitly register JSON, YAML, and Swagger UI routes on a supplied app |
 | `clear_openapi_registry` | function | Remove all entries from the registry |
 | `scan_endpoint_metadata` | function | Auto-discover validation metadata from `@validate_http` handlers |
 | `scan_validation_metadata` | function | **Deprecated** alias for `scan_endpoint_metadata` (emits `DeprecationWarning`; removed in a future minor release) |
@@ -54,6 +57,39 @@ from azure_functions_openapi import (
 | `OPENAPI_VERSION_3_0` | constant | OpenAPI version string `"3.0.0"` |
 | `OPENAPI_VERSION_3_1` | constant | OpenAPI version string `"3.1.0"` |
 | `OPENAPI_VERSION_3_2` | constant | OpenAPI version string `"3.2.0"` |
+
+## Documentation route registration
+
+```python
+routes = register_openapi_routes(
+    app,
+    title="Orders API",
+    version="1.0.0",
+    route_prefix="/api",
+    auth_level=func.AuthLevel.ANONYMOUS,
+)
+```
+
+`register_openapi_routes()` is an explicit, opt-in convenience over three
+ordinary `app.route(...)` registrations. It does not replace Azure Functions
+routing and performs no import-time registration. The returned frozen
+`DocsRoutes` exposes the JSON, YAML, and docs handlers for tests and
+introspection; all three fields are `None` when `enabled=False`.
+
+Customize `json_route`, `yaml_route`, `docs_route`, and `name_prefix` when the
+defaults conflict with existing functions. `route_prefix` controls both the
+generated spec paths and the URL fetched by Swagger UI. Additional generation
+arguments such as `description`, `strict`, or `servers` can be supplied through
+`spec_options`.
+
+When `auth_level` is not `ANONYMOUS`, the docs handler forwards a `code` query
+parameter from the docs request to the JSON specification URL so Swagger UI can
+load it. The key must authorize the JSON route: a host/master key spans
+functions, while a function-scoped key authorizes only its own function. The
+key remains in the page URL and can appear in browser history and logs, so use
+this only in trusted/internal environments; prefer edge-managed session or
+cookie authentication for broader access.
+
 ## Decorator behavior model
 
 `@openapi` stores metadata in a thread-safe registry and the spec functions read from that registry to generate output.

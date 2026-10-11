@@ -26,6 +26,7 @@ pip install azure-functions-openapi
 from azure_functions_openapi import (
     openapi,
     register_openapi_metadata,
+    register_openapi_routes,
     clear_openapi_registry,
     generate_openapi_spec,
     get_openapi_json,
@@ -124,6 +125,30 @@ def register_openapi_metadata(
 **Use when**: HTTP handlers are generated programmatically and cannot use the `@openapi()` decorator.
 
 **Parameters**: Same as `@openapi` decorator (minus routing auto-detection).
+
+### register_openapi_routes
+
+```python
+def register_openapi_routes(
+    app: FunctionApp | Blueprint,
+    *,
+    title: str,
+    version: str,
+    json_route: str = "openapi.json",
+    yaml_route: str = "openapi.yaml",
+    docs_route: str = "docs",
+    route_prefix: str = "/api",
+    auth_level: AuthLevel = AuthLevel.ANONYMOUS,
+    name_prefix: str = "openapi",
+    spec_options: Mapping[str, Any] | None = None,
+    enabled: bool = True,
+) -> DocsRoutes: ...
+```
+
+**Purpose**: Explicitly register JSON, YAML, and Swagger UI HTTP GET routes on
+the supplied Azure Functions app or blueprint. It performs no automatic
+registration and returns the registered handlers for testing. `enabled=False`
+registers nothing and returns a `DocsRoutes` whose fields are all `None`.
 
 ### clear_openapi_registry
 
