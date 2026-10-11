@@ -67,6 +67,7 @@ make lint        # Lint with ruff
 make typecheck   # Type check with mypy
 make test        # Run tests
 make cov         # Run tests with coverage
+make perf        # Check spec-generation performance budgets
 make check-all   # Run the full local gate
 ```
 

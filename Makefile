@@ -109,6 +109,10 @@ cov: ensure-hatch
 	@echo "Open htmlcov/index.html in your browser to view the coverage report."
 	@echo "coverage.xml generated for Codecov upload."
 
+.PHONY: perf
+perf: ensure-hatch
+	@$(HATCH) run python scripts/benchmark_spec_generation.py --check
+
 .PHONY: e2e-local
 e2e-local: ensure-hatch
 	@echo "Running e2e tests against local Azurite (E2E_BASE_URL=http://localhost:7071)..."

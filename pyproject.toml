@@ -142,10 +142,13 @@ pretty = true
 module = "examples.*"
 follow_imports = "skip"
 [tool.pytest.ini_options]
-addopts = "--cov=src/azure_functions_openapi --cov-report=xml --cov-report=term-missing -ra -q -m 'not e2e'"
+addopts = "--cov=src/azure_functions_openapi --cov-report=xml --cov-report=term-missing -ra -q -m 'not e2e and not perf'"
 testpaths = ["tests"]
 pythonpath = ["src", "."]
-markers = ["e2e: real Azure end-to-end tests (require E2E_BASE_URL)"]
+markers = [
+    "e2e: real Azure end-to-end tests (require E2E_BASE_URL)",
+    "perf: spec-generation regression budgets (run with make perf)",
+]
 
 [tool.coverage.run]
 branch = true
