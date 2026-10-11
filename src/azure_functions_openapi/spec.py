@@ -741,7 +741,8 @@ def generate_openapi_spec(
 
                             json_content.setdefault("schema", model_schema)
                     except Exception as e:
-                        operation_method = ",".join(method.upper() for method in methods_to_emit)
+                        affected_methods = [method.upper() for method in methods_to_emit]
+                        operation_method = ",".join(affected_methods)
                         location = f"response {target_status}"
                         _schema_msg = (
                             f"Failed to generate schema for {operation_method} {path}, "
@@ -751,19 +752,20 @@ def generate_openapi_spec(
                         if strict:
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
-                        _diag_registry.add_schema_substitution(
-                            SpecWarning(
-                                code=WarningCode.SCHEMA_SUBSTITUTION,
-                                message=(
-                                    "Explicit response model replaced by the default "
-                                    f"response ({e})"
-                                ),
-                                function_name=str(logical_name),
-                                path=path,
-                                method=operation_method,
-                                location=location,
+                        for affected_method in affected_methods:
+                            _diag_registry.add_schema_substitution(
+                                SpecWarning(
+                                    code=WarningCode.SCHEMA_SUBSTITUTION,
+                                    message=(
+                                        "Explicit response model replaced by the default "
+                                        f"response ({e})"
+                                    ),
+                                    function_name=str(logical_name),
+                                    path=path,
+                                    method=affected_method,
+                                    location=location,
+                                )
                             )
-                        )
                         _ensure_default_response(responses)
 
                 _ensure_default_response(responses)
@@ -966,7 +968,12 @@ def generate_openapi_spec(
                             },
                         }
                     except Exception as e:
-                        operation_method = ",".join(method.upper() for method in methods_to_emit)
+                        affected_methods = [
+                            method.upper()
+                            for method in methods_to_emit
+                            if method in {"post", "put", "patch", "query"}
+                        ]
+                        operation_method = ",".join(affected_methods)
                         location = "request body"
                         _schema_msg = (
                             f"Failed to generate schema for {operation_method} {path}, "
@@ -976,19 +983,20 @@ def generate_openapi_spec(
                         if strict:
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
-                        _diag_registry.add_schema_substitution(
-                            SpecWarning(
-                                code=WarningCode.SCHEMA_SUBSTITUTION,
-                                message=(
-                                    "Explicit request model replaced by a generic "
-                                    f"object schema ({e})"
-                                ),
-                                function_name=str(logical_name),
-                                path=path,
-                                method=operation_method,
-                                location=location,
+                        for affected_method in affected_methods:
+                            _diag_registry.add_schema_substitution(
+                                SpecWarning(
+                                    code=WarningCode.SCHEMA_SUBSTITUTION,
+                                    message=(
+                                        "Explicit request model replaced by a generic "
+                                        f"object schema ({e})"
+                                    ),
+                                    function_name=str(logical_name),
+                                    path=path,
+                                    method=affected_method,
+                                    location=location,
+                                )
                             )
-                        )
                         request_body_obj = {
                             "required": required,
                             "content": {"application/json": {"schema": {"type": "object"}}},

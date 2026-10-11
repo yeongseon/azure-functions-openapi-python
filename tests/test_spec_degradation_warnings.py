@@ -9,23 +9,33 @@ spec, so `collect_spec_warnings()` could not reconstruct it afterwards.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any
 
 from pydantic import BaseModel
 import pytest
 
 from azure_functions_openapi.decorator import (
+    clear_openapi_registry,
     get_openapi_registry,
     openapi,
     register_openapi_metadata,
 )
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.routes import ALL_HTTP_METHODS
 from azure_functions_openapi.spec import (
     collect_spec_warnings,
     generate_openapi_report,
     generate_openapi_spec,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry() -> Generator[None, None, None]:
+    clear_openapi_registry()
+    yield
+    clear_openapi_registry()
 
 
 class _Unconvertible:
@@ -273,3 +283,43 @@ def test_non_strict_schema_warnings_carry_context_in_deterministic_order(
         "post::/a-request",
         "put::/z-response",
     ]
+
+
+@pytest.mark.parametrize(
+    ("model_field", "expected_methods"),
+    [
+        ("request_model", {"POST", "PUT", "PATCH"}),
+        ("response_model", {method.upper() for method in ALL_HTTP_METHODS}),
+    ],
+)
+def test_all_method_schema_failures_warn_once_per_affected_method(
+    monkeypatch: pytest.MonkeyPatch,
+    model_field: str,
+    expected_methods: set[str],
+) -> None:
+    # Given
+    registry = _registry_with(
+        {
+            "summary": "s",
+            "path": "/things",
+            "_expand_all_methods": True,
+            model_field: _Unconvertible(),
+        }
+    )
+
+    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+        raise TypeError("conversion failed")
+
+    monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
+
+    # When
+    spec = generate_openapi_spec(title="T", registry=registry)
+
+    # Then
+    warnings = [
+        warning
+        for warning in collect_spec_warnings(spec, registry=registry)
+        if warning.code.value == "schema-substitution"
+    ]
+    assert {warning.method for warning in warnings} == expected_methods
+    assert all(warning.method is not None and "," not in warning.method for warning in warnings)
