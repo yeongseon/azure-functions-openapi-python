@@ -55,10 +55,16 @@ if os.getenv("ENABLE_API_DOCS") == "true":
 Set `ENABLE_API_DOCS=true` only in environments where these routes should
 exist. Any other value, including an unset setting, omits them at import time.
 
-### 2. Require an Azure Functions key
+### 2. Require an Azure Functions key for direct spec access
 
-Register every documentation route with Functions authentication instead of
-anonymous access:
+Functions authentication can protect direct JSON/YAML downloads, but it does
+not by itself produce a working protected Swagger UI. Loading `/api/docs` with
+an `x-functions-key` header or `?code=` authenticates only the page request.
+`render_swagger_ui()` makes a separate browser request to `openapi_url`; it does
+not forward the page's header or query parameter. A function-scoped key for the
+docs function may also be unauthorized for the JSON function.
+
+Protect a specification route when direct, non-interactive access is needed:
 
 ```python
 @app.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
@@ -67,18 +73,17 @@ def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         get_openapi_json(title="My API", app=app),
         mimetype="application/json",
     )
-
-
-@app.route(route="docs", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
-def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
-    return render_swagger_ui(openapi_url="/api/openapi.json")
 ```
 
-Call protected routes with an `x-functions-key` header or a `?code=` query
-parameter. Apply the same `FUNCTION` level to the JSON/YAML route consumed by
-Swagger UI; otherwise the page can load while its specification request fails.
-Avoid putting keys in URLs when a header is practical because URLs are commonly
-recorded in browser history and logs.
+Call that route with an `x-functions-key` header or a `?code=` query parameter.
+Passing a key in `openapi_url`, such as
+`/api/openapi.json?code=<host-key>`, can make Swagger UI fetch the protected
+specification, but is discouraged except in a trusted internal environment:
+the key appears in the generated page and may be recorded in browser history
+and logs. Prefer conditional registration (pattern 1) or protect the UI and
+spec together with cookie/session-based edge authentication (pattern 3). An
+anonymous specification route is another option only when it is conditionally
+registered in trusted environments and its exposure is intentional.
 
 ### 3. Enforce access at the platform edge
 
@@ -95,8 +100,11 @@ private networking).
 `render_swagger_ui()` enables Try-it-out and allows all supported submit methods:
 `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, and `OPTIONS`. Anyone who can
 open the UI can therefore initiate browser-originated calls to documented API
-operations. Those calls still follow the deployment's API authentication and
-CORS configuration; exposing Swagger UI does not bypass either control.
+operations. API authentication always applies. CORS applies only to
+cross-origin requests and is not access control: when Swagger UI and the API
+share the Function App origin, Try-it-out is same-origin and no CORS check is
+performed. Exposing Swagger UI does not bypass API authentication, but a CORS
+policy must not be relied on to restrict who can call the API.
 
 #### Operation ID Sanitization
 
