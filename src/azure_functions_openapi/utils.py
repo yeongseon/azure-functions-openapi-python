@@ -479,6 +479,8 @@ def unsupported_route_token(route: str) -> str | None:
         token = match.group(1)
         parsed = _split_route_param(token)
         if parsed is None:
+            if ":" in token or token.startswith("*") or token.endswith("?"):
+                return token
             continue
         name, constraint = parsed
         if token == name or token in {f"{name}:int", f"{name}:alpha"}:
