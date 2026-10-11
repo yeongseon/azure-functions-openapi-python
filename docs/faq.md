@@ -24,7 +24,13 @@ spec = get_openapi_json(openapi_version=OPENAPI_VERSION_3_1)
 
 ## How do I add authentication to my docs?
 
-Use `security` + `security_scheme` in `@openapi`, or pass `security_schemes` to spec generation.
+Protect the OpenAPI JSON/YAML and Swagger UI HTTP routes themselves with an
+Azure Functions auth level, conditional registration, or a platform access
+layer. See [Protecting documentation routes](security.md#protecting-documentation-routes).
+
+OpenAPI `security` + `security_scheme` in `@openapi` (or `security_schemes` in
+spec generation) only describe authentication for documented operations. They
+do not restrict access to the documentation routes:
 
 ```python
 @openapi(

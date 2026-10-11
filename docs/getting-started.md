@@ -96,6 +96,13 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 Add JSON and YAML routes to publish the generated spec:
 
+!!! warning "Choose documentation-route access deliberately"
+    The `AuthLevel.ANONYMOUS` routes below expose the OpenAPI JSON/YAML and
+    Swagger UI publicly after deployment. The spec discloses endpoint shapes,
+    schemas, and security scheme names. Anonymous access is convenient for
+    local development, but production exposure should be a deliberate decision;
+    see [Protecting documentation routes](security.md#protecting-documentation-routes).
+
 ```python
 @app.function_name(name="openapi_json")
 @app.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
