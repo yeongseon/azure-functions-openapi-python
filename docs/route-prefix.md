@@ -43,6 +43,12 @@ The recommended form is **without** the prefix (`route="/users"`) so the same
 decorated handler works against any `host.json` deployment by passing a
 different `--route-prefix` at spec generation time.
 
+Route parameters support only `{name}`, `{name:int}`, and `{name:alpha}`.
+Optional parameters, catch-all parameters, and all other inline constraints are
+rejected because converting them to required plain strings would describe a
+different route contract. See [Route inline constraints](configuration.md#route-inline-constraints)
+for the complete supported subset and strict/non-strict behavior.
+
 ## Customising the prefix
 
 ### No prefix

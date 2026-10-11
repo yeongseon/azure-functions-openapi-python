@@ -1,6 +1,8 @@
 # src/azure_functions_openapi/exceptions.py
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 
 class OpenAPISpecConfigError(ValueError):
     """Raised for caller-fixable configuration errors such as an unsupported
@@ -9,6 +11,22 @@ class OpenAPISpecConfigError(ValueError):
     Subclasses :class:`ValueError` so existing ``except ValueError`` call-sites
     continue to work without changes.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class UnsupportedRouteTemplateError(ValueError):
+    """Raised when an Azure route cannot be represented faithfully in OpenAPI."""
+
+    function_name: str
+    route: str
+    token: str
+
+    def __str__(self) -> str:
+        return (
+            f"Function '{self.function_name}' uses unsupported Azure route token "
+            f"'{{{self.token}}}' in route '{self.route}'. Supported route parameters are "
+            "'{name}', '{name:int}', and '{name:alpha}'."
+        )
 
 
 class SDKIncompatibleError(OpenAPISpecConfigError):
