@@ -12,6 +12,7 @@ from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.registry import registry as default_registry
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
@@ -207,7 +208,11 @@ Examples:
     if (
         args.command == "generate"
         and getattr(args, "infer_auth_level", False) is True
-        and (not isinstance(app_target, str) or ":" not in app_target)
+        and (
+            not isinstance(app_target, str)
+            or app_target.count(":") != 1
+            or any(not part.strip() for part in app_target.split(":"))
+        )
     ):
         generate_parser.error(
             "--infer-auth-level requires --app module:variable so the FunctionApp bindings "
@@ -330,6 +335,29 @@ def handle_generate(args: argparse.Namespace) -> int:
                     _json.dumps(warning.to_dict(), ensure_ascii=False),
                     file=sys.stderr,
                 )
+        if getattr(args, "infer_auth_level", False) is True:
+            discovery_failed = any(
+                warning.code in {WarningCode.EMPTY_DISCOVERY, WarningCode.DISCOVERY_SKIPPED}
+                for warning in warnings
+            )
+            entries = (active_registry or default_registry).snapshot()
+            unresolved_auth = sorted(
+                str(entry.get("function_name") or key)
+                for key, entry in entries.items()
+                if not entry.get("_security_declared") and "_auth_level" not in entry
+            )
+            if discovery_failed or unresolved_auth:
+                details = (
+                    f" Unresolved operations: {', '.join(unresolved_auth)}."
+                    if unresolved_auth
+                    else ""
+                )
+                print(
+                    "Error: auth-level inference could not resolve every emitted operation; "
+                    "refusing to write a potentially public specification." + details,
+                    file=sys.stderr,
+                )
+                return 1
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):

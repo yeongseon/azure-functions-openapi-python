@@ -158,3 +158,98 @@ def test_cli_inference_requires_scan_capable_app(
     message = capsys.readouterr().err
     assert "--infer-auth-level" in message
     assert "--app module:variable" in message
+
+
+@pytest.mark.parametrize("target", [":app", "function_app:", "a:b:c", "  : app", "app:  "])
+def test_cli_rejects_malformed_inference_app_target(
+    target: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Given
+    argv = [
+        "azure-functions-openapi",
+        "generate",
+        "--app",
+        target,
+        "--infer-auth-level",
+    ]
+
+    # When
+    with mock.patch.object(sys, "argv", argv), pytest.raises(SystemExit) as exc_info:
+        main()
+
+    # Then
+    assert exc_info.value.code == 2
+    assert "--app module:variable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("resolved_app", [func.FunctionApp(), 42])
+def test_cli_inference_fails_closed_when_discovery_is_empty_or_skipped(
+    resolved_app: Any,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Given
+    output = tmp_path / "openapi.json"
+    argv = [
+        "azure-functions-openapi",
+        "generate",
+        "--app",
+        "function_app:app",
+        "--infer-auth-level",
+        "--output",
+        str(output),
+    ]
+
+    # When
+    with (
+        mock.patch.object(sys, "argv", argv),
+        mock.patch(
+            "azure_functions_openapi.cli._import_app_module",
+            return_value=(resolved_app, True),
+        ),
+    ):
+        result = main()
+
+    # Then
+    assert result != 0
+    assert not output.exists()
+    assert "auth-level inference" in capsys.readouterr().err
+
+
+def test_cli_inference_fails_when_any_operation_lacks_auth_and_explicit_security(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Given
+    app = _app_with_route(func.AuthLevel.FUNCTION)
+
+    @openapi(route="unresolved", method="GET", summary="unresolved")
+    def unresolved() -> None:
+        pass
+
+    output = tmp_path / "openapi.json"
+    argv = [
+        "azure-functions-openapi",
+        "generate",
+        "--app",
+        "function_app:app",
+        "--infer-auth-level",
+        "--output",
+        str(output),
+    ]
+
+    # When
+    with (
+        mock.patch.object(sys, "argv", argv),
+        mock.patch(
+            "azure_functions_openapi.cli._import_app_module",
+            return_value=(app, True),
+        ),
+    ):
+        result = main()
+
+    # Then
+    assert result != 0
+    assert not output.exists()
+    assert "unresolved" in capsys.readouterr().err
