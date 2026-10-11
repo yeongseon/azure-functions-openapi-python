@@ -145,12 +145,18 @@ class TestSpecWarning:
             code=WarningCode.VERSION_SKEW,
             message="skewed",
             function_name="post::/api/users",
+            path="/api/users",
+            method="POST",
+            location="request body",
         )
         payload = warning.to_dict()
         assert payload == {
             "code": "version-skew",
             "message": "skewed",
             "function_name": "post::/api/users",
+            "path": "/api/users",
+            "method": "POST",
+            "location": "request body",
         }
         # Round-trips through json without a custom encoder.
         assert json.loads(json.dumps(payload)) == payload

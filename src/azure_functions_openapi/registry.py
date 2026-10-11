@@ -18,6 +18,8 @@ import threading
 from typing import Any
 import uuid
 
+from azure_functions_openapi._warnings import SpecWarning
+
 # Attribute stamped by :func:`ensure_canonical_identity` on dynamically-created
 # handlers so :func:`canonical_function_id` can keep same-qualname closures
 # distinct (#392).
@@ -39,7 +41,7 @@ class OpenAPIRegistry:
         self._empty_discoveries: list[str] = []
         self._duplicate_operations: list[str] = []
         self._downgrade_drops: list[str] = []
-        self._schema_substitutions: list[str] = []
+        self._schema_substitutions: list[SpecWarning] = []
         self._skipped_operations: list[str] = []
         self._lock = threading.RLock()
 
@@ -312,7 +314,7 @@ class OpenAPIRegistry:
             self._schema_substitutions.clear()
             self._skipped_operations.clear()
 
-    def add_schema_substitution(self, message: str) -> None:
+    def add_schema_substitution(self, warning: SpecWarning) -> None:
         """Record that an explicitly supplied model was replaced by a generic schema.
 
         Non-strict generation keeps producing a document when conversion of an
@@ -320,17 +322,26 @@ class OpenAPIRegistry:
         generic object schema or the default response. That substitution leaves
         no trace in the finished spec, so it cannot be reconstructed afterwards;
         recording it here lets the generator surface a structured
-        ``schema-substitution`` warning. Identical messages are deduplicated.
+        ``schema-substitution`` warning. Identical warnings are deduplicated.
         """
         with self._lock:
-            if message not in self._schema_substitutions:
-                self._schema_substitutions.append(message)
+            if warning not in self._schema_substitutions:
+                self._schema_substitutions.append(warning)
 
     @property
-    def schema_substitutions(self) -> list[str]:
-        """Return the recorded schema-substitution messages, deduplicated and sorted."""
+    def schema_substitutions(self) -> list[SpecWarning]:
+        """Return recorded schema-substitution warnings in deterministic order."""
         with self._lock:
-            return sorted(self._schema_substitutions)
+            return sorted(
+                self._schema_substitutions,
+                key=lambda warning: (
+                    warning.path or "",
+                    warning.method or "",
+                    warning.location or "",
+                    warning.function_name or "",
+                    warning.message,
+                ),
+            )
 
     def add_skipped_operation(self, message: str) -> None:
         """Record that a malformed registry entry was omitted from the spec.

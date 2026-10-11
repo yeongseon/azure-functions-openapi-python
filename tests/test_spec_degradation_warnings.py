@@ -9,19 +9,33 @@ spec, so `collect_spec_warnings()` could not reconstruct it afterwards.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any
 
 from pydantic import BaseModel
 import pytest
 
-from azure_functions_openapi.decorator import register_openapi_metadata
+from azure_functions_openapi.decorator import (
+    clear_openapi_registry,
+    get_openapi_registry,
+    openapi,
+    register_openapi_metadata,
+)
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.routes import ALL_HTTP_METHODS
 from azure_functions_openapi.spec import (
     collect_spec_warnings,
     generate_openapi_report,
     generate_openapi_spec,
 )
+
+
+@pytest.fixture(autouse=True)
+def _clear_registry() -> Generator[None, None, None]:
+    clear_openapi_registry()
+    yield
+    clear_openapi_registry()
 
 
 class _Unconvertible:
@@ -30,6 +44,14 @@ class _Unconvertible:
 
 class _Filter(BaseModel):
     query: str
+
+
+class _RequestModel(BaseModel):
+    name: str
+
+
+class _ResponseModel(BaseModel):
+    identifier: int
 
 
 def _codes(spec: dict[str, Any], registry: OpenAPIRegistry) -> set[str]:
@@ -158,3 +180,146 @@ def test_non_strict_warns_when_request_model_is_dropped() -> None:
     )
     assert "request model" in warning.message
     assert "GET /api/search" in warning.message
+
+
+def test_strict_decorator_request_failure_identifies_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @openapi(route="widgets/{id}", method="PATCH", requests=_RequestModel)
+    def update_widget() -> None:
+        pass
+
+    registry = _registry_with(
+        {
+            **get_openapi_registry()[update_widget.__name__],
+            "function_name": update_widget.__name__,
+        },
+        key=update_widget.__name__,
+    )
+    failure = TypeError("request conversion failed")
+
+    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+        raise failure
+
+    monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
+
+    with pytest.raises(OpenAPISpecConfigError) as excinfo:
+        generate_openapi_spec(
+            registry=registry,
+            route_prefix="/v1",
+            strict=True,
+        )
+
+    message = str(excinfo.value)
+    assert "PATCH /v1/widgets/{id}" in message
+    assert "update_widget" in message
+    assert "request body" in message
+    assert excinfo.value.__cause__ is failure
+
+
+def test_strict_programmatic_response_failure_identifies_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = OpenAPIRegistry()
+    register_openapi_metadata(
+        "/widgets",
+        "POST",
+        response_model=_ResponseModel,
+        response={201: {"description": "Created"}},
+        registry=registry,
+    )
+    failure = TypeError("response conversion failed")
+
+    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+        raise failure
+
+    monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
+
+    with pytest.raises(OpenAPISpecConfigError) as excinfo:
+        generate_openapi_spec(registry=registry, strict=True)
+
+    message = str(excinfo.value)
+    assert "POST /api/widgets" in message
+    assert "post::/widgets" in message
+    assert "response 201" in message
+    assert excinfo.value.__cause__ is failure
+
+
+def test_non_strict_schema_warnings_carry_context_in_deterministic_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = OpenAPIRegistry()
+    register_openapi_metadata(
+        "/z-response",
+        "PUT",
+        response_model=_ResponseModel,
+        response={202: {"description": "Accepted"}},
+        registry=registry,
+    )
+    register_openapi_metadata(
+        "/a-request",
+        "POST",
+        request_model=_RequestModel,
+        registry=registry,
+    )
+
+    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+        raise TypeError("conversion failed")
+
+    monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
+
+    spec = generate_openapi_spec(registry=registry, route_prefix="/v2")
+    warnings = tuple(
+        warning
+        for warning in collect_spec_warnings(spec, registry=registry)
+        if warning.code.value == "schema-substitution"
+    )
+
+    assert [(warning.method, warning.path, warning.location) for warning in warnings] == [
+        ("POST", "/v2/a-request", "request body"),
+        ("PUT", "/v2/z-response", "response 202"),
+    ]
+    assert [warning.function_name for warning in warnings] == [
+        "post::/a-request",
+        "put::/z-response",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("model_field", "expected_methods"),
+    [
+        ("request_model", {"POST", "PUT", "PATCH"}),
+        ("response_model", {method.upper() for method in ALL_HTTP_METHODS}),
+    ],
+)
+def test_all_method_schema_failures_warn_once_per_affected_method(
+    monkeypatch: pytest.MonkeyPatch,
+    model_field: str,
+    expected_methods: set[str],
+) -> None:
+    # Given
+    registry = _registry_with(
+        {
+            "summary": "s",
+            "path": "/things",
+            "_expand_all_methods": True,
+            model_field: _Unconvertible(),
+        }
+    )
+
+    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+        raise TypeError("conversion failed")
+
+    monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
+
+    # When
+    spec = generate_openapi_spec(title="T", registry=registry)
+
+    # Then
+    warnings = [
+        warning
+        for warning in collect_spec_warnings(spec, registry=registry)
+        if warning.code.value == "schema-substitution"
+    ]
+    assert {warning.method for warning in warnings} == expected_methods
+    assert all(warning.method is not None and "," not in warning.method for warning in warnings)

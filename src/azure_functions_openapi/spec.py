@@ -715,15 +715,14 @@ def generate_openapi_spec(
                     responses[str(status)] = resp
 
                 if meta.get("response_model"):
+                    target_status = "200"
+                    for status_key in responses:
+                        key = str(status_key)
+                        if key.isdigit() and 200 <= int(key) < 300:
+                            target_status = key
+                            break
                     try:
                         model_schema = model_to_schema(meta["response_model"], components)
-                        target_status = "200"
-                        for status_key in responses:
-                            key = str(status_key)
-                            if key.isdigit() and 200 <= int(key) < 300:
-                                target_status = key
-                                break
-
                         if target_status not in responses:
                             responses[target_status] = {
                                 "description": "Successful Response",
@@ -742,14 +741,31 @@ def generate_openapi_spec(
 
                             json_content.setdefault("schema", model_schema)
                     except Exception as e:
-                        _schema_msg = f"Failed to generate response schema for {func_name}: {e}"
+                        affected_methods = [method.upper() for method in methods_to_emit]
+                        operation_method = ",".join(affected_methods)
+                        location = f"response {target_status}"
+                        _schema_msg = (
+                            f"Failed to generate schema for {operation_method} {path}, "
+                            f"function '{logical_name}' (registry key '{func_name}'), "
+                            f"{location}: {e}"
+                        )
                         if strict:
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
-                        _diag_registry.add_schema_substitution(
-                            f"{func_name}: explicit response model replaced by the "
-                            f"default response ({e})"
-                        )
+                        for affected_method in affected_methods:
+                            _diag_registry.add_schema_substitution(
+                                SpecWarning(
+                                    code=WarningCode.SCHEMA_SUBSTITUTION,
+                                    message=(
+                                        "Explicit response model replaced by the default "
+                                        f"response ({e})"
+                                    ),
+                                    function_name=str(logical_name),
+                                    path=path,
+                                    method=affected_method,
+                                    location=location,
+                                )
+                            )
                         _ensure_default_response(responses)
 
                 _ensure_default_response(responses)
@@ -952,14 +968,35 @@ def generate_openapi_spec(
                             },
                         }
                     except Exception as e:
-                        _schema_msg = f"Failed to generate request schema for {func_name}: {e}"
+                        affected_methods = [
+                            method.upper()
+                            for method in methods_to_emit
+                            if method in {"post", "put", "patch", "query"}
+                        ]
+                        operation_method = ",".join(affected_methods)
+                        location = "request body"
+                        _schema_msg = (
+                            f"Failed to generate schema for {operation_method} {path}, "
+                            f"function '{logical_name}' (registry key '{func_name}'), "
+                            f"{location}: {e}"
+                        )
                         if strict:
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
-                        _diag_registry.add_schema_substitution(
-                            f"{func_name}: explicit request model replaced by a "
-                            f"generic object schema ({e})"
-                        )
+                        for affected_method in affected_methods:
+                            _diag_registry.add_schema_substitution(
+                                SpecWarning(
+                                    code=WarningCode.SCHEMA_SUBSTITUTION,
+                                    message=(
+                                        "Explicit request model replaced by a generic "
+                                        f"object schema ({e})"
+                                    ),
+                                    function_name=str(logical_name),
+                                    path=path,
+                                    method=affected_method,
+                                    location=location,
+                                )
+                            )
                         request_body_obj = {
                             "required": required,
                             "content": {"application/json": {"schema": {"type": "object"}}},
@@ -978,7 +1015,16 @@ def generate_openapi_spec(
                         )
                         if strict:
                             raise OpenAPISpecConfigError(_bodyless_message)
-                        _diag_registry.add_schema_substitution(_bodyless_message)
+                        _diag_registry.add_schema_substitution(
+                            SpecWarning(
+                                code=WarningCode.SCHEMA_SUBSTITUTION,
+                                message=_bodyless_message,
+                                function_name=str(logical_name),
+                                path=path,
+                                method=method.upper(),
+                                location="request body",
+                            )
+                        )
 
                     # operation object --------------------------------------------
                     op: dict[str, Any] = {
@@ -1709,14 +1755,7 @@ def _collect_schema_substitution_warnings(
     channel is empty there.
     """
     reg = registry if registry is not None else _default_registry
-    return [
-        SpecWarning(
-            code=WarningCode.SCHEMA_SUBSTITUTION,
-            message=message,
-            function_name=message.split(":", 1)[0] or None,
-        )
-        for message in reg.schema_substitutions
-    ]
+    return reg.schema_substitutions
 
 
 def _collect_skipped_operation_warnings(

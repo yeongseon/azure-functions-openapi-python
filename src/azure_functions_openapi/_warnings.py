@@ -49,11 +49,17 @@ class SpecWarning:
         code: Stable :class:`WarningCode` identifying the warning category.
         message: Human-readable explanation of what happened.
         function_name: The affected function/operation, when known.
+        path: The normalized OpenAPI path emitted for the operation, when known.
+        method: The uppercase HTTP method, when known.
+        location: The affected operation location, when known.
     """
 
     code: WarningCode
     message: str
     function_name: str | None = None
+    path: str | None = None
+    method: str | None = None
+    location: str | None = None
 
     def to_dict(self) -> dict[str, str | None]:
         """Return a JSON-serialisable representation of the warning."""
@@ -61,4 +67,7 @@ class SpecWarning:
             "code": self.code.value,
             "message": self.message,
             "function_name": self.function_name,
+            "path": self.path,
+            "method": self.method,
+            "location": self.location,
         }

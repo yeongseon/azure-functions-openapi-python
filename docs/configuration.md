@@ -156,6 +156,15 @@ the disagreement is reported — as a warning normally, and as an error under
 
 ### Request/response models
 
+Explicit model conversion failures are operation-attributed. With
+`strict=True`, generation raises and preserves the conversion exception as the
+cause; the error identifies the method, normalized emitted path (including the
+configured route prefix), function or registry identity, and whether the failure
+occurred in the request body or a response status. In non-strict mode, generation
+keeps the existing generic-schema/default-response fallback and records a
+`schema-substitution` `SpecWarning` whose optional `method`, `path`, and
+`location` fields carry the same context.
+
 ```python
 class ProductCreate(BaseModel):
     name: str

@@ -50,7 +50,7 @@ from azure_functions_openapi import (
 | `OpenAPIOperationMetadata` | dataclass | Frozen dataclass for operation metadata |
 | `OpenAPIRegistry` | class | Thread-safe registry backing the decorator; pass an instance for isolated (test-friendly) registration |
 | `SpecReport` | dataclass | Result of `generate_openapi_report`: the `spec` dict plus a `warnings` tuple |
-| `SpecWarning` | dataclass | A single structured warning (`code`, `message`, `function_name`) emitted during generation |
+| `SpecWarning` | dataclass | A single structured warning (`code`, `message`, `function_name`, and optional operation `path`, `method`, `location`) emitted during generation |
 | `WarningCode` | enum | Stable string identifiers for warning categories (e.g. `version-skew`, `ambiguous-namespace`) |
 | `OpenAPISpecConfigError` | exception | Raised for configuration errors |
 | `SDKIncompatibleError` | exception | Subclass of `OpenAPISpecConfigError`; raised when the installed Functions SDK is incompatible |
@@ -324,7 +324,7 @@ from azure_functions_openapi import generate_openapi_report
 report = generate_openapi_report(title="My API", version="1.0.0")
 if report.warnings:
     for w in report.warnings:
-        print(w.code, w.message, w.function_name)
+        print(w.code, w.message, w.function_name, w.method, w.path, w.location)
     raise SystemExit(1)  # fail the build on any warning
 spec = report.spec
 ```
@@ -332,8 +332,14 @@ spec = report.spec
 | Symbol | Purpose |
 | --- | --- |
 | `SpecReport` | Dataclass with `spec: dict` and `warnings: tuple[SpecWarning, ...]` |
-| `SpecWarning` | Frozen dataclass: `code: WarningCode`, `message: str`, `function_name: str \| None`; `to_dict()` for JSON |
+| `SpecWarning` | Frozen dataclass: `code: WarningCode`, `message: str`, `function_name: str \| None`, plus optional `path`, `method`, and `location`; `to_dict()` includes every field for JSON |
 | `WarningCode` | `str`-based enum of stable codes: `version-skew`, `ambiguous-namespace`, `duplicate-operation`, `spec-validation`, `discovery-skipped`, `empty-discovery`, `method-binding-mismatch` |
+
+When conversion of an explicit request or response model fails, strict generation
+raises an error naming the HTTP method, normalized emitted path, function or
+registry identity, and failure location (`request body` or `response <status>`).
+Non-strict generation preserves the fallback behavior and emits a
+`schema-substitution` warning with the same context in its structured fields.
 
 ## Related internals
 
