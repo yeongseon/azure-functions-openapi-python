@@ -745,6 +745,22 @@ class TestEmptyPathsWarning:
 class TestCLIAppFlag:
     """Integration tests for --app flag via sys.argv."""
 
+    def test_app_help_warns_that_import_executes_module_code(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with mock.patch.object(
+            sys,
+            "argv",
+            ["azure-functions-openapi", "generate", "--help"],
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        help_text = " ".join(capsys.readouterr().out.split())
+        assert "executes all module-level code" in help_text
+        assert "use only trusted modules" in help_text
+
     def test_app_flag_via_argv(self) -> None:
         """--app flag is parsed and passed through to handle_generate."""
         with mock.patch.object(

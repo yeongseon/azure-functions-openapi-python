@@ -12,6 +12,7 @@ from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.registry import registry as default_registry
 from azure_functions_openapi.spec import (
     DEFAULT_OPENAPI_INFO_DESCRIPTION,
     OPENAPI_VERSION_3_0,
@@ -113,7 +114,8 @@ Examples:
             "Python module to import before generating the spec "
             "(e.g. 'function_app' or 'function_app:app'). "
             "Importing the module executes @openapi decorators so that "
-            "all routes are visible to the generator."
+            "all routes are visible to the generator. Warning: importing "
+            "executes all module-level code; use only trusted modules."
         ),
     )
     generate_parser.add_argument("--title", default="API", help="API title (default: API)")
@@ -176,6 +178,15 @@ Examples:
         ),
     )
     generate_parser.add_argument(
+        "--infer-auth-level",
+        action="store_true",
+        default=False,
+        help=(
+            "Infer OpenAPI security from each route binding's auth_level. "
+            "Requires --app 'module:variable' so bindings can be scanned."
+        ),
+    )
+    generate_parser.add_argument(
         "--isolate-app",
         action="store_true",
         default=False,
@@ -192,6 +203,21 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    app_target = getattr(args, "app", None)
+    if (
+        args.command == "generate"
+        and getattr(args, "infer_auth_level", False) is True
+        and (
+            not isinstance(app_target, str)
+            or app_target.count(":") != 1
+            or any(not part.strip() for part in app_target.split(":"))
+        )
+    ):
+        generate_parser.error(
+            "--infer-auth-level requires --app module:variable so the FunctionApp bindings "
+            "can be scanned (for example, --app function_app:app)"
+        )
 
     if not args.command:
         parser.print_help()
@@ -295,6 +321,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             route_prefix=getattr(args, "route_prefix", "/api"),
             strict=getattr(args, "strict", False),
             registry=active_registry,
+            infer_auth_level=getattr(args, "infer_auth_level", False) is True,
         )
         warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
         # Surface structured warnings (version skew / namespace fallback /
@@ -308,6 +335,29 @@ def handle_generate(args: argparse.Namespace) -> int:
                     _json.dumps(warning.to_dict(), ensure_ascii=False),
                     file=sys.stderr,
                 )
+        if getattr(args, "infer_auth_level", False) is True:
+            discovery_failed = any(
+                warning.code in {WarningCode.EMPTY_DISCOVERY, WarningCode.DISCOVERY_SKIPPED}
+                for warning in warnings
+            )
+            entries = (active_registry or default_registry).snapshot()
+            unresolved_auth = sorted(
+                str(entry.get("function_name") or key)
+                for key, entry in entries.items()
+                if not entry.get("_security_declared") and "_auth_level" not in entry
+            )
+            if discovery_failed or unresolved_auth:
+                details = (
+                    f" Unresolved operations: {', '.join(unresolved_auth)}."
+                    if unresolved_auth
+                    else ""
+                )
+                print(
+                    "Error: auth-level inference could not resolve every emitted operation; "
+                    "refusing to write a potentially public specification." + details,
+                    file=sys.stderr,
+                )
+                return 1
         # Check for empty paths before serialising — gives a clear signal
         # instead of silently producing a spec with no routes.
         if not spec.get("paths"):

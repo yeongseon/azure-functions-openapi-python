@@ -164,7 +164,8 @@ correct default route:
 azure-functions-openapi generate --app function_app:app --title "My API"
 ```
 
-See the [CLI Guide](docs/cli.md) for all options and CI integration examples.
+See the [CLI Guide](docs/cli.md) for all options, CI integration examples, and
+the warning that `--app` imports execute module-level code.
 
 ## Installation
 
