@@ -23,6 +23,13 @@ DEFAULT_BUDGET_PATH = _REPO_ROOT / "benchmarks" / "spec_generation_budgets.json"
 DEFAULT_SCENARIOS = ((10, 5), (50, 25), (200, 100), (500, 100))
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
 class ScenarioBudget(TypedDict):
     operations: int
     models: int
@@ -159,9 +166,9 @@ def _print_results(results: Sequence[BenchmarkResult]) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--operations", type=int)
-    parser.add_argument("--models", type=int)
-    parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument("--operations", type=_positive_int)
+    parser.add_argument("--models", type=_positive_int)
+    parser.add_argument("--repeats", type=_positive_int, default=5)
     parser.add_argument("--json", type=Path, dest="json_path")
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--budgets", type=Path, default=DEFAULT_BUDGET_PATH)
@@ -173,9 +180,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if (args.operations is None) != (args.models is None):
         parser.error("--operations and --models must be provided together")
-    if args.repeats < 1:
-        parser.error("--repeats must be at least 1")
-
     budgets = _load_budgets(args.budgets) if args.check else None
     if budgets is not None:
         scenarios = [(budget["operations"], budget["models"]) for budget in budgets["scenarios"]]

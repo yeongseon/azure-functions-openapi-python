@@ -8,6 +8,20 @@ import pytest
 from scripts.benchmark_spec_generation import main
 
 
+@pytest.mark.parametrize("argument", ["--operations", "--models"])
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_benchmark_rejects_non_positive_scenario_size(argument: str, value: str) -> None:
+    # Given
+    arguments = ["--operations", "1", "--models", "1"]
+    arguments[arguments.index(argument) + 1] = value
+
+    # When / Then
+    with pytest.raises(SystemExit) as raised:
+        main(arguments)
+
+    assert raised.value.code == 2
+
+
 def test_benchmark_smallest_scenario_writes_json(tmp_path: Path) -> None:
     # Given
     output = tmp_path / "benchmark.json"
