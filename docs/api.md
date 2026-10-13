@@ -147,10 +147,9 @@ class ItemResponse(BaseModel):
             "content": {"application/json": {"schema": ItemResponse}},
         },
     },
-    )
+)
 @app.route(route="items", methods=["POST"])
-def create_item(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def create_item(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 !!! note
@@ -183,10 +182,9 @@ def create_item(req: func.HttpRequest) -> func.HttpResponse:
             },
         }
     },
-    )
+)
 @app.route(route="raw", methods=["POST"])
-def raw(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def raw(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 ### Querystring parameter (OpenAPI 3.2)
@@ -200,6 +198,7 @@ class SearchQuery(BaseModel):
     q: str
     limit: int = 10
 
+
 @openapi(
     summary="Search",
     method="get",
@@ -207,8 +206,7 @@ class SearchQuery(BaseModel):
     # querystring_media_type defaults to "application/x-www-form-urlencoded"
 )
 @app.route(route="search", methods=["GET"])
-def search(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def search(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 !!! note
@@ -224,12 +222,16 @@ def search(req: func.HttpRequest) -> func.HttpResponse:
 ```python
 @app.route(route="openapi.json", methods=["GET"])
 def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(get_openapi_json(title="My API", version="1.0.0", app=app), mimetype="application/json")
+    return func.HttpResponse(
+        get_openapi_json(title="My API", version="1.0.0", app=app), mimetype="application/json"
+    )
 
 
 @app.route(route="openapi.yaml", methods=["GET"])
 def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(get_openapi_yaml(title="My API", version="1.0.0", app=app), mimetype="application/x-yaml")
+    return func.HttpResponse(
+        get_openapi_yaml(title="My API", version="1.0.0", app=app), mimetype="application/x-yaml"
+    )
 
 
 @app.route(route="docs", methods=["GET"])
@@ -292,6 +294,15 @@ scan_endpoint_metadata(app)
 | Both with same models | Merges additional OpenAPI fields |
 | Both with different models | Raises `OpenAPISpecConfigError` |
 | Explicit `@openapi` | Always takes precedence |
+
+Response compatibility is determined from resolved JSON Schema, so a Pydantic
+model in `@openapi` is equivalent to the same schema emitted by
+`@validate_http`. For an equivalent status, the merged operation contains one
+response entry and keeps the explicit summary and description (a blank
+discovered description never replaces explicit text). Different schemas for a
+shared status, request body, or parameter raise `OpenAPISpecConfigError` with
+the method, route or function name, conflicting item, and the `@openapi` and
+`@validate_http` source names.
 
 !!! warning "`scan_validation_metadata` is deprecated"
     `scan_validation_metadata()` is a deprecated alias for `scan_endpoint_metadata()`.

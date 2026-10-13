@@ -58,6 +58,12 @@ Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It retu
 - Runtime validation belongs to `azure-functions-validation`.
 - Diagnostics belong to `azure-functions-doctor`.
 - This repository owns OpenAPI metadata capture, document generation, and documentation UI helpers.
+- When explicit `@openapi` metadata and validation-discovered metadata describe
+  the same operation, explicit prose wins while schemas must be compatible.
+  Response model classes are resolved through the shared schema compiler before
+  comparison, so duplicate declarations of the same model collapse to one
+  response; incompatible response, request-body, or parameter schemas fail with
+  endpoint- and source-aware diagnostics.
 
 ## Compatibility Policy
 
