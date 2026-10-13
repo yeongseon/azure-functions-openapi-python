@@ -160,7 +160,10 @@ def test_scan_rejects_conflicting_public_parameter_contracts() -> None:
 
     with pytest.raises(
         ValueError,
-        match="Conflicting validation and OpenAPI models for endpoint",
+        match=(
+            "Conflicting parameter limit for endpoint POST /api/users "
+            "\\(function 'create_user'\\) from @openapi vs @validate_http"
+        ),
     ):
         scan_endpoint_metadata(app)
 

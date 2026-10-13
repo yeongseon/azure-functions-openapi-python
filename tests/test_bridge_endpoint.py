@@ -348,6 +348,10 @@ class _Resp(BaseModel):
     id: int
 
 
+class _OtherResp(BaseModel):
+    message: str
+
+
 def test_scan_registers_from_endpoint_and_ignores_validation_sibling() -> None:
     app = _make_app({"endpoint": FLAT_ENDPOINT})
     scan_endpoint_metadata(app)
@@ -410,6 +414,190 @@ def test_scan_endpoint_merges_into_existing_openapi_entry() -> None:
     assert entry["request_body"]["properties"]["name"]["type"] == "string"
     assert entry["request_body_required"] is True
     assert 200 in entry["response"]
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_scan_accepts_same_response_model_from_both_decorators(strict: bool) -> None:
+    from azure_functions_openapi.decorator import openapi
+
+    @openapi(summary="Explicit summary", responses={200: _Resp})
+    def list_users(req: Any) -> Any:
+        return req
+
+    setattr(
+        list_users,
+        _HANDLER_METADATA_ATTR,
+        {
+            "endpoint": {
+                "version": 1,
+                "responses": {"200": {"schema": _Resp.model_json_schema()}},
+            }
+        },
+    )
+    app = MockApp(
+        [MockBuilder(MockFunction("list_users", list_users, [MockBinding("users", ["GET"])]))]
+    )
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec(strict=strict)
+
+    operation = spec["paths"]["/api/users"]["get"]
+    assert operation["summary"] == "Explicit summary"
+    assert list(operation["responses"]) == ["200"]
+    assert operation["responses"]["200"]["description"] == "OK"
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/_Resp"
+    }
+    assert spec["components"]["schemas"]["_Resp"]["properties"] == {
+        "id": {"title": "Id", "type": "integer"}
+    }
+
+
+def test_scan_accepts_equal_explicit_dict_response_schema() -> None:
+    schema = _Resp.model_json_schema()
+    register_openapi_metadata(
+        path="/api/users",
+        method="get",
+        response={
+            200: {
+                "description": "Documented users",
+                "content": {"application/json": {"schema": schema}},
+            }
+        },
+    )
+    app = _make_app(
+        {"endpoint": {"version": 1, "responses": {"200": {"schema": schema}}}},
+        name="list_users",
+        methods=["GET"],
+    )
+
+    scan_endpoint_metadata(app)
+
+    response = get_openapi_registry()["get::/api/users"]["response"]
+    assert list(response) == [200]
+    assert response[200]["description"] == "Documented users"
+
+
+def test_scan_rejects_different_response_models_with_endpoint_context() -> None:
+    register_openapi_metadata(
+        path="/api/users",
+        method="get",
+        response={
+            200: {
+                "description": "OK",
+                "content": {"application/json": {"schema": _Resp}},
+            }
+        },
+    )
+    app = _make_app(
+        {
+            "endpoint": {
+                "version": 1,
+                "responses": {"200": {"schema": _OtherResp.model_json_schema()}},
+            }
+        },
+        name="list_users",
+        methods=["GET"],
+    )
+
+    with pytest.raises(OpenAPISpecConfigError) as exc_info:
+        scan_endpoint_metadata(app)
+
+    message = str(exc_info.value)
+    assert "GET /api/users" in message
+    assert "list_users" in message
+    assert "status 200" in message
+    assert "@openapi" in message
+    assert "@validate_http" in message
+
+
+@pytest.mark.parametrize("matches", [True, False])
+def test_scan_reports_request_body_conflict_with_endpoint_context(matches: bool) -> None:
+    explicit_schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    discovered_schema = (
+        explicit_schema
+        if matches
+        else {"type": "object", "properties": {"name": {"type": "integer"}}}
+    )
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        request_body=explicit_schema,
+    )
+    app = _make_app(
+        {"endpoint": {"version": 1, "request_body": discovered_schema}},
+        name="create_user",
+    )
+
+    if matches:
+        scan_endpoint_metadata(app)
+        assert get_openapi_registry()["post::/api/users"]["request_body"] == explicit_schema
+        return
+
+    with pytest.raises(OpenAPISpecConfigError) as exc_info:
+        scan_endpoint_metadata(app)
+    message = str(exc_info.value)
+    assert "POST /api/users" in message
+    assert "create_user" in message
+    assert "request body" in message
+    assert "@openapi" in message
+    assert "@validate_http" in message
+
+
+def test_scan_reports_parameter_conflict_with_endpoint_context() -> None:
+    register_openapi_metadata(
+        path="/api/users",
+        method="get",
+        parameters=[{"name": "limit", "in": "query", "schema": {"type": "integer"}}],
+    )
+    app = _make_app(
+        {
+            "endpoint": {
+                "version": 1,
+                "parameters": [{"name": "limit", "in": "query", "schema": {"type": "string"}}],
+            }
+        },
+        name="list_users",
+        methods=["GET"],
+    )
+
+    with pytest.raises(OpenAPISpecConfigError) as exc_info:
+        scan_endpoint_metadata(app)
+    message = str(exc_info.value)
+    assert "GET /api/users" in message
+    assert "list_users" in message
+    assert "parameter limit" in message
+    assert "@openapi" in message
+    assert "@validate_http" in message
+
+
+def test_scan_accepts_same_response_model_on_multi_method_route() -> None:
+    from azure_functions_openapi.decorator import openapi
+
+    @openapi(responses={200: _Resp})
+    def users(req: Any) -> Any:
+        return req
+
+    setattr(
+        users,
+        _HANDLER_METADATA_ATTR,
+        {
+            "endpoint": {
+                "version": 1,
+                "responses": {"200": {"schema": _Resp.model_json_schema()}},
+            }
+        },
+    )
+    app = MockApp(
+        [MockBuilder(MockFunction("users", users, [MockBinding("users", ["GET", "POST"])]))]
+    )
+
+    scan_endpoint_metadata(app)
+    spec = generate_openapi_spec(strict=True)
+
+    assert set(spec["paths"]["/api/users"]) == {"get", "post"}
+    for method in ("get", "post"):
+        assert list(spec["paths"]["/api/users"][method]["responses"]) == ["200"]
 
 
 def test_scan_endpoint_conflicting_response_raises() -> None:

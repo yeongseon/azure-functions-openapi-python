@@ -149,7 +149,33 @@ def _merge_parameters(
     return merged
 
 
-def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bool:
+def _resolved_schema(schema: Any) -> Any:
+    if isinstance(schema, dict) or schema is None:
+        return schema
+    return type_to_schema(schema)
+
+
+def _response_details_conflict(existing: Any, discovered: Any) -> bool:
+    if not isinstance(existing, dict) or not isinstance(discovered, dict):
+        return bool(existing != discovered)
+
+    existing_detail = copy.deepcopy(existing)
+    discovered_detail = copy.deepcopy(discovered)
+    for detail in (existing_detail, discovered_detail):
+        content = detail.get("content")
+        if not isinstance(content, dict):
+            continue
+        for media in content.values():
+            if isinstance(media, dict) and "schema" in media:
+                media["schema"] = _resolved_schema(media["schema"])
+
+    if discovered_detail.get("description") == "":
+        discovered_detail.pop("description")
+        existing_detail.pop("description", None)
+    return existing_detail != discovered_detail
+
+
+def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> str | None:
     # An inferred response (P1-A return-type inference) is the lowest-precedence
     # source, so it never conflicts with discovered validation metadata — the
     # latter simply supersedes it in :func:`_merge_into_existing`.
@@ -161,8 +187,9 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
         and existing_response is not None
         and discovered_response is not None
         and existing_response is not discovered_response
+        and _resolved_schema(existing_response) != _resolved_schema(discovered_response)
     ):
-        return True
+        return "status 200"
 
     existing_request_body = existing.get("request_body")
     discovered_request_body = discovered.get("request_body")
@@ -171,12 +198,19 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
         and discovered_request_body is not None
         and existing_request_body != discovered_request_body
     ):
-        return True
+        return "request body"
 
-    try:
-        _merge_parameters(existing.get("parameters", []), discovered.get("parameters", []))
-    except OpenAPISpecConfigError:
-        return True
+    existing_parameters = {
+        (str(item.get("in", "")), str(item.get("name", ""))): item
+        for item in existing.get("parameters", [])
+        if isinstance(item, dict)
+    }
+    for parameter in discovered.get("parameters", []):
+        if not isinstance(parameter, dict):
+            continue
+        key = (str(parameter.get("in", "")), str(parameter.get("name", "")))
+        if key in existing_parameters and existing_parameters[key] != parameter:
+            return f"parameter {key[1]}"
 
     existing_response = existing.get("response") or {}
     discovered_response = discovered.get("response") or {}
@@ -186,15 +220,30 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
         and isinstance(discovered_response, dict)
     ):
         for status, detail in discovered_response.items():
-            if status in existing_response and existing_response[status] != detail:
-                return True
+            if status in existing_response and _response_details_conflict(
+                existing_response[status], detail
+            ):
+                return f"status {status}"
 
-    return False
+    return None
+
+
+def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bool:
+    return _find_model_conflict(existing, discovered) is not None
 
 
 def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -> None:
-    if _models_conflict(existing, discovered):
-        raise OpenAPISpecConfigError("Conflicting validation and OpenAPI models for endpoint")
+    conflict = _find_model_conflict(existing, discovered)
+    if conflict is not None:
+        method = str(discovered.get("method", existing.get("method", ""))).upper()
+        route = str(discovered.get("route", existing.get("route", "")))
+        function_name = str(
+            discovered.get("function_name", existing.get("function_name", "unknown"))
+        )
+        raise OpenAPISpecConfigError(
+            f"Conflicting {conflict} for endpoint {method} {route} "
+            f"(function '{function_name}') from @openapi vs @validate_http"
+        )
 
     # Return-type inference (P1-A) is the lowest-precedence response source. When
     # discovered validation/explicit metadata carries any response, it supersedes
