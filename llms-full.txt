@@ -182,7 +182,11 @@ def scan_endpoint_metadata(
 - Extracts body, query, path, headers, and response_model from validation metadata
 - Registers discovered models in the OpenAPI registry via `register_openapi_metadata()`
 - Explicit `@openapi` always takes precedence over discovered metadata
-- Conflicting models between `@openapi` and `@validate_http` raise `OpenAPISpecConfigError`
+- The same response model may be declared in both decorators; resolved schemas
+  are compared, one response is emitted, and explicit descriptions win over
+  blank discovered descriptions
+- Different response, request-body, or parameter schemas between `@openapi` and
+  `@validate_http` raise `OpenAPISpecConfigError` with endpoint and source context
 
 **Use when**: You want zero-duplication OpenAPI docs from `@validate_http` decorators.
 
