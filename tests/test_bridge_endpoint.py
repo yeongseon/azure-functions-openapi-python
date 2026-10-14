@@ -478,6 +478,48 @@ def test_scan_accepts_equal_explicit_dict_response_schema() -> None:
     assert response[200]["description"] == "Documented users"
 
 
+def test_scan_preserves_explicit_response_metadata_when_schema_matches() -> None:
+    schema = _Resp.model_json_schema()
+    register_openapi_metadata(
+        path="/api/users",
+        method="get",
+        response={
+            200: {
+                "description": "Documented users",
+                "headers": {"X-Page": {"schema": {"type": "integer"}}},
+                "content": {
+                    "application/json": {
+                        "schema": schema,
+                        "example": {"id": 1},
+                    }
+                },
+            }
+        },
+    )
+    app = _make_app(
+        {
+            "endpoint": {
+                "version": 1,
+                "responses": {
+                    "200": {
+                        "description": "Validation response",
+                        "schema": schema,
+                    }
+                },
+            }
+        },
+        name="list_users",
+        methods=["GET"],
+    )
+
+    scan_endpoint_metadata(app)
+
+    response = get_openapi_registry()["get::/api/users"]["response"][200]
+    assert response["description"] == "Documented users"
+    assert response["headers"] == {"X-Page": {"schema": {"type": "integer"}}}
+    assert response["content"]["application/json"]["example"] == {"id": 1}
+
+
 def test_scan_rejects_different_response_models_with_endpoint_context() -> None:
     register_openapi_metadata(
         path="/api/users",

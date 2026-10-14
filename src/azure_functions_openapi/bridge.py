@@ -159,20 +159,29 @@ def _response_details_conflict(existing: Any, discovered: Any) -> bool:
     if not isinstance(existing, dict) or not isinstance(discovered, dict):
         return bool(existing != discovered)
 
-    existing_detail = copy.deepcopy(existing)
-    discovered_detail = copy.deepcopy(discovered)
-    for detail in (existing_detail, discovered_detail):
+    def _content_schemas(detail: dict[str, Any]) -> dict[str, Any]:
+        schemas: dict[str, Any] = {}
         content = detail.get("content")
         if not isinstance(content, dict):
-            continue
-        for media in content.values():
+            return schemas
+        for media_type, media in content.items():
             if isinstance(media, dict) and "schema" in media:
-                media["schema"] = _resolved_schema(media["schema"])
+                schemas[str(media_type)] = _resolved_schema(media["schema"])
+        return schemas
 
-    if discovered_detail.get("description") == "":
-        discovered_detail.pop("description")
-        existing_detail.pop("description", None)
-    return existing_detail != discovered_detail
+    existing_schemas = _content_schemas(existing)
+    discovered_schemas = _content_schemas(discovered)
+    if not existing_schemas or not discovered_schemas:
+        return existing != discovered
+    shared_media_types = set(existing_schemas) & set(discovered_schemas)
+    if not shared_media_types:
+        return True
+    return bool(
+        any(
+            existing_schemas[media_type] != discovered_schemas[media_type]
+            for media_type in shared_media_types
+        )
+    )
 
 
 def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> str | None:
