@@ -50,7 +50,7 @@ class EchoResponse(BaseModel):
         },
         400: {"description": "Invalid body"},
     },
-    )
+)
 @app.route(route="echo", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def echo(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -306,6 +306,8 @@ def ping(req: func.HttpRequest) -> str:
     Returns 200 while the app is serving traffic.
     """
     ...
+
+
 # summary="Health check."
 # description="Returns 200 while the app is serving traffic."
 ```
@@ -359,8 +361,7 @@ class ChatDelta(BaseModel):
     },
 )
 @app.route(route="chat/stream", methods=["GET"])
-def chat_stream(req):
-    ...
+def chat_stream(req): ...
 ```
 
 Generate the document with `openapi_version="3.2.0"` so the streaming media type
@@ -579,18 +580,15 @@ You can annotate each endpoint independently and group by tags.
 
 ```python
 @openapi(summary="Create customer", tags=["Customers"], method="post")
-def create_customer(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def create_customer(req: func.HttpRequest) -> func.HttpResponse: ...
 
 
 @openapi(summary="List customers", tags=["Customers"], method="get")
-def list_customers(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def list_customers(req: func.HttpRequest) -> func.HttpResponse: ...
 
 
 @openapi(summary="Health", tags=["Operations"], method="get")
-def health(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def health(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 ## Spec generation options
@@ -741,7 +739,13 @@ scan_endpoint_metadata(app)
 
 This scans the app's registered HTTP functions for `@validate_http` metadata
 and auto-registers them in the OpenAPI registry. Explicit `@openapi` decorators
-always take precedence.
+always take precedence. You may declare the same response model in both
+decorators: the bridge resolves the `@openapi` model to JSON Schema, compares it
+with the schema published by `@validate_http`, and emits one response for that
+status. The explicit `@openapi` summary and non-blank response description win
+when the discovered description is blank. Different schemas for the same
+status, request body, or parameter remain configuration errors; the exception
+identifies the endpoint, conflicting item, and both metadata sources.
 
 !!! info "No extra dependencies required"
     `scan_endpoint_metadata()` reads the convention-based metadata attribute
