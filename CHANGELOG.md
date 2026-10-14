@@ -1,6 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.30.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.30.0...v0.30.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **bridge:** accept equivalent duplicate response models ([#772](https://github.com/yeongseon/azure-functions-openapi-python/issues/772)) ([989dc60](https://github.com/yeongseon/azure-functions-openapi-python/commit/989dc60c12e33c5703fb339a3f14ad67f9dd6113))
+
 ## [0.30.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.29.1...v0.30.0) (2026-10-11)
 
 
