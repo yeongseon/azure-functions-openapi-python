@@ -36,8 +36,8 @@ jobs:
             cat <<'EOF'
           Do not put an issue or pull request number at the end of the title.
           GitHub appends the pull request number to the squash commit on its own,
-          so "fix: decode the results (#503)" lands on main as
-          "fix: decode the results (#503) (#504)".
+          so "fix: preserve explicit response descriptions (#503)" lands on main as
+          "fix: preserve explicit response descriptions (#503) (#504)".
 
           Reference issues in the pull request body instead, for example:
             Closes #503
@@ -58,8 +58,8 @@ jobs:
             - add "!" before the colon for a breaking change: "feat(api)!: drop the v1 endpoints"
 
           Examples:
-            fix: decode nonempty NULL-only collection results
-            feat(cli): add a JSON output option
+            fix: preserve explicit response descriptions
+            feat(schema): add a response example
             docs(readme): clarify the local setup steps
 
           See "Title Convention" in CONTRIBUTING.md. Edit the title; the check re-runs automatically.
