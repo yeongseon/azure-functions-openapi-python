@@ -101,6 +101,14 @@ def _resolve_name_collision(
         index += 1
 
 
+def _rewrite_ref_with_map(value: str, name_map: dict[str, str]) -> str:
+    if value.startswith("#/components/schemas/"):
+        ref_name = value.split("#/components/schemas/", 1)[1]
+        if ref_name in name_map:
+            return f"#/components/schemas/{name_map[ref_name]}"
+    return value
+
+
 def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
     if not name_map:
         return obj
@@ -108,18 +116,70 @@ def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
         rewritten: dict[str, Any] = {}
         for key, value in obj.items():
             if key == "$ref" and isinstance(value, str):
-                if value.startswith("#/components/schemas/"):
-                    ref_name = value.split("#/components/schemas/", 1)[1]
-                    if ref_name in name_map:
-                        rewritten[key] = f"#/components/schemas/{name_map[ref_name]}"
-                        continue
-                rewritten[key] = value
+                rewritten[key] = _rewrite_ref_with_map(value, name_map)
+            elif key == "mapping" and isinstance(value, dict):
+                rewritten[key] = {
+                    mapping_key: _rewrite_ref_with_map(mapping_value, name_map)
+                    if isinstance(mapping_value, str)
+                    else _rewrite_refs_with_map(mapping_value, name_map)
+                    for mapping_key, mapping_value in value.items()
+                }
             else:
                 rewritten[key] = _rewrite_refs_with_map(value, name_map)
         return rewritten
     if isinstance(obj, list):
         return [_rewrite_refs_with_map(item, name_map) for item in obj]
     return obj
+
+
+def _register_schema_graph(
+    batch: dict[str, dict[str, Any]],
+    components: dict[str, Any],
+) -> dict[str, str]:
+    """Register a batch of mutually-referencing schemas into ``components['schemas']``.
+
+    ``batch`` maps each schema's original (pre-collision) name to its schema;
+    entries may reference each other's original names via ``$ref`` or
+    ``discriminator.mapping`` (as emitted by :func:`_collect_schemas`). Shared
+    by :func:`model_to_schema`, :func:`type_to_schema`, and
+    :func:`hoist_inline_defs` so all three paths resolve collisions the same
+    way: against both pre-existing ``components['schemas']`` entries and other
+    members of this same batch, re-comparing each schema for equality only
+    *after* its own references are rewritten with the current name map -- so a
+    renamed child is reflected in its parent's content before the parent
+    itself is compared -- repeating until a full pass renames nothing further.
+
+    Returns a sparse ``original_name -> resolved_name`` map containing only
+    the names that were actually renamed (empty when nothing collided). Look
+    up a specific name with ``name_map.get(name, name)``, matching every
+    caller's existing pattern. The complete, final-named batch is written
+    into ``components['schemas']``, skipping any name whose existing content
+    is already identical so repeated registration of the same input is a
+    no-op. Entries in ``batch`` are never mutated -- every rewrite builds a
+    new dict.
+    """
+    schemas = components.setdefault("schemas", {})
+    name_map: dict[str, str] = {}
+    while True:
+        claimed: dict[str, dict[str, Any]] = dict(schemas)
+        updated_name_map: dict[str, str] = {}
+        for name, schema in batch.items():
+            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, name_map))
+            resolved_name = _resolve_name_collision(name, rewritten_schema, claimed)
+            if resolved_name != name:
+                updated_name_map[name] = resolved_name
+            claimed[resolved_name] = rewritten_schema
+        if updated_name_map == name_map:
+            break
+        name_map = updated_name_map
+
+    for name, schema in batch.items():
+        final_name = name_map.get(name, name)
+        final_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, name_map))
+        if final_name not in schemas or schemas[final_name] != final_schema:
+            schemas[final_name] = final_schema
+
+    return name_map
 
 
 def _needs_hoisting(obj: Any) -> bool:
@@ -274,28 +334,8 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any], *, hoist_flat: bo
     if not definitions:
         return normalized_root
 
-    schemas = components.setdefault("schemas", {})
-
-    name_map: dict[str, str] = {}
-    for name, definition in definitions.items():
-        resolved_name = _resolve_name_collision(name, definition, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
-
-    if name_map:
-        definitions = {
-            name_map.get(name, name): cast(
-                dict[str, Any], _rewrite_refs_with_map(definition, name_map)
-            )
-            for name, definition in definitions.items()
-        }
-        normalized_root = cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
-
-    for name, definition in definitions.items():
-        if name not in schemas or schemas[name] != definition:
-            schemas[name] = definition
-
-    return normalized_root
+    name_map = _register_schema_graph(definitions, components)
+    return cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
 
 
 def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -323,36 +363,11 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
             )
         return type_to_schema(model_cls, components)
 
-    schemas = components.setdefault("schemas", {})
-
     normalized, definitions = _collect_schemas(schema)
-    local_schemas: dict[str, dict[str, Any]] = {model_cls.__name__: normalized}
-    local_schemas.update(definitions)
+    batch: dict[str, dict[str, Any]] = {model_cls.__name__: normalized}
+    batch.update(definitions)
 
-    name_map: dict[str, str] = {}
-    while True:
-        updated_name_map: dict[str, str] = {}
-        for name, local_schema in local_schemas.items():
-            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
-            resolved_name = _resolve_name_collision(name, rewritten_schema, schemas)
-            if resolved_name != name:
-                updated_name_map[name] = resolved_name
-        if updated_name_map == name_map:
-            break
-        name_map = updated_name_map
-
-    if name_map:
-        updated_local_schemas: dict[str, dict[str, Any]] = {}
-        for name, local_schema in local_schemas.items():
-            final_name = name_map.get(name, name)
-            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
-            updated_local_schemas[final_name] = rewritten_schema
-        local_schemas = updated_local_schemas
-
-    for name, local_schema in local_schemas.items():
-        if name not in schemas or schemas[name] != local_schema:
-            schemas[name] = local_schema
-
+    name_map = _register_schema_graph(batch, components)
     root_name = name_map.get(model_cls.__name__, model_cls.__name__)
     return {"$ref": f"#/components/schemas/{root_name}"}
 
@@ -381,31 +396,9 @@ def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> 
     if components is None:
         return schema
 
-    schemas = components.setdefault("schemas", {})
     normalized, definitions = _collect_schemas(schema)
-
-    name_map: dict[str, str] = {}
-    for name, local_schema in definitions.items():
-        resolved_name = _resolve_name_collision(name, local_schema, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
-
-    if name_map:
-        normalized = cast(dict[str, Any], _rewrite_refs_with_map(normalized, name_map))
-        updated_definitions: dict[str, dict[str, Any]] = {}
-        for name, local_schema in definitions.items():
-            final_name = name_map.get(name, name)
-            updated_definitions[final_name] = cast(
-                dict[str, Any],
-                _rewrite_refs_with_map(local_schema, name_map),
-            )
-        definitions = updated_definitions
-
-    for name, local_schema in definitions.items():
-        if name not in schemas or schemas[name] != local_schema:
-            schemas[name] = local_schema
-
-    return normalized
+    name_map = _register_schema_graph(definitions, components)
+    return cast(dict[str, Any], _rewrite_refs_with_map(normalized, name_map))
 
 
 def validate_route_path(route: Any) -> bool:
