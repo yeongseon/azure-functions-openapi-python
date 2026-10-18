@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, cast
+from unittest.mock import patch
 
 from pydantic import BaseModel
 import pytest
@@ -1152,6 +1153,37 @@ def test_find_model_conflict_ignores_response_when_inferred() -> None:
         }
     }
     assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_unpaired_response_model_with_no_overlap_does_not_abort() -> None:
+    # Given: a response_model whose schema conversion would genuinely fail,
+    # paired against discovered metadata that declares only a 4xx status --
+    # so the synthesized 2xx entry (default target "200") never overlaps with
+    # anything on the other side, and there is nothing to actually compare.
+    existing = {
+        "request_body": {"type": "object"},
+        "response": {"404": {"description": "Not Found"}},
+    }
+    discovered = {
+        "request_body": {"type": "object"},
+        "response_model": ResponseModel,
+    }
+
+    # When/Then: scanning must not abort on the unpaired model's conversion
+    # failure, since it was never going to be compared against anything.
+    with patch.object(ResponseModel, "model_json_schema", side_effect=RuntimeError("boom")):
+        assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_unpaired_request_model_with_no_contract_does_not_abort() -> None:
+    # Given: a request_model whose schema conversion would genuinely fail,
+    # paired against discovered metadata that declares no request contract at
+    # all (query-only), so there is nothing to compare the request against.
+    existing = {"parameters": [{"in": "query", "name": "q"}]}
+    discovered = {"request_model": ResponseModel}
+
+    with patch.object(ResponseModel, "model_json_schema", side_effect=RuntimeError("boom")):
+        assert _find_model_conflict(existing, discovered) is None
 
 
 def test_field_type_to_schema_primitives_and_collected_defs() -> None:

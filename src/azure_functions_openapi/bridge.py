@@ -242,11 +242,20 @@ def _effective_response_details(
             if status_key.isdigit() and 200 <= int(status_key) < 300:
                 target_status = status_key
                 break
+        # Store the raw model reference, not its compiled schema: setdefault()
+        # discards this dict entirely when target_status already has a raw
+        # response entry, and even when it is used, _response_details_conflict()
+        # only ever looks at a status that is actually SHARED with the other
+        # side. Resolving here unconditionally meant an unpaired model with no
+        # overlapping status -- or no conflict to compare at all -- could still
+        # abort scanning on a schema-conversion failure for no reason.
+        # _content_schemas() below already calls _resolved_schema() lazily, at
+        # the point a status is genuinely compared.
         details.setdefault(
             target_status,
             {
                 "description": "Successful Response",
-                "content": {"application/json": {"schema": _resolved_schema(response_model)}},
+                "content": {"application/json": {"schema": response_model}},
             },
         )
     return details
@@ -258,14 +267,23 @@ def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -
     # latter simply supersedes it in :func:`_merge_into_existing`.
     response_inferred = bool(existing.get("_response_inferred"))
 
-    existing_request = _effective_request_schema(existing)
-    discovered_request = _effective_request_schema(discovered)
-    if (
-        existing_request is not None
-        and discovered_request is not None
-        and existing_request != discovered_request
-    ):
-        return "request body"
+    # Check both sides declare SOME request contract before resolving either
+    # schema: with only one side declaring request_body/request_model (e.g.
+    # the other is query-only or response-only validation), there is no
+    # request contract to compare against, so resolving the lone side's model
+    # (which may fail during schema conversion) would abort scanning for a
+    # comparison that could never happen anyway.
+    existing_has_request = (
+        existing.get("request_body") is not None or existing.get("request_model") is not None
+    )
+    discovered_has_request = (
+        discovered.get("request_body") is not None or discovered.get("request_model") is not None
+    )
+    if existing_has_request and discovered_has_request:
+        existing_request = _effective_request_schema(existing)
+        discovered_request = _effective_request_schema(discovered)
+        if existing_request != discovered_request:
+            return "request body"
 
     existing_parameters = {
         (str(item.get("in", "")), str(item.get("name", ""))): item
