@@ -749,6 +749,13 @@ def scan_endpoint_metadata(
                     if methods_expanded and method in BODYLESS_HTTP_METHODS:
                         clone["request_body"] = None
                     _tag_skew(clone, entry_skew)
+                    # This clone is a fresh per-method entry genuinely created by
+                    # exploding the method=None canonical entry (#781): stamp its
+                    # provenance here, at creation, rather than re-deriving it
+                    # from a post-hoc registry lookup that cannot tell this
+                    # freshly-created clone apart from an unrelated pre-existing
+                    # entry that merely happens to share the same endpoint key.
+                    _stamp_methods_expanded(clone, methods_expanded)
                     reg.set(endpoint_key, clone)
                     continue
 
@@ -882,6 +889,17 @@ def scan_endpoint_metadata(
                     registry=reg,
                 )
             logger.debug("Registered endpoint metadata for endpoint '%s'", endpoint_key)
+            # Every branch reaching this point just registered a fresh
+            # binding-derived entry under endpoint_key (the "merge into an
+            # existing target" branch above has its own `continue` and never
+            # reaches here, leaving an explicitly registered override's
+            # provenance untouched on a rescan, per #781's review). Stamp
+            # provenance on the entry this call just created, not on whatever
+            # a bare registry lookup might otherwise find.
+            with reg.lock:
+                new_entry = reg.get(endpoint_key)
+                if new_entry is not None:
+                    _stamp_methods_expanded(new_entry, methods_expanded)
             # Hold the registry lock across the get+mutate so tagging honours the
             # registry's documented thread-safety contract (the entry must not be
             # mutated after the lock protecting it has been released).
@@ -904,22 +922,6 @@ def scan_endpoint_metadata(
                     entry = reg.get(f"{method}::{path}")
                     if entry is not None:
                         _stamp_auth_level(entry, auth_level)
-
-        # Stamp auto-expansion provenance (#781) onto every per-method
-        # operation this function produced, for the same reason and at the
-        # same point as the auth-level stamp above: a concrete ``method`` can
-        # no longer tell spec.py whether it was auto-expanded from an
-        # unspecified-``methods=`` binding (needing a suffixed operationId and
-        # the automatic bodyless-method rules) or genuinely explicit. The
-        # un-exploded ``canonical_target`` is deliberately left unstamped: an
-        # explicit ``@openapi(method=...)`` is a single operation regardless
-        # of what the binding would have expanded to, so spec.py's own
-        # ``raw_method is not None`` fallback already resolves it correctly.
-        with reg.lock:
-            for method in methods:
-                entry = reg.get(f"{method}::{path}")
-                if entry is not None:
-                    _stamp_methods_expanded(entry, methods_expanded)
 
         # After exploding a method=None @openapi entry into per-method entries,
         # drop the original so spec.py does not additionally emit it as a bare

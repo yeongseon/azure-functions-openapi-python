@@ -19,8 +19,11 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_metadata,
     register_openapi_routes,
 )
+from azure_functions_openapi.bridge import scan_endpoint_metadata
+from azure_functions_openapi.decorator import get_openapi_registry
 
 
 @pytest.fixture(autouse=True)
@@ -399,7 +402,9 @@ def test_register_openapi_routes_json_endpoint_reflects_expansion_fix() -> None:
     def any_method(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse("{}")
 
-    routes = register_openapi_routes(app, title="Expansion", version="1.0.0")
+    routes = register_openapi_routes(
+        app, title="Expansion", version="1.0.0", spec_options={"strict": True}
+    )
     assert routes.json is not None
     request = func.HttpRequest(
         method="GET", url="/api/openapi.json", headers={}, params={}, body=b""
@@ -415,6 +420,39 @@ def test_register_openapi_routes_json_endpoint_reflects_expansion_fix() -> None:
     assert len(set(ids.values())) == len(ids)
     assert "requestBody" in operations["post"]
     assert "requestBody" not in operations["get"]
+
+
+def test_app_scan_does_not_reclassify_an_explicitly_registered_operation() -> None:
+    # Given: an explicit DELETE registered directly via register_openapi_metadata
+    # (not through @openapi), carrying its own operation_id and request body --
+    # exactly as a validation-bridge producer or hand-written registration would.
+    register_openapi_metadata(
+        path="/api/any",
+        method="delete",
+        operation_id="deleteOne",
+        request_body={"type": "object", "properties": {"id": {"type": "string"}}},
+    )
+
+    # And: a bare, unspecified-methods binding at the SAME route, with no
+    # enrichment and no inferable response -- the scan creates no operation
+    # for this handler at all, so the explicit DELETE above is never touched
+    # by anything this scan genuinely produces.
+    app = func.FunctionApp()
+
+    @app.route(route="any")
+    def bare_handler(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("ok")
+
+    # When
+    scan_endpoint_metadata(app, route_prefix="/api")
+
+    # Then: the explicit registration survives untouched -- its operation_id
+    # is not suffixed into "deleteOne_delete", its request body is not
+    # dropped, and it is not marked as auto-expanded.
+    entry = get_openapi_registry()["delete::/api/any"]
+    assert entry["operation_id"] == "deleteOne"
+    assert entry["request_body"] == {"type": "object", "properties": {"id": {"type": "string"}}}
+    assert not entry.get("_methods_expanded")
 
 
 def test_cli_app_variable_preserves_unique_operation_ids_for_expanded_methods(
