@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 import azure.functions as func
+from pydantic import BaseModel
 import pytest
 import yaml
 
@@ -18,7 +19,11 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_metadata,
+    register_openapi_routes,
 )
+from azure_functions_openapi.bridge import scan_endpoint_metadata
+from azure_functions_openapi.decorator import get_openapi_registry
 
 
 @pytest.fixture(autouse=True)
@@ -271,3 +276,240 @@ def test_spec_keeps_function_name_route_without_explicit_binding_route() -> None
 
     # Then: Azure's implicit function-name route remains documented.
     assert set(spec["paths"]["/api/implicit_handler"]) == {"post"}
+
+
+# ---------------------------------------------------------------------------
+# Auto-expansion provenance survives an app scan, both decorator orders
+# (issue #781): an unspecified-methods @app.route binding expands to every
+# HTTP verb, and scanning the completed app (which concretizes each exploded
+# entry's ``method``) must not disable the per-method operationId suffix or
+# the automatic bodyless-method request-body rules that expansion requires.
+# ---------------------------------------------------------------------------
+
+
+class _Payload(BaseModel):
+    name: str
+
+
+def test_explicit_operation_id_stays_unique_per_method_after_app_scan_outermost() -> None:
+    # Given: @openapi is outermost and can see the unspecified-methods binding
+    # directly, so it already knows expansion is happening.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(operation_id="all_methods")
+    @app.route(route="any")
+    def any_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("{}")
+
+    before = generate_openapi_spec(strict=True)
+
+    # When: the completed app is scanned.
+    after = generate_openapi_spec(app=app, strict=True)
+
+    # Then: every method keeps a unique, per-method-suffixed operationId --
+    # identical to the pre-scan result -- instead of colliding on the bare
+    # "all_methods" id.
+    before_ids = {method: op["operationId"] for method, op in before["paths"]["/api/any"].items()}
+    after_ids = {method: op["operationId"] for method, op in after["paths"]["/api/any"].items()}
+    assert after_ids == before_ids
+    assert len(set(after_ids.values())) == len(after_ids)
+    assert after_ids["get"] == "all_methods_get"
+
+
+def test_explicit_operation_id_stays_unique_per_method_after_app_scan_innermost() -> None:
+    # Given: @openapi is innermost, so it cannot see the binding and registers
+    # with method=None; the bridge must explode it into per-method entries
+    # that still carry the same "this was auto-expanded" context.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="any")
+    @openapi(operation_id="all_methods")
+    def any_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("{}")
+
+    # When: the completed app is scanned, then scanned again (idempotency).
+    first = generate_openapi_spec(app=app, strict=True)
+    second = generate_openapi_spec(app=app, strict=True)
+
+    # Then: unique per-method ids, stable across repeated scans.
+    first_ids = {method: op["operationId"] for method, op in first["paths"]["/api/any"].items()}
+    second_ids = {method: op["operationId"] for method, op in second["paths"]["/api/any"].items()}
+    assert first_ids == second_ids
+    assert len(set(first_ids.values())) == len(first_ids)
+    assert first_ids["post"] == "all_methods_post"
+
+
+def test_request_model_not_dropped_from_auto_expanded_bodyless_methods_outermost() -> None:
+    # Given: an auto-expanded binding carries an explicit Pydantic request
+    # model, with @openapi outermost.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(requests=_Payload)
+    @app.route(route="any")
+    def any_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("{}")
+
+    before = generate_openapi_spec(strict=True)
+
+    # When: the completed app is scanned under strict mode.
+    after = generate_openapi_spec(app=app, strict=True)
+
+    # Then: body-bearing methods keep the declared schema; bodyless methods
+    # (GET/HEAD/DELETE) omit it -- matching the pre-scan result exactly,
+    # instead of strict mode raising "explicit request model dropped".
+    for spec in (before, after):
+        operations = spec["paths"]["/api/any"]
+        assert "requestBody" in operations["post"]
+        assert "requestBody" in operations["put"]
+        assert "requestBody" in operations["patch"]
+        assert "requestBody" not in operations["get"]
+        assert "requestBody" not in operations["head"]
+        assert "requestBody" not in operations["delete"]
+    assert (
+        after["paths"]["/api/any"]["post"]["requestBody"]
+        == before["paths"]["/api/any"]["post"]["requestBody"]
+    )
+
+
+def test_request_model_not_dropped_from_auto_expanded_bodyless_methods_innermost() -> None:
+    # Given: the same scenario with @openapi innermost (method=None until the
+    # bridge explodes it from the binding).
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="any")
+    @openapi(requests=_Payload)
+    def any_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("{}")
+
+    # When: strict generation scans the completed app.
+    spec = generate_openapi_spec(app=app, strict=True)
+
+    # Then: generation succeeds (no OpenAPISpecConfigError) and the bodyless
+    # rules apply exactly as they do for the outermost order.
+    operations = spec["paths"]["/api/any"]
+    assert "requestBody" in operations["post"]
+    assert "requestBody" not in operations["get"]
+    assert "requestBody" not in operations["delete"]
+
+
+def test_register_openapi_routes_json_endpoint_reflects_expansion_fix() -> None:
+    # Given: the documented register_openapi_routes() helper scans the app it
+    # is given, exercising the same path a real deployment uses.
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(operation_id="all_methods", requests=_Payload)
+    @app.route(route="any")
+    def any_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("{}")
+
+    routes = register_openapi_routes(
+        app, title="Expansion", version="1.0.0", spec_options={"strict": True}
+    )
+    assert routes.json is not None
+    request = func.HttpRequest(
+        method="GET", url="/api/openapi.json", headers={}, params={}, body=b""
+    )
+
+    # When: the JSON endpoint generates the spec (strict, per route registration).
+    document = json.loads(routes.json(request).get_body())
+
+    # Then: unique operation ids and correct bodyless omission, same as a
+    # direct generate_openapi_spec(app=app, strict=True) call.
+    operations = document["paths"]["/api/any"]
+    ids = {method: op["operationId"] for method, op in operations.items()}
+    assert len(set(ids.values())) == len(ids)
+    assert "requestBody" in operations["post"]
+    assert "requestBody" not in operations["get"]
+
+
+def test_app_scan_does_not_reclassify_an_explicitly_registered_operation() -> None:
+    # Given: an explicit DELETE registered directly via register_openapi_metadata
+    # (not through @openapi), carrying its own operation_id and request body --
+    # exactly as a validation-bridge producer or hand-written registration would.
+    register_openapi_metadata(
+        path="/api/any",
+        method="delete",
+        operation_id="deleteOne",
+        request_body={"type": "object", "properties": {"id": {"type": "string"}}},
+    )
+
+    # And: a bare, unspecified-methods binding at the SAME route, with no
+    # enrichment and no inferable response -- the scan creates no operation
+    # for this handler at all, so the explicit DELETE above is never touched
+    # by anything this scan genuinely produces.
+    app = func.FunctionApp()
+
+    @app.route(route="any")
+    def bare_handler(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("ok")
+
+    # When
+    scan_endpoint_metadata(app, route_prefix="/api")
+
+    # Then: the explicit registration survives untouched -- its operation_id
+    # is not suffixed into "deleteOne_delete", its request body is not
+    # dropped, and it is not marked as auto-expanded.
+    entry = get_openapi_registry()["delete::/api/any"]
+    assert entry["operation_id"] == "deleteOne"
+    assert entry["request_body"] == {"type": "object", "properties": {"id": {"type": "string"}}}
+    assert not entry.get("_methods_expanded")
+
+
+def test_cli_app_variable_preserves_unique_operation_ids_for_expanded_methods(
+    tmp_path: Path,
+) -> None:
+    # Given: an importable app whose unspecified-methods binding carries an
+    # explicit operation_id, exercised through the module:app CLI path.
+    (tmp_path / "function_app.py").write_text(
+        "import azure.functions as func\n"
+        "from azure_functions_openapi import openapi\n"
+        "app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)\n"
+        "@openapi(operation_id='cli_all_methods')\n"
+        "@app.route(route='cli-any')\n"
+        "def cli_any(req: func.HttpRequest): return func.HttpResponse('OK')\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "openapi.json"
+
+    # When: the CLI resolves and scans the completed FunctionApp under strict mode.
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "azure_functions_openapi.cli",
+            "generate",
+            "--app",
+            "function_app:app",
+            "--strict",
+            "--output",
+            str(output),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Then: generation succeeds with distinct, suffixed operation ids per method.
+    assert result.returncode == 0, result.stderr
+    operations = json.loads(output.read_text(encoding="utf-8"))["paths"]["/api/cli-any"]
+    ids = {method: op["operationId"] for method, op in operations.items()}
+    assert len(set(ids.values())) == len(ids)
+    assert ids["get"] == "cli_all_methods_get"
+
+
+def test_explicit_method_binding_keeps_unsuffixed_operation_id_after_app_scan() -> None:
+    # Given: a genuinely explicit single-method binding (no expansion at all).
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @openapi(operation_id="single")
+    @app.route(route="single-method", methods=["POST"])
+    def single_method(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("OK")
+
+    # When: the completed app is scanned.
+    spec = generate_openapi_spec(app=app, strict=True)
+
+    # Then: the explicit id is kept verbatim -- it must not be suffixed, since
+    # there was never more than one method to disambiguate.
+    assert spec["paths"]["/api/single-method"]["post"]["operationId"] == "single"

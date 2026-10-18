@@ -260,6 +260,26 @@ def test_register_openapi_routes_rejects_invalid_auth_level() -> None:
         )
 
 
+def test_register_openapi_routes_rejects_empty_name_prefix() -> None:
+    with pytest.raises(ValueError, match="name_prefix"):
+        register_openapi_routes(
+            func.FunctionApp(),
+            title="Widget API",
+            version="1.0.0",
+            name_prefix="   ",
+        )
+
+
+def test_register_openapi_routes_rejects_reserved_spec_options() -> None:
+    with pytest.raises(ValueError, match="spec_options cannot override"):
+        register_openapi_routes(
+            func.FunctionApp(),
+            title="Widget API",
+            version="1.0.0",
+            spec_options={"title": "Overridden"},
+        )
+
+
 def test_documentation_handlers_do_not_appear_in_generated_spec() -> None:
     app = _documented_app()
     register_openapi_routes(app, title="Widget API", version="1.0.0")

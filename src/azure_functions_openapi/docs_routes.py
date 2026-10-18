@@ -10,7 +10,7 @@ import azure.functions as func
 
 from azure_functions_openapi.routes import (
     DEFAULT_ROUTE_PREFIX,
-    apply_route_prefix,
+    apply_host_prefix,
     normalize_route_prefix,
 )
 from azure_functions_openapi.swagger_ui import render_swagger_ui
@@ -109,7 +109,12 @@ def register_openapi_routes(
 
     def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
         prefix = normalize_route_prefix(route_prefix)
-        openapi_url = apply_route_prefix(f"/{json_route}", prefix)
+        # json_route is registered directly as an SDK binding below (not an
+        # explicit @openapi(route=...) override), so it is host-relative and
+        # always gets the prefix prepended (#784) -- matching how the host
+        # actually serves it, even when json_route's own first segment
+        # happens to equal the configured prefix.
+        openapi_url = apply_host_prefix(f"/{json_route}", prefix)
         code = req.params.get("code")
         if auth_level is not func.AuthLevel.ANONYMOUS and code is not None:
             separator = "&" if "?" in openapi_url else "?"

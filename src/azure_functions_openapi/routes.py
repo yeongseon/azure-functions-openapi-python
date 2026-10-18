@@ -61,9 +61,32 @@ def apply_route_prefix(path: str, prefix: str) -> str:
 
     Idempotent so that authors who write ``route="/api/users"`` are not
     double-prefixed when the spec is generated with the default ``/api``.
+    This compatibility dedup is intentional only for an explicit
+    ``@openapi(route=...)`` override; use :func:`apply_host_prefix` for a
+    route discovered from (or served directly as) an Azure Functions SDK
+    binding, which must never be deduplicated against the prefix (#784).
     """
     if not prefix:
         return path
     if path == prefix or path.startswith(f"{prefix}/"):
+        return path
+    return f"{prefix}{path}"
+
+
+def apply_host_prefix(path: str, prefix: str) -> str:
+    """Prepend ``prefix`` to a host-relative ``path`` unconditionally.
+
+    Unlike :func:`apply_route_prefix`, this never treats ``path`` as already
+    prefixed. A discovered Azure Functions SDK binding route -- or any other
+    route this library registers directly with the SDK, such as the
+    documentation helper's own ``openapi.json``/``docs`` routes -- is
+    host-relative: the Azure Functions host composes the final URL as
+    ``routePrefix + '/' + routeTemplate`` unconditionally, so a route whose
+    own first segment happens to equal the configured prefix (e.g.
+    ``route="api/users"`` under prefix ``"api"``) is still served at
+    ``/api/api/users``, not ``/api/users`` (#784). An empty/disabled prefix
+    still adds nothing, matching a host with no ``routePrefix`` configured.
+    """
+    if not prefix:
         return path
     return f"{prefix}{path}"
