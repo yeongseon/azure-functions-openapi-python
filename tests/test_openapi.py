@@ -1213,6 +1213,169 @@ class TestValidateSpecExpanded:
 
 
 # ---------------------------------------------------------------------------
+# _validate_spec — additionalOperations is a map of operations, not one
+# operation (#785): a custom method's own parameters must be checked, and the
+# map itself must never be treated as a single operation keyed
+# "ADDITIONALOPERATIONS".
+# ---------------------------------------------------------------------------
+
+
+class TestValidateSpecAdditionalOperations:
+    def test_additional_operations_map_is_not_treated_as_one_operation(self) -> None:
+        # Given: a valid custom-method operation nested under
+        # additionalOperations, with its own correct path parameter --
+        # exactly what #471's restructuring produces.
+        spec = {
+            "paths": {
+                "/files/{id}": {
+                    "additionalOperations": {
+                        "PROPFIND": {
+                            "operationId": "propfind_file",
+                            "parameters": [
+                                {
+                                    "name": "id",
+                                    "in": "path",
+                                    "required": True,
+                                    "schema": {"type": "string"},
+                                },
+                            ],
+                            "responses": {"200": {"description": "ok"}},
+                        }
+                    }
+                }
+            }
+        }
+
+        # When
+        warnings = _validate_spec(spec)
+
+        # Then: no false "ADDITIONALOPERATIONS ... has no matching path
+        # parameter" warning -- the map itself was never a candidate
+        # operation, and PROPFIND's own parameters satisfied the check.
+        assert warnings == []
+
+    def test_malformed_custom_operation_still_warns(self) -> None:
+        # Given: the same shape, but the nested custom operation is actually
+        # missing its path parameter -- correcting the false positive above
+        # must not silence a real missing-parameter defect.
+        spec = {
+            "paths": {
+                "/files/{id}": {
+                    "additionalOperations": {
+                        "PROPFIND": {
+                            "operationId": "propfind_file",
+                            "parameters": [],
+                            "responses": {"200": {"description": "ok"}},
+                        }
+                    }
+                }
+            }
+        }
+
+        # When
+        warnings = _validate_spec(spec)
+
+        # Then
+        assert any(
+            "{id}" in w and "PROPFIND" in w and "no matching path parameter" in w for w in warnings
+        )
+
+    def test_duplicate_operation_id_between_standard_and_custom_method(self) -> None:
+        spec = {
+            "paths": {
+                "/widgets/{id}": {
+                    "get": {
+                        "operationId": "dup_op",
+                        "parameters": [{"name": "id", "in": "path", "required": True}],
+                    },
+                    "additionalOperations": {
+                        "PROPFIND": {
+                            "operationId": "dup_op",
+                            "parameters": [{"name": "id", "in": "path", "required": True}],
+                        }
+                    },
+                }
+            }
+        }
+
+        warnings = _validate_spec(spec)
+
+        assert any(
+            "Duplicate operationId 'dup_op'" in w and "GET" in w and "PROPFIND" in w
+            for w in warnings
+        )
+
+    def test_invalid_response_status_in_custom_operation_still_warns(self) -> None:
+        spec = {
+            "paths": {
+                "/jobs/{id}": {
+                    "additionalOperations": {
+                        "PROPFIND": {
+                            "operationId": "propfind_job",
+                            "parameters": [{"name": "id", "in": "path", "required": True}],
+                            "responses": {"999": {"description": "bad"}},
+                        }
+                    }
+                }
+            }
+        }
+
+        warnings = _validate_spec(spec)
+
+        assert any("Invalid response status '999'" in w and "PROPFIND" in w for w in warnings)
+
+    def test_one_malformed_custom_method_among_several_is_identified_by_name(self) -> None:
+        # Given: two custom methods on the same path, only one malformed --
+        # the warning must name the specific offending method, proving each
+        # additionalOperations entry is validated independently.
+        spec = {
+            "paths": {
+                "/files/{id}": {
+                    "additionalOperations": {
+                        "PROPFIND": {
+                            "operationId": "propfind_file",
+                            "parameters": [
+                                {"name": "id", "in": "path", "required": True},
+                            ],
+                        },
+                        "PROPPATCH": {
+                            "operationId": "proppatch_file",
+                            "parameters": [],
+                        },
+                    }
+                }
+            }
+        }
+
+        warnings = _validate_spec(spec)
+
+        assert any("PROPPATCH" in w and "no matching path parameter" in w for w in warnings)
+        assert not any("PROPFIND " in w and "no matching path parameter" in w for w in warnings)
+
+    def test_path_item_metadata_fields_are_not_treated_as_operations(self) -> None:
+        # Path Item Object metadata (summary/description/servers/parameters/
+        # $ref) never carries operation-shaped data; _iter_path_operations
+        # must skip it even though this codebase does not currently emit it.
+        spec = {
+            "paths": {
+                "/ping": {
+                    "summary": "Ping path",
+                    "description": "A ping path",
+                    "parameters": [{"name": "unused", "in": "query"}],
+                    "get": {
+                        "operationId": "ping",
+                        "responses": {"200": {"description": "ok"}},
+                    },
+                }
+            }
+        }
+
+        warnings = _validate_spec(spec)
+
+        assert warnings == []
+
+
+# ---------------------------------------------------------------------------
 # duplicate path+method detection in generate_openapi_spec
 # ---------------------------------------------------------------------------
 
