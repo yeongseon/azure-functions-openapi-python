@@ -163,6 +163,13 @@ across every surface so the docs do not drift:
 - [ ] Run `make docs` (mkdocs build) and confirm it completes without warnings.
 
 
+## Issue Scope
+
+Follow the [repository-scope rules in AGENTS.md](AGENTS.md#repository-scope)
+when opening or editing an issue, including the checks before and after saving.
+Explain this repository's problem, evidence, user impact, and completion criteria,
+and state why any external project or source is relevant.
+
 ## Title Convention
 
 This section is the single source of truth for issue, pull request, and commit titles in this repository. `AGENTS.md`, the pull request template, the issue forms, and the documentation site point here instead of restating the rules.
@@ -202,15 +209,15 @@ A breaking change adds `!` before the colon: `type!: description` or `type(scope
 Examples:
 
 ```text
-fix: decode nonempty NULL-only collection results
-feat(cli): add a JSON output option
+fix: preserve explicit response descriptions
+feat(schema): add a response example
 docs(readme): clarify the local setup steps
 refactor!: rename the public configuration keys
 ```
 
-Not accepted: `[Bug] crash on save` (bracket prefix, no type), `Fix: crash on save` (uppercase type), `feature: add export` (type not in the table), `fix: crash on save.` (trailing period), `fix: decode results (#503)` (the pull request number belongs in the body).
+Not accepted: `[Bug] crash on save` (bracket prefix, no type), `Fix: crash on save` (uppercase type), `feature: add export` (type not in the table), `fix: crash on save.` (trailing period), `fix: preserve explicit response descriptions (#503)` (the pull request number belongs in the body).
 
-Pull requests are squash-merged and the pull request title becomes the final commit title. GitHub appends the pull request number by itself, so `fix: decode nonempty NULL-only collection results` lands on `main` as `fix: decode nonempty NULL-only collection results (#503)`. Do not write that number into the title yourself — the check rejects a title ending in `(#123)`, because it would be doubled. Link the issue from the pull request body instead, for example `Closes #503`. The **PR title** check validates the format whenever a pull request is opened, edited, reopened, or updated. Individual commits on a branch are not checked.
+Pull requests are squash-merged and the pull request title becomes the final commit title. GitHub appends the pull request number by itself, so `fix: preserve explicit response descriptions` lands on `main` as `fix: preserve explicit response descriptions (#503)`. Do not write that number into the title yourself — the check rejects a title ending in `(#123)`, because it would be doubled. Link the issue from the pull request body instead, for example `Closes #503`. The **PR title** check validates the format whenever a pull request is opened, edited, reopened, or updated. Individual commits on a branch are not checked.
 
 Issue titles are not enforced. Anyone can open an issue without knowing this convention; maintainers adjust the title during triage.
 
