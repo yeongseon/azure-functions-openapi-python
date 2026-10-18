@@ -579,7 +579,36 @@ jobs:
           python -c 'import json, pathlib; assert json.loads(pathlib.Path("'"$RUNNER_TEMP"'/custom-route.json").read_text()) == {"function_name": "custom_name"}'
           curl --fail --silent http://127.0.0.1:7071/api/openapi.json \
             --output "$RUNNER_TEMP/openapi.json"
-          python -c 'import json, pathlib; spec = json.loads(pathlib.Path("'"$RUNNER_TEMP"'/openapi.json").read_text()); assert spec["openapi"] and spec["paths"]'
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          spec = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "openapi.json").read_text())
+          assert spec["openapi"], "spec is missing the 'openapi' version key"
+          paths = spec["paths"]
+
+          # #786: the fixture previously documented the pre-function_name route
+          # ('/api/python_handler_name') while the host actually served
+          # '/api/custom_name', and the host-smoke job passed anyway because it
+          # only checked a hard-coded URL, never the generated document itself.
+          assert "/api/python_handler_name" not in paths, (
+              f"spec still documents the stale pre-function_name route; paths={sorted(paths)}"
+          )
+          app_paths = [p for p in paths if p not in ("/api/openapi.json", "/api/docs")]
+          assert app_paths == ["/api/custom_name"], (
+              f"expected the documented app route to be exactly ['/api/custom_name'], got {app_paths}"
+          )
+
+          # Exercise the URL taken FROM the generated document -- not a second
+          # hard-coded '/api/custom_name' literal -- so a documentation/runtime
+          # mismatch cannot hide behind two copies of the same string.
+          documented_path = app_paths[0]
+          with urllib.request.urlopen(f"http://127.0.0.1:7071{documented_path}") as resp:
+              body = json.loads(resp.read())
+          assert body == {"function_name": "custom_name"}, body
+          PY
           curl --fail --silent http://127.0.0.1:7071/api/docs \
             --output "$RUNNER_TEMP/swagger.html"
           grep -q 'SwaggerUIBundle' "$RUNNER_TEMP/swagger.html"

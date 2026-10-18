@@ -14,7 +14,7 @@ gated step.
 |---|---|
 | `release-please.yml` | version calculation, `CHANGELOG.md`, the Release PR, the tag, the GitHub Release |
 | `e2e-azure.yml` | real-Azure certification of one exact commit |
-| `publish-pypi.yml` | the only path that uploads to PyPI (`workflow_dispatch` only) |
+| `publish-pypi.yml` | the only path that uploads to PyPI (automatic on `v*` tag push, with `workflow_dispatch` as its recovery path — see [Recovery](#recovery)) |
 
 **Do not hand-edit** `src/azure_functions_openapi/__init__.py` version strings, `CHANGELOG.md`, or
 `.release-please-manifest.json`. Release Please maintains all three.
@@ -92,11 +92,21 @@ step to dispatch and no freshness window to expire.
 
 Publication uses PyPI Trusted Publishing (OIDC); there is no API token to manage.
 
-To re-run after a failed gate (nothing was uploaded, so the version is still free):
+To re-run after a failed gate (nothing was uploaded, so the version is still free), use this only
+to retry the **same unchanged** tagged candidate after an external or transient failure (a flaky
+Azure deploy, a PyPI outage, a runner hiccup). `workflow_dispatch` takes **no inputs** — the
+workflow reads the version to verify from `github.ref_name`, so the dispatch **ref** must be the
+existing tag itself:
 
 ```bash
-gh workflow run publish-pypi.yml --ref main -f tag=v0.26.0
+gh workflow run publish-pypi.yml --ref v0.26.0
 ```
+
+Do not pass `--ref main` with a `-f tag=...` input: that input does not exist, and dispatching
+against `main` would compare the package version against the literal ref name `main` and fail the
+check even if the input were accepted. If the failure instead requires a code or workflow
+correction, fix forward on `main` and let the next Release PR cut a new version — never move or
+reuse a tag to make a changed commit appear to be the same release candidate.
 
 ---
 
@@ -123,7 +133,7 @@ for the version, changelog, or tags — or push an ungated artifact to PyPI.
 
 | Situation | Action |
 |---|---|
-| Any gate failed | Nothing was uploaded. Fix the cause and re-run `publish-pypi.yml` on the same tag, or fix forward on `main` and let the next Release PR cut a new version. Never move or reuse a tag. |
+| Any gate failed | Nothing was uploaded. For an external/transient failure, re-run the *same unchanged* tag with `gh workflow run publish-pypi.yml --ref vX.Y.Z` (no inputs — see [Step 3](#step-3-the-release-workflow-runs) for why `--ref main -f tag=...` does not work). For a failure that needs a code or workflow correction, fix forward on `main` and let the next Release PR cut a new version instead. Never move or reuse a tag. |
 | Tag exists but was never published | A valid resting state. Re-run publish, or abandon the version and let the next release take the following number. |
 | Release PR stopped appearing | Check for a stale `autorelease: pending` label on an already-merged Release PR. Release Please treats that as a release in flight and will not open another. This failure is silent — the workflow still reports success. |
 | Automation unavailable (break-glass) | Bump `__version__`, match `.release-please-manifest.json`, commit, tag, push. The tag starts the same gated workflow — never bypass it. |

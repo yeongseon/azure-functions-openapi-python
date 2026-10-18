@@ -79,8 +79,11 @@ Call that route with an `x-functions-key` header or a `?code=` query parameter.
 Passing a key in `openapi_url`, such as
 `/api/openapi.json?code=<host-key>`, can make Swagger UI fetch the protected
 specification, but is discouraged except in a trusted internal environment:
-the key appears in the generated page and may be recorded in browser history
-and logs. Prefer conditional registration (pattern 1) or protect the UI and
+the key appears in the generated page and may be recorded in browser history,
+proxy/access logs, or other systems that log request URLs. `render_swagger_ui()`
+does not write the key to this package's own application logs, but that does
+not control what other layers between the browser and the function record.
+Prefer conditional registration (pattern 1) or protect the UI and
 spec together with cookie/session-based edge authentication (pattern 3). An
 anonymous specification route is another option only when it is conditionally
 registered in trusted environments and its exposure is intentional.
