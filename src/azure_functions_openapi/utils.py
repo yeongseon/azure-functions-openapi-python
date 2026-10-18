@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import Any, cast, get_origin
+from typing import Any, Literal, cast, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -101,6 +101,52 @@ def _resolve_name_collision(
         index += 1
 
 
+def _rewrite_ref_with_map(value: str, name_map: dict[str, str]) -> str:
+    if value.startswith("#/components/schemas/"):
+        ref_name = value.split("#/components/schemas/", 1)[1]
+        if ref_name in name_map:
+            return f"#/components/schemas/{name_map[ref_name]}"
+    return value
+
+
+def _is_discriminator_object(value: dict[str, Any]) -> bool:
+    """Return ``True`` if *value* has the shape of an OpenAPI Discriminator
+    Object (``propertyName`` and/or a ``mapping`` dict), as opposed to an
+    ordinary property schema that merely happens to sit under a key literally
+    named ``"discriminator"`` (e.g. a field named ``discriminator`` whose own
+    schema is ``{"$ref": "..."}``). The latter has neither key, so routing it
+    through the discriminator-specific rewrite would only ever touch a
+    ``mapping`` it doesn't have -- silently skipping its ``$ref`` instead of
+    just leaving it alone, since the generic recursive branch that WOULD
+    rewrite that ``$ref`` is never reached for whichever branch runs (#791
+    follow-up).
+    """
+    return "propertyName" in value or isinstance(value.get("mapping"), dict)
+
+
+def _rewrite_discriminator_with_map(
+    discriminator: dict[str, Any], name_map: dict[str, str]
+) -> dict[str, Any]:
+    """Rewrite a Discriminator Object's ``mapping`` values only.
+
+    A Discriminator Object's ``mapping`` dict maps an arbitrary string key to
+    a component reference; its VALUES (not its keys) may need renaming. This
+    is scoped to an actual ``discriminator`` object (rather than matching any
+    key literally named "mapping" anywhere in a schema tree) so an ordinary
+    property that happens to be named "mapping" is never mistaken for one.
+    """
+    rewritten = dict(discriminator)
+    mapping = discriminator.get("mapping")
+    if isinstance(mapping, dict):
+        rewritten["mapping"] = {
+            mapping_key: _rewrite_ref_with_map(mapping_value, name_map)
+            if isinstance(mapping_value, str)
+            else _rewrite_refs_with_map(mapping_value, name_map)
+            for mapping_key, mapping_value in mapping.items()
+        }
+    return rewritten
+
+
 def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
     if not name_map:
         return obj
@@ -108,18 +154,253 @@ def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
         rewritten: dict[str, Any] = {}
         for key, value in obj.items():
             if key == "$ref" and isinstance(value, str):
-                if value.startswith("#/components/schemas/"):
-                    ref_name = value.split("#/components/schemas/", 1)[1]
-                    if ref_name in name_map:
-                        rewritten[key] = f"#/components/schemas/{name_map[ref_name]}"
-                        continue
-                rewritten[key] = value
+                rewritten[key] = _rewrite_ref_with_map(value, name_map)
+            elif (
+                key == "discriminator"
+                and isinstance(value, dict)
+                and _is_discriminator_object(value)
+            ):
+                rewritten[key] = _rewrite_discriminator_with_map(value, name_map)
             else:
                 rewritten[key] = _rewrite_refs_with_map(value, name_map)
         return rewritten
     if isinstance(obj, list):
         return [_rewrite_refs_with_map(item, name_map) for item in obj]
     return obj
+
+
+def _referenced_batch_schema_names(obj: Any, batch_names: set[str]) -> set[str]:
+    """Return which *batch_names* this schema tree references via ``$ref``
+    or ``discriminator.mapping``, mirroring :func:`_rewrite_refs_with_map`'s
+    traversal shape so dependency ordering always matches what gets rewritten.
+    """
+    refs: set[str] = set()
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "$ref" and isinstance(value, str):
+                ref_name = _schema_ref_name(value)
+                if ref_name in batch_names:
+                    refs.add(ref_name)
+            elif (
+                key == "discriminator"
+                and isinstance(value, dict)
+                and _is_discriminator_object(value)
+            ):
+                mapping = value.get("mapping")
+                if isinstance(mapping, dict):
+                    for mapping_value in mapping.values():
+                        if isinstance(mapping_value, str):
+                            ref_name = _schema_ref_name(mapping_value)
+                            if ref_name in batch_names:
+                                refs.add(ref_name)
+                        else:
+                            refs.update(_referenced_batch_schema_names(mapping_value, batch_names))
+            else:
+                refs.update(_referenced_batch_schema_names(value, batch_names))
+    elif isinstance(obj, list):
+        for item in obj:
+            refs.update(_referenced_batch_schema_names(item, batch_names))
+    return refs
+
+
+def _schema_ref_name(value: str) -> str | None:
+    if value.startswith("#/components/schemas/"):
+        return value.split("#/components/schemas/", 1)[1]
+    return None
+
+
+def _dependency_first_schema_groups(batch: dict[str, dict[str, Any]]) -> list[list[str]]:
+    """Return batch names grouped into strongly-connected components (Tarjan),
+    ordered so a referenced dependency's group always comes before its
+    dependents' group. A self- or mutually-recursive cluster of names forms
+    one group; everything else is its own single-name group.
+    """
+    batch_names = set(batch)
+    graph = {
+        name: _referenced_batch_schema_names(schema, batch_names) for name, schema in batch.items()
+    }
+
+    index = 0
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    indexes: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    groups: list[list[str]] = []
+
+    def strongconnect(name: str) -> None:
+        nonlocal index
+        indexes[name] = index
+        lowlinks[name] = index
+        index += 1
+        stack.append(name)
+        on_stack.add(name)
+
+        # Sorted rather than raw set iteration: a Python set's order depends
+        # on string hash values, which are randomized per-process by default
+        # (``PYTHONHASHSEED``). Traversing dependencies in a fixed order
+        # keeps which names end up renamed (and to what) reproducible across
+        # runs for the same input, instead of depending on the interpreter's
+        # hash seed (#791 follow-up).
+        for dependency in sorted(graph[name]):
+            if dependency not in indexes:
+                strongconnect(dependency)
+                lowlinks[name] = min(lowlinks[name], lowlinks[dependency])
+            elif dependency in on_stack:
+                lowlinks[name] = min(lowlinks[name], indexes[dependency])
+
+        if lowlinks[name] == indexes[name]:
+            group_set: set[str] = set()
+            while True:
+                member = stack.pop()
+                on_stack.remove(member)
+                group_set.add(member)
+                if member == name:
+                    break
+            groups.append([batch_name for batch_name in batch if batch_name in group_set])
+
+    for name in batch:
+        if name not in indexes:
+            strongconnect(name)
+
+    return groups
+
+
+def _schema_name_candidate(safe_base: str, candidate_number: int) -> str:
+    if candidate_number <= 1:
+        return safe_base
+    return f"{safe_base}_{candidate_number}"
+
+
+def _resolve_group_jointly(
+    group: list[str],
+    batch: dict[str, dict[str, Any]],
+    claimed: dict[str, dict[str, Any]],
+    name_map: dict[str, str],
+) -> dict[str, str]:
+    """Resolve one strongly-connected group's names as a single unit.
+
+    Tries the same numeric suffix for every member of the group at once,
+    starting at 1 (each member's own sanitized name): every member's schema
+    is rewritten under the FULL joint trial map (so cross-references between
+    group members, and references to already-resolved earlier groups via
+    *name_map*, are always resolved consistently with every other member's
+    candidate at that SAME attempt), then every member is checked against
+    *claimed* together. The whole group only advances to the next suffix
+    when the current one fails for any member; it never backtracks, so the
+    search still terminates and, combined with resolving the SAME commit
+    schema structure every time (#791's own invariant), is why identical
+    input is idempotent.
+
+    This replaces resolving each member independently within a pass: doing so
+    let an early member in iteration order settle on a nonminimal suffix
+    before a later member's own name was known (comparing against the
+    not-yet-renamed sibling), and once "pinned" there could never revisit a
+    lower suffix that a later pass reveals would actually have matched an
+    existing component after all -- so the exact same batch, registered a
+    second time, kept growing the component count instead of reusing the
+    same names (#791 follow-up).
+    """
+    bases = {name: _sanitize_component_name(name) for name in group}
+    candidate_number = 1
+
+    while True:
+        trial_name_map: dict[str, str] = {**name_map}
+        for name in group:
+            candidate = _schema_name_candidate(bases[name], candidate_number)
+            if candidate != name:
+                trial_name_map[name] = candidate
+
+        rewritten = {
+            name: cast(dict[str, Any], _rewrite_refs_with_map(batch[name], trial_name_map))
+            for name in group
+        }
+        if all(
+            trial_name_map.get(name, name) not in claimed
+            or claimed[trial_name_map.get(name, name)] == rewritten[name]
+            for name in group
+        ):
+            if candidate_number > 1:
+                resolved = {name: trial_name_map.get(name, name) for name in sorted(group)}
+                logger.warning(
+                    "Schema name collision while registering %r: %r already exists in "
+                    "components.schemas with different content; emitting deterministic "
+                    "alias(es) %r instead. Rename the producer model(s) to silence this "
+                    "warning.",
+                    sorted(group),
+                    sorted(bases.values()),
+                    resolved,
+                )
+            return {name: trial_name_map[name] for name in group if name in trial_name_map}
+        candidate_number += 1
+
+
+def _register_schema_graph(
+    batch: dict[str, dict[str, Any]],
+    components: dict[str, Any],
+) -> dict[str, str]:
+    """Register a batch of mutually-referencing schemas into ``components['schemas']``.
+
+    ``batch`` maps each schema's original (pre-collision) name to its schema;
+    entries may reference each other's original names via ``$ref`` or
+    ``discriminator.mapping`` (as emitted by :func:`_collect_schemas`). Shared
+    by :func:`model_to_schema`, :func:`type_to_schema`, and
+    :func:`hoist_inline_defs` so all three paths resolve collisions the same
+    way: against both pre-existing ``components['schemas']`` entries and other
+    members of this same batch.
+
+    Batch members are processed in dependency-first order via strongly
+    connected components (:func:`_dependency_first_schema_groups`): a group
+    referenced by another group is always resolved first, so an acyclic
+    parent sees its (possibly renamed) child's final name before the parent
+    itself is compared for dedup -- preserving the original behavior for the
+    common, non-recursive case. Each group (a single name, or a self-/
+    mutually-recursive cluster) is resolved as one unit by
+    :func:`_resolve_group_jointly`.
+
+    Returns a sparse ``original_name -> resolved_name`` map containing only
+    the names that were actually renamed (empty when nothing collided). Look
+    up a specific name with ``name_map.get(name, name)``, matching every
+    caller's existing pattern. The complete, final-named batch is written
+    into ``components['schemas']``, skipping any name whose existing content
+    is already identical so repeated registration of the same input is a
+    no-op. Entries in ``batch`` are never mutated -- every rewrite builds a
+    new dict. A pre-existing component is never silently overwritten with
+    different content; an internal invariant violation raises ``RuntimeError``
+    rather than corrupting ``components['schemas']``.
+    """
+    schemas = components.setdefault("schemas", {})
+    claimed: dict[str, dict[str, Any]] = dict(schemas)
+    name_map: dict[str, str] = {}
+
+    for group in _dependency_first_schema_groups(batch):
+        group_name_map = _resolve_group_jointly(group, batch, claimed, name_map)
+        name_map.update(group_name_map)
+
+        for name in group:
+            final_name = name_map.get(name, name)
+            final_schema = cast(dict[str, Any], _rewrite_refs_with_map(batch[name], name_map))
+            if final_name in claimed and claimed[final_name] != final_schema:
+                raise RuntimeError(
+                    "Schema collision resolution produced an inconsistent result for "
+                    f"{name!r} resolved as {final_name!r}; this indicates a bug in "
+                    "_register_schema_graph's collision resolution, not a usage error."
+                )
+            claimed[final_name] = final_schema
+
+    for name, schema in batch.items():
+        final_name = name_map.get(name, name)
+        final_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, name_map))
+        if final_name in schemas:
+            if schemas[final_name] != final_schema:
+                raise RuntimeError(
+                    "Schema collision resolution produced an inconsistent result during "
+                    f"write-back for {name!r} resolved as {final_name!r}; this indicates a "
+                    "bug in _register_schema_graph's collision resolution, not a usage error."
+                )
+            continue
+        schemas[final_name] = final_schema
+
+    return name_map
 
 
 def _needs_hoisting(obj: Any) -> bool:
@@ -274,35 +555,35 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any], *, hoist_flat: bo
     if not definitions:
         return normalized_root
 
-    schemas = components.setdefault("schemas", {})
-
-    name_map: dict[str, str] = {}
-    for name, definition in definitions.items():
-        resolved_name = _resolve_name_collision(name, definition, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
-
-    if name_map:
-        definitions = {
-            name_map.get(name, name): cast(
-                dict[str, Any], _rewrite_refs_with_map(definition, name_map)
-            )
-            for name, definition in definitions.items()
-        }
-        normalized_root = cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
-
-    for name, definition in definitions.items():
-        if name not in schemas or schemas[name] != definition:
-            schemas[name] = definition
-
-    return normalized_root
+    name_map = _register_schema_graph(definitions, components)
+    return cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
 
 
-def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
+def model_to_schema(
+    model_cls: Any,
+    components: dict[str, Any] | None = None,
+    *,
+    mode: Literal["validation", "serialization"] = "validation",
+) -> dict[str, Any]:
     """Return OpenAPI schema from a Pydantic model class.
     Parameters:
         model_cls: Pydantic model class.
         components: OpenAPI components dict to register schemas.
+        mode: ``"validation"`` (the default, matching ``model_json_schema()``'s
+            own default) describes the shape the model *accepts* -- the
+            appropriate role for a request body or parameter. ``"serialization"``
+            describes the shape the model *produces* -- the appropriate role for
+            a response -- which can differ from the validation shape for a model
+            using ``validation_alias``/``serialization_alias``, a
+            ``@computed_field``, or a field serializer. A model's own
+            ``model_config = ConfigDict(json_schema_mode_override=...)``, if
+            set, takes precedence over whatever is requested here (Pydantic
+            applies it internally). Passing the correct mode is what gives the
+            request and response schemas for the same model distinct component
+            identities when their contents differ: the schema is computed before
+            the collision check below, so validation- and serialization-mode
+            content for one model class collide and alias apart exactly like
+            two different classes would.
     Returns:
         dict[str, Any]: Schema with $ref to components.schemas.
     """
@@ -314,50 +595,30 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
         )
 
     if isinstance(model_cls, type) and issubclass(model_cls, BaseModel):
-        schema = model_cls.model_json_schema(ref_template="#/components/schemas/{model}")
+        schema = model_cls.model_json_schema(mode=mode, ref_template="#/components/schemas/{model}")
     else:
         if get_origin(model_cls) is None:
             raise TypeError(
                 "model_to_schema expects a Pydantic v2 BaseModel subclass "
                 "(missing model_json_schema). Pydantic v1 is not supported."
             )
-        return type_to_schema(model_cls, components)
-
-    schemas = components.setdefault("schemas", {})
+        return type_to_schema(model_cls, components, mode=mode)
 
     normalized, definitions = _collect_schemas(schema)
-    local_schemas: dict[str, dict[str, Any]] = {model_cls.__name__: normalized}
-    local_schemas.update(definitions)
+    batch: dict[str, dict[str, Any]] = {model_cls.__name__: normalized}
+    batch.update(definitions)
 
-    name_map: dict[str, str] = {}
-    while True:
-        updated_name_map: dict[str, str] = {}
-        for name, local_schema in local_schemas.items():
-            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
-            resolved_name = _resolve_name_collision(name, rewritten_schema, schemas)
-            if resolved_name != name:
-                updated_name_map[name] = resolved_name
-        if updated_name_map == name_map:
-            break
-        name_map = updated_name_map
-
-    if name_map:
-        updated_local_schemas: dict[str, dict[str, Any]] = {}
-        for name, local_schema in local_schemas.items():
-            final_name = name_map.get(name, name)
-            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
-            updated_local_schemas[final_name] = rewritten_schema
-        local_schemas = updated_local_schemas
-
-    for name, local_schema in local_schemas.items():
-        if name not in schemas or schemas[name] != local_schema:
-            schemas[name] = local_schema
-
+    name_map = _register_schema_graph(batch, components)
     root_name = name_map.get(model_cls.__name__, model_cls.__name__)
     return {"$ref": f"#/components/schemas/{root_name}"}
 
 
-def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
+def type_to_schema(
+    type_hint: Any,
+    components: dict[str, Any] | None = None,
+    *,
+    mode: Literal["validation", "serialization"] = "validation",
+) -> dict[str, Any]:
     """Convert a Python type hint into a JSON Schema fragment.
 
     Parameters:
@@ -367,6 +628,9 @@ def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> 
             generated schema is returned directly. When provided, referenced
             definitions are merged into its ``schemas`` mapping and the
             returned fragment points to the registered definitions as needed.
+        mode: ``"validation"`` (default) or ``"serialization"`` -- see
+            :func:`model_to_schema` for what each means and why it matters for
+            a model nested inside this type hint (e.g. ``list[Model]``).
     Returns:
         A JSON Schema object for ``type_hint``. Depending on ``components``
         and the type hint, this is either an inline schema or a fragment with
@@ -374,38 +638,16 @@ def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> 
     """
     if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
         if components is None:
-            return type_hint.model_json_schema()
-        return model_to_schema(type_hint, components)
+            return type_hint.model_json_schema(mode=mode)
+        return model_to_schema(type_hint, components, mode=mode)
 
-    schema = TypeAdapter(type_hint).json_schema()
+    schema = TypeAdapter(type_hint).json_schema(mode=mode)
     if components is None:
         return schema
 
-    schemas = components.setdefault("schemas", {})
     normalized, definitions = _collect_schemas(schema)
-
-    name_map: dict[str, str] = {}
-    for name, local_schema in definitions.items():
-        resolved_name = _resolve_name_collision(name, local_schema, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
-
-    if name_map:
-        normalized = cast(dict[str, Any], _rewrite_refs_with_map(normalized, name_map))
-        updated_definitions: dict[str, dict[str, Any]] = {}
-        for name, local_schema in definitions.items():
-            final_name = name_map.get(name, name)
-            updated_definitions[final_name] = cast(
-                dict[str, Any],
-                _rewrite_refs_with_map(local_schema, name_map),
-            )
-        definitions = updated_definitions
-
-    for name, local_schema in definitions.items():
-        if name not in schemas or schemas[name] != local_schema:
-            schemas[name] = local_schema
-
-    return normalized
+    name_map = _register_schema_graph(definitions, components)
+    return cast(dict[str, Any], _rewrite_refs_with_map(normalized, name_map))
 
 
 def validate_route_path(route: Any) -> bool:

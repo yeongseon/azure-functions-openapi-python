@@ -7,6 +7,7 @@ from unittest.mock import patch
 from azure.functions import HttpResponse
 
 from azure_functions_openapi.swagger_ui import (
+    _redact_query_for_logging,
     _sanitize_html_content,
     _sanitize_url,
     render_swagger_ui,
@@ -163,6 +164,40 @@ class TestRenderSwaggerUI:
         assert "Swagger UI rendered with enhanced security headers" in call_args
         assert "/test/openapi.json" in call_args
 
+    @patch("azure_functions_openapi.swagger_ui.logger")
+    def test_render_swagger_ui_logging_redacts_ordinary_credential(self, mock_logger: Any) -> None:
+        """Regression (#778): an ordinary ?code= key must not reach the INFO log."""
+        response = render_swagger_ui(openapi_url="/api/openapi.json?code=DUMMY-NOT-A-REAL-KEY")
+
+        # The served page still carries the real key — only the log is redacted.
+        assert "DUMMY-NOT-A-REAL-KEY" in response.get_body().decode()
+
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args[0][0]
+        assert "DUMMY-NOT-A-REAL-KEY" not in call_args
+        assert "code=" not in call_args
+        assert "/api/openapi.json" in call_args
+
+    @patch("azure_functions_openapi.swagger_ui.logger")
+    def test_render_swagger_ui_logging_redacts_url_encoded_credential(
+        self, mock_logger: Any
+    ) -> None:
+        """Regression (#778): a urlencode()-escaped key must not reach the INFO log.
+
+        Mirrors the encoding shape produced by ``urlencode({'code': code})`` in
+        ``docs_routes.py`` for a key containing characters that require
+        percent-encoding (space -> '+', '/' -> '%2F').
+        """
+        encoded_url = "/api/openapi.json?code=host+key%2F%2B"
+        response = render_swagger_ui(openapi_url=encoded_url)
+
+        assert "host+key%2F%2B" in response.get_body().decode()
+
+        mock_logger.info.assert_called_once()
+        call_args = mock_logger.info.call_args[0][0]
+        assert "host+key%2F%2B" not in call_args
+        assert "code=" not in call_args
+
 
 class TestSanitizeHtmlContent:
     """Test _sanitize_html_content function."""
@@ -278,6 +313,23 @@ class TestSanitizeUrl:
         assert "Potentially dangerous URL pattern detected" in call_args[0]
         assert "javascript:" in call_args[1]
 
+    @patch("azure_functions_openapi.swagger_ui.logger")
+    def test_sanitize_url_rejection_logging_redacts_credential(self, mock_logger: Any) -> None:
+        """Regression (#778): a rejected URL must not leak its ?code= value either.
+
+        A space is outside the allowed-character whitelist (unlike a real,
+        already-urlencoded Functions key), so this input reaches the
+        disallowed-characters branch rather than the dangerous-pattern branch.
+        """
+        result = _sanitize_url("/api/openapi.json?code=SECRET SPACE KEY")
+
+        assert result == "/api/openapi.json"
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args[0]
+        assert "disallowed characters" in call_args[0]
+        assert "SECRET SPACE KEY" not in call_args[1]
+        assert call_args[1] == "/api/openapi.json"
+
     def test_sanitize_url_case_insensitive(self) -> None:
         """Test that dangerous pattern detection is case insensitive."""
         result1 = _sanitize_url("JAVASCRIPT:alert('xss')")
@@ -330,3 +382,27 @@ class TestSwaggerUIJsEscaping:
         body = response.get_body().decode()
         assert "<title>AT&amp;T API</title>" in body
         assert "&amp;amp;" not in body
+
+
+class TestRedactQueryForLogging:
+    """Test _redact_query_for_logging (#778)."""
+
+    def test_redact_query_for_logging_strips_query_string(self) -> None:
+        """Test that a ?code= value is dropped, leaving only the path."""
+        result = _redact_query_for_logging("/api/openapi.json?code=SECRET")
+        assert result == "/api/openapi.json"
+
+    def test_redact_query_for_logging_without_query_string(self) -> None:
+        """Test that a path with no query string is returned unchanged."""
+        result = _redact_query_for_logging("/api/openapi.json")
+        assert result == "/api/openapi.json"
+
+    def test_redact_query_for_logging_empty(self) -> None:
+        """Test sanitizing empty content."""
+        result = _redact_query_for_logging("")
+        assert result == ""
+
+    def test_redact_query_for_logging_none(self) -> None:
+        """Test sanitizing None content."""
+        result = _redact_query_for_logging(None)  # type: ignore
+        assert result is None
