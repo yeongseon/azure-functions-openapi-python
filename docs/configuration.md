@@ -217,6 +217,27 @@ json_spec = get_openapi_json(
 )
 ```
 
+### What changes in 3.0 mode
+
+OpenAPI 3.0 predates JSON Schema 2020-12 and cannot express `type: [T, "null"]`
+or a bare nullable `$ref`/union the way 3.1/3.2 can, so generation rewrites
+nullable fields to the 3.0 `nullable: true` idiom — inlining a nullable
+model reference's own content (rather than `allOf`-wrapping the `$ref`) and
+attaching `nullable` directly to one branch of a nullable multi-type union,
+so the result is not just structurally valid but actually accepts a `null`
+value under real OpenAPI 3.0 tooling.
+
+A heterogeneous `tuple[...]` (differing item types per position) has no
+positional representation in OpenAPI 3.0 at all: it is approximated as
+`items.anyOf`, which accepts the right set of values but can no longer
+enforce *which* type belongs at *which* position. `strict=True` raises
+`OpenAPISpecConfigError` instead of silently shipping that approximation;
+non-strict generation emits the best-effort schema plus a structured
+`version-downgrade-drop` warning (visible via `generate_openapi_report()` or
+the CLI's `--fail-on-warnings`). A tuple whose positions all share the
+identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
+schema already describes it faithfully.
+
 ### What changes in 3.1 / 3.2 mode
 
 - nullable schemas are converted from `nullable: true` to `type: [<type>, "null"]`

@@ -221,20 +221,72 @@ _STRUCTURAL_MERGE_KEYS: frozenset[str] = frozenset(
 )
 
 
-def _collapse_nullable_combinator(schema: dict[str, Any]) -> dict[str, Any]:
+def _inline_ref_nullable(
+    ref: str,
+    extra_keys: dict[str, Any],
+    schemas: dict[str, Any] | None,
+    resolving: frozenset[str],
+) -> dict[str, Any] | None:
+    """Resolve ``ref`` and return its content, recursively converted, with
+    ``nullable: true`` set directly on it -- or ``None`` when it cannot be
+    resolved against *schemas* or is already being expanded higher up this
+    same chain (*resolving*), a direct or indirect self-reference that would
+    otherwise inline forever.
+    """
+    if not ref.startswith("#/components/schemas/"):
+        return None
+    name = ref.rsplit("/", 1)[-1]
+    if schemas is None or name in resolving:
+        return None
+    target = schemas.get(name)
+    if not isinstance(target, dict):
+        return None
+    inlined = _convert_schema_to_3_0(dict(target), schemas, resolving | {name})
+    inlined["nullable"] = True
+    for k, v in extra_keys.items():
+        inlined.setdefault(k, v)
+    return inlined
+
+
+def _collapse_nullable_combinator(
+    schema: dict[str, Any],
+    schemas: dict[str, Any] | None = None,
+    resolving: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
     """Collapse a Pydantic ``anyOf``/``oneOf`` nullable union into OpenAPI 3.0 form.
 
-    OpenAPI 3.0 has no ``{"type": "null"}`` and cannot mark a ``$ref`` nullable
-    inline. Pydantic v2 emits ``Optional[T]`` as
-    ``{"anyOf": [<T>, {"type": "null"}]}``; this rewrites that node to the 3.0
-    ``nullable: true`` idiom (#562):
+    OpenAPI 3.0 has no ``{"type": "null"}`` and ``nullable: true`` only takes
+    effect when it sits on the *same* schema object as the ``type`` keyword it
+    exempts (OAS 3.0.3; this is also how the reference
+    ``openapi-schema-validator`` implements it, and how it treats ``anyOf``/
+    ``oneOf``: it descends into each branch independently, so a ``nullable``
+    sibling of the combinator itself is never consulted and null is rejected
+    by every branch). A bare ``$ref`` cannot carry a sibling ``nullable`` at
+    all (3.0 ignores every other key next to ``$ref``), and wrapping it in
+    ``allOf`` does not help either: resolving the ``$ref`` inside ``allOf``
+    validates the instance against the *referenced* schema object, which has
+    no ``nullable`` of its own, so a valid ``null`` is still rejected as e.g.
+    ``"None is not of type 'object'"``. This rewrites that node to the 3.0
+    ``nullable: true`` idiom (#562), making sure ``nullable`` always lands
+    somewhere it actually takes effect (#782):
 
-    * single ``$ref`` member -> ``{"allOf": [<ref>], "nullable": true}`` (a
-      ``$ref`` must not carry sibling keys in 3.0, so it is wrapped).
+    * single ``$ref`` member, resolvable against *schemas* and not already
+      being expanded higher up this same chain (*resolving*) -> the
+      referenced schema's own content, copied in and recursively converted,
+      plus ``nullable: true``. Falls back to the pre-#782 ``{"allOf": [<ref>],
+      "nullable": true}`` form (structurally valid, but does not itself
+      satisfy the null case) when the ref cannot be resolved or would recurse
+      into itself.
     * single inline member -> the member's keys merged up (existing node keys
-      such as ``description`` win) + ``nullable: true``.
-    * multiple members -> the combinator is kept (null member removed) with a
-      sibling ``nullable: true``.
+      such as ``description`` win) + ``nullable: true``; already lands
+      ``nullable`` next to the merged-in ``type``, so this form was already
+      correct before #782.
+    * multiple members -> the combinator is kept (null member removed), with
+      ``nullable: true`` attached directly to whichever first branch can
+      carry it (a branch with its own ``type``, or an inlineable ``$ref``) so
+      at least one branch in the union actually accepts null, plus the same
+      sibling ``nullable: true`` for discoverability (ignored by validation
+      once a branch already accepts null, but documents the field's shape).
 
     Nodes without a null-bearing ``anyOf``/``oneOf`` are returned unchanged.
     """
@@ -251,11 +303,18 @@ def _collapse_nullable_combinator(schema: dict[str, Any]) -> dict[str, Any]:
         if len(non_null) == 1:
             sole = non_null[0]
             if isinstance(sole, dict) and "$ref" in sole:
-                # A $ref must not carry sibling keys in 3.0; wrap the bare ref in
-                # ``allOf`` and lift any annotation siblings up to this node.
-                result["allOf"] = [{"$ref": sole["$ref"]}]
-                for k, v in sole.items():
-                    if k != "$ref":
+                extra_keys = {k: v for k, v in sole.items() if k != "$ref"}
+                inlined = _inline_ref_nullable(sole["$ref"], extra_keys, schemas, resolving)
+                if inlined is not None:
+                    result = inlined
+                else:
+                    # A $ref must not carry sibling keys in 3.0; wrap the bare
+                    # ref in allOf and lift any annotation siblings up to this
+                    # node. Documented above as not satisfying the null case
+                    # by itself -- kept only as a last-resort fallback for an
+                    # unresolvable or self-referential ref.
+                    result["allOf"] = [{"$ref": sole["$ref"]}]
+                    for k, v in extra_keys.items():
                         result.setdefault(k, v)
             elif isinstance(sole, dict):
                 conflict = any(
@@ -273,17 +332,59 @@ def _collapse_nullable_combinator(schema: dict[str, Any]) -> dict[str, Any]:
             else:
                 result[key] = non_null
         elif len(non_null) > 1:
-            result[key] = non_null
+            patched_members: list[Any] = []
+            patched_one = False
+            for member in non_null:
+                if patched_one or not isinstance(member, dict):
+                    patched_members.append(member)
+                    continue
+                if "$ref" in member:
+                    extra_keys = {k: v for k, v in member.items() if k != "$ref"}
+                    inlined = _inline_ref_nullable(member["$ref"], extra_keys, schemas, resolving)
+                    if inlined is not None:
+                        patched_members.append(inlined)
+                        patched_one = True
+                        continue
+                elif "type" in member:
+                    nullable_member = dict(member)
+                    nullable_member["nullable"] = True
+                    patched_members.append(nullable_member)
+                    patched_one = True
+                    continue
+                patched_members.append(member)
+            result[key] = patched_members
     return result
 
 
-def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
+def _convert_schema_to_3_0(
+    schema: dict[str, Any],
+    schemas: dict[str, Any] | None = None,
+    resolving: frozenset[str] = frozenset(),
+    lossy: list[str] | None = None,
+) -> dict[str, Any]:
     """Recursively down-convert a JSON-Schema-2020-12 schema to OpenAPI 3.0.
 
     Mirrors :func:`_convert_schema_to_3_1` in reverse: the 3.1/Pydantic
     nullability idioms (``type: [T, "null"]`` and ``anyOf: [T, {type: null}]``)
     are rewritten to the 3.0 ``nullable: true`` form so the emitted schema is
-    valid under OpenAPI 3.0 (#562). Non-nullable schemas pass through unchanged.
+    valid under OpenAPI 3.0 (#562) and -- for a nullable ``$ref``, when
+    *schemas* is supplied -- actually accepts a ``null`` instance (#782).
+    Non-nullable schemas pass through unchanged.
+
+    *schemas* (the complete ``components.schemas`` registry) and *resolving*
+    (the set of component names currently being inlined higher up this same
+    call chain, used to stop a self- or mutually-referencing nullable ref from
+    inlining forever) are threaded through every recursive call so a nullable
+    ``$ref`` can be resolved no matter how deeply nested it is.
+
+    *lossy* is an optional accumulator for conversions that are not merely
+    re-expressed but demonstrably weakened -- currently, a heterogeneous
+    ``tuple`` (differing ``prefixItems``), whose positional constraints
+    OpenAPI 3.0 cannot express at all. When supplied, each such occurrence
+    appends a human-readable message instead of silently approximating it;
+    the caller decides whether that is a strict-mode error or a logged
+    warning, mirroring the existing :func:`_check_schemas_3_0_compatible`
+    strict/non-strict gate.
     """
     if not isinstance(schema, dict):
         return schema
@@ -300,7 +401,7 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
     pattern_properties = result.pop("patternProperties", None)
     if "additionalProperties" not in result and isinstance(pattern_properties, dict):
         pattern_schemas = [
-            _convert_schema_to_3_0(value)
+            _convert_schema_to_3_0(value, schemas, resolving, lossy)
             for value in pattern_properties.values()
             if isinstance(value, dict)
         ]
@@ -344,37 +445,83 @@ def _convert_schema_to_3_0(schema: dict[str, Any]) -> dict[str, Any]:
         del result["type"]
         result["nullable"] = True
 
-    result = _collapse_nullable_combinator(result)
+    result = _collapse_nullable_combinator(result, schemas, resolving)
 
     # Recurse into nested structures first so inner unions are converted before
     # the combinator at this level is collapsed.
     if "properties" in result and isinstance(result["properties"], dict):
         result["properties"] = {
-            k: _convert_schema_to_3_0(v) for k, v in result["properties"].items()
+            k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
+            for k, v in result["properties"].items()
         }
     if "items" in result:
-        result["items"] = _convert_schema_to_3_0(result["items"])
+        result["items"] = _convert_schema_to_3_0(result["items"], schemas, resolving, lossy)
     prefix_items = result.pop("prefixItems", None)
     if isinstance(prefix_items, list) and prefix_items:
-        converted_items = [_convert_schema_to_3_0(item) for item in prefix_items]
+        converted_items = [
+            _convert_schema_to_3_0(item, schemas, resolving, lossy) for item in prefix_items
+        ]
         if all(item == converted_items[0] for item in converted_items[1:]):
+            # Every position shares the identical schema: a plain ``items``
+            # array faithfully represents it, with nothing position-specific
+            # to lose.
             result["items"] = converted_items[0]
         else:
-            result["items"] = {"oneOf": converted_items}
+            # A heterogeneous tuple has no OpenAPI-3.0-native representation:
+            # ``oneOf`` looks closest to the original intent, but JSON
+            # Schema's "integer" is a subset of "number", so a value valid at
+            # one position can also be valid at another and match more than
+            # one oneOf branch -- oneOf then wrongly rejects it (requires
+            # exactly one match). ``anyOf`` never has that failure mode, but,
+            # like oneOf here, it cannot express *which* position requires
+            # *which* schema: this is a genuine, not cosmetic, loss of the
+            # tuple's positional constraints, so it is reported rather than
+            # silently emitted as if it were faithful (#782).
+            result["items"] = {"anyOf": converted_items}
+            if lossy is not None:
+                item_types = ", ".join(
+                    str(item.get("type", "object")) if isinstance(item, dict) else "unknown"
+                    for item in converted_items
+                )
+                lossy.append(
+                    f"tuple[{item_types}] positional constraints cannot be "
+                    "preserved in OpenAPI 3.0 and were approximated as "
+                    "items.anyOf; a value valid at any position is now "
+                    "accepted at every position"
+                )
     for combinator in ("allOf", "anyOf", "oneOf"):
         if combinator in result and isinstance(result[combinator], list):
-            result[combinator] = [_convert_schema_to_3_0(s) for s in result[combinator]]
+            result[combinator] = [
+                _convert_schema_to_3_0(s, schemas, resolving, lossy) for s in result[combinator]
+            ]
     if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
-        result["additionalProperties"] = _convert_schema_to_3_0(result["additionalProperties"])
+        result["additionalProperties"] = _convert_schema_to_3_0(
+            result["additionalProperties"], schemas, resolving, lossy
+        )
     if "$defs" in result and isinstance(result["$defs"], dict):
-        result["$defs"] = {k: _convert_schema_to_3_0(v) for k, v in result["$defs"].items()}
+        result["$defs"] = {
+            k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
+            for k, v in result["$defs"].items()
+        }
 
-    return _collapse_nullable_combinator(result)
+    return _collapse_nullable_combinator(result, schemas, resolving)
 
 
-def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> dict[str, Any]:
-    """Down-convert all component schemas to OpenAPI 3.0 nullable form (#562)."""
-    return {name: _convert_schema_to_3_0(schema) for name, schema in schemas.items()}
+def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Down-convert all component schemas to OpenAPI 3.0 nullable form (#562).
+
+    Returns the converted schemas alongside a list of human-readable lossy-
+    conversion messages (currently: heterogeneous tuples, #782), one entry per
+    affected named schema, each prefixed with that schema's name the same way
+    :func:`_check_schemas_3_0_compatible` labels its own warnings.
+    """
+    converted: dict[str, Any] = {}
+    lossy_messages: list[str] = []
+    for name, schema in schemas.items():
+        schema_lossy: list[str] = []
+        converted[name] = _convert_schema_to_3_0(schema, schemas, frozenset(), schema_lossy)
+        lossy_messages.extend(f"Schema '{name}': {message}" for message in schema_lossy)
+    return converted, lossy_messages
 
 
 def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
@@ -502,9 +649,22 @@ def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:
     return _convert_operation_schemas(paths, _convert_schema_to_3_1)
 
 
-def _convert_operation_schemas_to_3_0(paths: dict[str, Any]) -> dict[str, Any]:
-    """Down-convert inline operation schemas to valid OpenAPI 3.0 form (#562)."""
-    return _convert_operation_schemas(paths, _convert_schema_to_3_0)
+def _convert_operation_schemas_to_3_0(
+    paths: dict[str, Any], schemas: dict[str, Any] | None = None
+) -> list[str]:
+    """Down-convert inline operation schemas to valid OpenAPI 3.0 form (#562).
+
+    *schemas* is the (not-yet-converted) ``components.schemas`` registry, used
+    to resolve a nullable ``$ref`` that appears directly in a raw endpoint
+    schema rather than inside a registered component (#782). Returns lossy-
+    conversion messages collected while converting these inline schemas, the
+    same shape :func:`_convert_schemas_to_3_0` returns for named components.
+    """
+    lossy: list[str] = []
+    _convert_operation_schemas(
+        paths, lambda s: _convert_schema_to_3_0(s, schemas, frozenset(), lossy)
+    )
+    return lossy
 
 
 # Media Type Object keys (OpenAPI 3.2 adds ``itemSchema`` for sequential/
@@ -1089,6 +1249,7 @@ def generate_openapi_spec(
             "paths": paths,
         }
 
+        lossy_conversion_warnings: list[str] = []
         if openapi_version in (OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
             spec["info"]["summary"] = title
             _convert_operation_schemas_to_3_1(paths)
@@ -1096,8 +1257,12 @@ def generate_openapi_spec(
             # Down-convert path-level inline schemas (inferred and explicit
             # ``responses=``/``requests=``) so nested Pydantic nullability is
             # emitted as valid 3.0 ``nullable: true`` rather than the 3.1-only
-            # ``anyOf: [T, {type: null}]`` idiom (#562).
-            _convert_operation_schemas_to_3_0(paths)
+            # ``anyOf: [T, {type: null}]`` idiom (#562). ``components["schemas"]``
+            # is still in its original (pre-3.0-conversion) form at this point --
+            # exactly what a nullable ``$ref`` needs to resolve against (#782).
+            lossy_conversion_warnings.extend(
+                _convert_operation_schemas_to_3_0(paths, components.get("schemas"))
+            )
 
         # Top-level and info metadata passthrough (#494). Each field is emitted
         # only when supplied; contact/license nest under ``info`` while
@@ -1154,7 +1319,10 @@ def generate_openapi_spec(
                 # Down-convert nullable component schemas to valid 3.0 form
                 # (#562) before the compatibility audit, so faithfully
                 # convertible nullability no longer trips the warn/strict path.
-                components["schemas"] = _convert_schemas_to_3_0(components["schemas"])
+                components["schemas"], component_lossy_warnings = _convert_schemas_to_3_0(
+                    components["schemas"]
+                )
+                lossy_conversion_warnings.extend(component_lossy_warnings)
                 compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
                 for w in compat_warnings:
                     logger.warning("OpenAPI 3.0 compatibility: %s", w)
@@ -1174,6 +1342,11 @@ def generate_openapi_spec(
         # can observe silent API-contract loss (#479), in addition to logging.
         downgrade_drops = _restructure_additional_operations(spec, openapi_version)
         downgrade_drops.extend(_drop_unsupported_query(spec, openapi_version))
+        # Lossy OpenAPI 3.0 schema approximations (#782, e.g. a heterogeneous
+        # tuple down-converted to items.anyOf) share the same silent-loss
+        # shape as a custom-method/query drop, so they are reported through
+        # the identical downgrade-drop channel and strict/non-strict gate.
+        downgrade_drops.extend(lossy_conversion_warnings)
         validation_warnings.extend(downgrade_drops)
         for drop in downgrade_drops:
             _diag_registry.add_downgrade_drop(drop)

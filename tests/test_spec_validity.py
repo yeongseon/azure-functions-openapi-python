@@ -15,8 +15,10 @@ from openapi_spec_validator import validate
 from pydantic import BaseModel, Field, StringConstraints
 import pytest
 
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import _openapi_registry, _registry_lock, openapi
-from azure_functions_openapi.spec import generate_openapi_spec
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.spec import generate_openapi_report, generate_openapi_spec
 
 
 @pytest.fixture(autouse=True)
@@ -242,28 +244,55 @@ class TestSpecValidity30:
         )
         validate(spec)
 
-    def test_fixed_tuple_model_3_0(self) -> None:
-        # Given
+    def test_fixed_tuple_model_3_0_non_strict_best_effort(self) -> None:
+        # Given: a heterogeneous tuple has no OpenAPI-3.0-native positional
+        # representation (#782) -- non-strict mode still emits a best-effort
+        # approximation.
         @openapi(route="/tuples", method="get", responses=FixedTupleModel)
         def get_tuple() -> None:
             pass
 
         # When
-        spec = generate_openapi_spec(
+        report = generate_openapi_report(
             title="Test API",
             version="1.0.0",
             openapi_version="3.0.0",
             route_prefix="",
-            strict=True,
+            strict=False,
         )
 
-        # Then
-        value_schema = spec["components"]["schemas"]["FixedTupleModel"]["properties"]["value"]
+        # Then: anyOf (never oneOf -- integer/number overlap would make oneOf
+        # wrongly reject a valid value matching more than one branch), plus a
+        # structured downgrade warning identifying the lossy approximation.
+        value_schema = report.spec["components"]["schemas"]["FixedTupleModel"]["properties"][
+            "value"
+        ]
         assert "prefixItems" not in value_schema
-        assert value_schema["items"] == {"oneOf": [{"type": "integer"}, {"type": "string"}]}
+        assert value_schema["items"] == {"anyOf": [{"type": "integer"}, {"type": "string"}]}
         assert value_schema["minItems"] == 2
         assert value_schema["maxItems"] == 2
-        validate(spec)
+        validate(report.spec)
+        assert any(
+            w.code == WarningCode.VERSION_DOWNGRADE_DROP and "FixedTupleModel" in w.message
+            for w in report.warnings
+        )
+
+    def test_fixed_tuple_model_3_0_strict_rejects_lossy_conversion(self) -> None:
+        # Given: the same heterogeneous-tuple response, under strict mode.
+        @openapi(route="/tuples", method="get", responses=FixedTupleModel)
+        def get_tuple() -> None:
+            pass
+
+        # When / Then: strict mode fails the lossy conversion instead of
+        # silently shipping the best-effort approximation (#782).
+        with pytest.raises(OpenAPISpecConfigError, match="positional constraints"):
+            generate_openapi_spec(
+                title="Test API",
+                version="1.0.0",
+                openapi_version="3.0.0",
+                route_prefix="",
+                strict=True,
+            )
 
     def test_null_only_literal_3_0(self) -> None:
         # Given
