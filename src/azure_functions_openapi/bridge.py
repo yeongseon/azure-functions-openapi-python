@@ -184,28 +184,86 @@ def _response_details_conflict(existing: Any, discovered: Any) -> bool:
     )
 
 
+def _effective_request_schema(entry: dict[str, Any]) -> Any:
+    """Return the schema generation will actually use for the request body.
+
+    Mirrors ``generate_openapi_spec``'s own precedence: an explicit raw
+    ``request_body`` always wins over ``request_model`` (``if
+    meta.get("request_body"): ... elif meta.get("request_model"): ...``).
+    Resolving both representations to the same comparable JSON Schema form
+    lets one conflict check cover every spelling of "the request body",
+    instead of only comparing two ``request_body`` entries against each other.
+    """
+    request_body = entry.get("request_body")
+    if request_body is not None:
+        return request_body
+    request_model = entry.get("request_model")
+    if request_model is not None:
+        return _resolved_schema(request_model)
+    return None
+
+
+def _response_status_keys(entry: dict[str, Any]) -> list[str]:
+    response = entry.get("response")
+    if not isinstance(response, dict):
+        return []
+    return [str(status) for status in response]
+
+
+def _effective_response_details(
+    entry: dict[str, Any], known_statuses: Iterable[str]
+) -> dict[str, dict[str, Any]]:
+    """Return a ``{status: response_object}`` map covering both representations.
+
+    ``response_model`` has no per-status structure of its own: generation
+    targets it at the first 2xx status already declared *anywhere* for this
+    operation, or ``"200"`` when none exists yet -- ``known_statuses`` carries
+    that cross-representation context in (the union of both sides' raw
+    ``response`` keys), so a bare ``response_model`` compares against the
+    status the *other* side actually declares instead of always defaulting to
+    "200" and silently missing the comparison. Folding it into a synthetic
+    entry in the same shape as a raw ``response`` detail lets a
+    cross-representation comparison reuse :func:`_response_details_conflict`
+    unchanged, including its media-type-aware handling, instead of only ever
+    comparing two ``response_model`` entries or two raw ``response`` maps
+    against themselves.
+    """
+    details: dict[str, dict[str, Any]] = {}
+    response = entry.get("response")
+    if isinstance(response, dict):
+        for status, detail in response.items():
+            if isinstance(detail, dict):
+                details[str(status)] = detail
+
+    response_model = entry.get("response_model")
+    if response_model is not None:
+        target_status = "200"
+        for status_key in known_statuses:
+            if status_key.isdigit() and 200 <= int(status_key) < 300:
+                target_status = status_key
+                break
+        details.setdefault(
+            target_status,
+            {
+                "description": "Successful Response",
+                "content": {"application/json": {"schema": _resolved_schema(response_model)}},
+            },
+        )
+    return details
+
+
 def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> str | None:
     # An inferred response (P1-A return-type inference) is the lowest-precedence
     # source, so it never conflicts with discovered validation metadata — the
     # latter simply supersedes it in :func:`_merge_into_existing`.
     response_inferred = bool(existing.get("_response_inferred"))
-    existing_response = existing.get("response_model")
-    discovered_response = discovered.get("response_model")
-    if (
-        not response_inferred
-        and existing_response is not None
-        and discovered_response is not None
-        and existing_response is not discovered_response
-        and _resolved_schema(existing_response) != _resolved_schema(discovered_response)
-    ):
-        return "status 200"
 
-    existing_request_body = existing.get("request_body")
-    discovered_request_body = discovered.get("request_body")
+    existing_request = _effective_request_schema(existing)
+    discovered_request = _effective_request_schema(discovered)
     if (
-        existing_request_body is not None
-        and discovered_request_body is not None
-        and existing_request_body != discovered_request_body
+        existing_request is not None
+        and discovered_request is not None
+        and existing_request != discovered_request
     ):
         return "request body"
 
@@ -221,16 +279,13 @@ def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -
         if key in existing_parameters and existing_parameters[key] != parameter:
             return f"parameter {key[1]}"
 
-    existing_response = existing.get("response") or {}
-    discovered_response = discovered.get("response") or {}
-    if (
-        not response_inferred
-        and isinstance(existing_response, dict)
-        and isinstance(discovered_response, dict)
-    ):
-        for status, detail in discovered_response.items():
-            if status in existing_response and _response_details_conflict(
-                existing_response[status], detail
+    if not response_inferred:
+        known_statuses = [*_response_status_keys(existing), *_response_status_keys(discovered)]
+        existing_responses = _effective_response_details(existing, known_statuses)
+        discovered_responses = _effective_response_details(discovered, known_statuses)
+        for status, detail in discovered_responses.items():
+            if status in existing_responses and _response_details_conflict(
+                existing_responses[status], detail
             ):
                 return f"status {status}"
 
