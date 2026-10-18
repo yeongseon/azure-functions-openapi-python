@@ -109,6 +109,21 @@ def _rewrite_ref_with_map(value: str, name_map: dict[str, str]) -> str:
     return value
 
 
+def _is_discriminator_object(value: dict[str, Any]) -> bool:
+    """Return ``True`` if *value* has the shape of an OpenAPI Discriminator
+    Object (``propertyName`` and/or a ``mapping`` dict), as opposed to an
+    ordinary property schema that merely happens to sit under a key literally
+    named ``"discriminator"`` (e.g. a field named ``discriminator`` whose own
+    schema is ``{"$ref": "..."}``). The latter has neither key, so routing it
+    through the discriminator-specific rewrite would only ever touch a
+    ``mapping`` it doesn't have -- silently skipping its ``$ref`` instead of
+    just leaving it alone, since the generic recursive branch that WOULD
+    rewrite that ``$ref`` is never reached for whichever branch runs (#791
+    follow-up).
+    """
+    return "propertyName" in value or isinstance(value.get("mapping"), dict)
+
+
 def _rewrite_discriminator_with_map(
     discriminator: dict[str, Any], name_map: dict[str, str]
 ) -> dict[str, Any]:
@@ -140,7 +155,11 @@ def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
         for key, value in obj.items():
             if key == "$ref" and isinstance(value, str):
                 rewritten[key] = _rewrite_ref_with_map(value, name_map)
-            elif key == "discriminator" and isinstance(value, dict):
+            elif (
+                key == "discriminator"
+                and isinstance(value, dict)
+                and _is_discriminator_object(value)
+            ):
                 rewritten[key] = _rewrite_discriminator_with_map(value, name_map)
             else:
                 rewritten[key] = _rewrite_refs_with_map(value, name_map)
@@ -162,7 +181,11 @@ def _referenced_batch_schema_names(obj: Any, batch_names: set[str]) -> set[str]:
                 ref_name = _schema_ref_name(value)
                 if ref_name in batch_names:
                     refs.add(ref_name)
-            elif key == "discriminator" and isinstance(value, dict):
+            elif (
+                key == "discriminator"
+                and isinstance(value, dict)
+                and _is_discriminator_object(value)
+            ):
                 mapping = value.get("mapping")
                 if isinstance(mapping, dict):
                     for mapping_value in mapping.values():
@@ -212,7 +235,13 @@ def _dependency_first_schema_groups(batch: dict[str, dict[str, Any]]) -> list[li
         stack.append(name)
         on_stack.add(name)
 
-        for dependency in graph[name]:
+        # Sorted rather than raw set iteration: a Python set's order depends
+        # on string hash values, which are randomized per-process by default
+        # (``PYTHONHASHSEED``). Traversing dependencies in a fixed order
+        # keeps which names end up renamed (and to what) reproducible across
+        # runs for the same input, instead of depending on the interpreter's
+        # hash seed (#791 follow-up).
+        for dependency in sorted(graph[name]):
             if dependency not in indexes:
                 strongconnect(dependency)
                 lowlinks[name] = min(lowlinks[name], lowlinks[dependency])
@@ -242,71 +271,66 @@ def _schema_name_candidate(safe_base: str, candidate_number: int) -> str:
     return f"{safe_base}_{candidate_number}"
 
 
-def _schema_name_candidate_number(safe_base: str, candidate: str) -> int:
-    if candidate == safe_base:
-        return 1
-    prefix = f"{safe_base}_"
-    if candidate.startswith(prefix):
-        suffix = candidate[len(prefix) :]
-        if suffix.isdecimal():
-            return max(2, int(suffix))
-    return 2
-
-
-def _resolve_name_collision_with_map(
-    name: str,
-    schema: dict[str, Any],
+def _resolve_group_jointly(
+    group: list[str],
+    batch: dict[str, dict[str, Any]],
     claimed: dict[str, dict[str, Any]],
-    current_name_map: dict[str, str],
-    *,
-    pinned_candidate: str | None = None,
-) -> tuple[str, dict[str, Any]]:
-    """Resolve one batch member's name against a trial map that already
-    includes the candidate being tested, so a self- or mutually-recursive
-    schema's own references are rewritten under the SAME hypothesis being
-    checked -- never compared in a stale, not-yet-rewritten form. Without
-    this, a schema that genuinely differs from a same-named existing
-    component can falsely appear identical (or vice versa) depending on
-    which rewrite pass happens to run first, oscillating forever (#791).
+    name_map: dict[str, str],
+) -> dict[str, str]:
+    """Resolve one strongly-connected group's names as a single unit.
 
-    ``pinned_candidate`` makes a retry monotonic for a batch member already
-    renamed in an earlier pass within the same cyclic group: it resumes
-    checking from that candidate's own suffix number rather than restarting
-    at the original (sanitized) name, so a member can only ever advance to a
-    later free suffix, never fall back to one already proven to collide.
+    Tries the same numeric suffix for every member of the group at once,
+    starting at 1 (each member's own sanitized name): every member's schema
+    is rewritten under the FULL joint trial map (so cross-references between
+    group members, and references to already-resolved earlier groups via
+    *name_map*, are always resolved consistently with every other member's
+    candidate at that SAME attempt), then every member is checked against
+    *claimed* together. The whole group only advances to the next suffix
+    when the current one fails for any member; it never backtracks, so the
+    search still terminates and, combined with resolving the SAME commit
+    schema structure every time (#791's own invariant), is why identical
+    input is idempotent.
+
+    This replaces resolving each member independently within a pass: doing so
+    let an early member in iteration order settle on a nonminimal suffix
+    before a later member's own name was known (comparing against the
+    not-yet-renamed sibling), and once "pinned" there could never revisit a
+    lower suffix that a later pass reveals would actually have matched an
+    existing component after all -- so the exact same batch, registered a
+    second time, kept growing the component count instead of reusing the
+    same names (#791 follow-up).
     """
-    safe_base = _sanitize_component_name(name)
-    candidate_number = (
-        _schema_name_candidate_number(safe_base, pinned_candidate)
-        if pinned_candidate is not None
-        else 1
-    )
-    rejected_a_real_collision = False
+    bases = {name: _sanitize_component_name(name) for name in group}
+    candidate_number = 1
 
     while True:
-        candidate = _schema_name_candidate(safe_base, candidate_number)
-        trial_name_map = dict(current_name_map)
-        if candidate == name:
-            trial_name_map.pop(name, None)
-        else:
-            trial_name_map[name] = candidate
+        trial_name_map: dict[str, str] = {**name_map}
+        for name in group:
+            candidate = _schema_name_candidate(bases[name], candidate_number)
+            if candidate != name:
+                trial_name_map[name] = candidate
 
-        rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, trial_name_map))
-
-        if candidate not in claimed:
-            if rejected_a_real_collision:
+        rewritten = {
+            name: cast(dict[str, Any], _rewrite_refs_with_map(batch[name], trial_name_map))
+            for name in group
+        }
+        if all(
+            trial_name_map.get(name, name) not in claimed
+            or claimed[trial_name_map.get(name, name)] == rewritten[name]
+            for name in group
+        ):
+            if candidate_number > 1:
+                resolved = {name: trial_name_map.get(name, name) for name in sorted(group)}
                 logger.warning(
                     "Schema name collision while registering %r: %r already exists in "
                     "components.schemas with different content; emitting deterministic "
-                    "alias %r instead. Rename the producer model to silence this warning.",
-                    name,
-                    safe_base,
-                    candidate,
+                    "alias(es) %r instead. Rename the producer model(s) to silence this "
+                    "warning.",
+                    sorted(group),
+                    sorted(bases.values()),
+                    resolved,
                 )
-            return candidate, rewritten_schema
-        if claimed[candidate] == rewritten_schema:
-            return candidate, rewritten_schema
-        rejected_a_real_collision = True
+            return {name: trial_name_map[name] for name in group if name in trial_name_map}
         candidate_number += 1
 
 
@@ -329,13 +353,9 @@ def _register_schema_graph(
     referenced by another group is always resolved first, so an acyclic
     parent sees its (possibly renamed) child's final name before the parent
     itself is compared for dedup -- preserving the original behavior for the
-    common, non-recursive case. Within a self- or mutually-recursive group,
-    each member's candidate name is validated by rewriting that member's OWN
-    schema under a trial map that already includes the candidate (see
-    :func:`_resolve_name_collision_with_map`), and resolution is monotonic
-    (a member may advance to a later free suffix but never revert to one
-    already shown to collide) -- which is what makes convergence guaranteed
-    instead of oscillating between two differently-wrong name maps (#791).
+    common, non-recursive case. Each group (a single name, or a self-/
+    mutually-recursive cluster) is resolved as one unit by
+    :func:`_resolve_group_jointly`.
 
     Returns a sparse ``original_name -> resolved_name`` map containing only
     the names that were actually renamed (empty when nothing collided). Look
@@ -353,36 +373,8 @@ def _register_schema_graph(
     name_map: dict[str, str] = {}
 
     for group in _dependency_first_schema_groups(batch):
-        local_name_map: dict[str, str] = {}
-
-        while True:
-            changed = False
-            pass_claimed = dict(claimed)
-
-            for name in group:
-                current_name_map = {**name_map, **local_name_map}
-                resolved_name, rewritten_schema = _resolve_name_collision_with_map(
-                    name,
-                    batch[name],
-                    pass_claimed,
-                    current_name_map,
-                    pinned_candidate=local_name_map.get(name),
-                )
-
-                previous_resolved_name = local_name_map.get(name, name)
-                if resolved_name != previous_resolved_name:
-                    changed = True
-                    if resolved_name == name:
-                        local_name_map.pop(name, None)
-                    else:
-                        local_name_map[name] = resolved_name
-
-                pass_claimed[resolved_name] = rewritten_schema
-
-            if not changed:
-                break
-
-        name_map.update(local_name_map)
+        group_name_map = _resolve_group_jointly(group, batch, claimed, name_map)
+        name_map.update(group_name_map)
 
         for name in group:
             final_name = name_map.get(name, name)
