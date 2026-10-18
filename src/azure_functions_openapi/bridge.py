@@ -67,6 +67,25 @@ def _stamp_auth_level(entry: dict[str, Any], auth_level: str | None) -> None:
     entry["_auth_level"] = auth_level
 
 
+def _stamp_methods_expanded(entry: dict[str, Any], methods_expanded: bool) -> None:
+    """Record whether this operation's now-concrete ``method`` came from
+    auto-expanding an unspecified-``methods=`` binding.
+
+    A canonical ``@openapi`` entry registered with ``method=None`` is exploded
+    into one concrete per-method entry during an app scan (see
+    ``explode_canonical`` below), and a bare binding-derived operation is
+    registered with a concrete ``method`` directly. Either way, the entry's
+    own ``method`` field can no longer tell
+    :func:`azure_functions_openapi.spec.generate_openapi_spec` whether this
+    operation is one of several auto-expanded siblings (needing a suffixed
+    ``operationId`` and the automatic bodyless-method rules) or a genuinely
+    explicit single-method operation. Stamping the scan's own
+    ``methods_expanded`` verdict under the private ``_methods_expanded`` key
+    preserves that provenance independently of the concrete method value.
+    """
+    entry["_methods_expanded"] = methods_expanded
+
+
 def _normalize_method(method: Any) -> str:
     if method is None:
         return "get"
@@ -803,6 +822,13 @@ def scan_endpoint_metadata(
                     if methods_expanded and method in BODYLESS_HTTP_METHODS:
                         clone["request_body"] = None
                     _tag_skew(clone, entry_skew)
+                    # This clone is a fresh per-method entry genuinely created by
+                    # exploding the method=None canonical entry (#781): stamp its
+                    # provenance here, at creation, rather than re-deriving it
+                    # from a post-hoc registry lookup that cannot tell this
+                    # freshly-created clone apart from an unrelated pre-existing
+                    # entry that merely happens to share the same endpoint key.
+                    _stamp_methods_expanded(clone, methods_expanded)
                     reg.set(endpoint_key, clone)
                     continue
 
@@ -936,6 +962,17 @@ def scan_endpoint_metadata(
                     registry=reg,
                 )
             logger.debug("Registered endpoint metadata for endpoint '%s'", endpoint_key)
+            # Every branch reaching this point just registered a fresh
+            # binding-derived entry under endpoint_key (the "merge into an
+            # existing target" branch above has its own `continue` and never
+            # reaches here, leaving an explicitly registered override's
+            # provenance untouched on a rescan, per #781's review). Stamp
+            # provenance on the entry this call just created, not on whatever
+            # a bare registry lookup might otherwise find.
+            with reg.lock:
+                new_entry = reg.get(endpoint_key)
+                if new_entry is not None:
+                    _stamp_methods_expanded(new_entry, methods_expanded)
             # Hold the registry lock across the get+mutate so tagging honours the
             # registry's documented thread-safety contract (the entry must not be
             # mutated after the lock protecting it has been released).
