@@ -16,6 +16,12 @@ import pytest
 import requests
 import yaml  # PyYAML
 
+# #787: every test in this module requires a real deployed host. Without this
+# marker, pyproject.toml's default addopts ('-m not e2e and not perf') cannot
+# exclude these from the regular unit-test run, and the dedicated e2e
+# selectors (`pytest -m e2e ...`) collect nothing instead of these six tests.
+pytestmark = pytest.mark.e2e
+
 BASE_URL = os.environ.get("E2E_BASE_URL", "").rstrip("/")
 EXPECTED_VERSION = os.environ.get("E2E_EXPECTED_VERSION", "").strip()
 SKIP_REASON = "E2E_BASE_URL not set — skipping real-Azure e2e tests"
