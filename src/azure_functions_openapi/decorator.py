@@ -594,6 +594,15 @@ def openapi(
             )
             if effective_route is None and binding_route is not None:
                 effective_route = binding_route
+            # Host-relative provenance (#784): a route auto-detected from the
+            # directly-visible @app.route binding (or left unresolved
+            # entirely, falling back to the function name downstream in
+            # spec.py) describes what Azure actually serves and must always
+            # have the host prefix prepended. Only a route the caller
+            # explicitly passed to @openapi(route=...) is the documented
+            # OpenAPI-only override that keeps the legacy dedup-on-prefix-
+            # match compatibility behavior.
+            route_is_host_relative = route is None
             if effective_method is None:
                 if binding_method is not None:
                     effective_method = binding_method
@@ -729,6 +738,7 @@ def openapi(
                         "operation_id": sanitized_operation_id,
                         # ── routing info ─────────────────────────────────────────
                         "route": validated_route,
+                        "_route_host_relative": route_is_host_relative,
                         "method": validated_method,
                         "_route_evidence": route is not None or adapters.is_function_builder(func),
                         # Evidence that the runtime answers every HTTP method

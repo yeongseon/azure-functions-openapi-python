@@ -22,6 +22,7 @@ from azure_functions_openapi.routes import (
     BODYLESS_HTTP_METHODS,
     DEFAULT_ROUTE_PREFIX,
     STANDARD_OPENAPI_METHODS,
+    apply_host_prefix,
     apply_route_prefix,
     normalize_route_prefix,
 )
@@ -637,7 +638,20 @@ def generate_openapi_spec(
                 raw_path, route_constraints = parse_route_template(
                     f"/{raw_route}", function_name=str(logical_name)
                 )
-                path = apply_route_prefix(raw_path, normalized_prefix)
+                # A route resolved from (or standing in for) an Azure Functions
+                # SDK binding is host-relative and always gets the prefix
+                # prepended (#784): either there was no route at all (fallback
+                # to the function name, Azure's own default), or it was
+                # explicitly marked host-relative by the decorator/bridge scan
+                # (auto-detected from a directly-visible binding, or
+                # backfilled from a binding discovered during a later scan).
+                # Only a route the caller actually passed to
+                # @openapi(route=...) keeps the legacy dedup-on-prefix-match
+                # compatibility behavior.
+                if meta.get("route") is None or meta.get("_route_host_relative"):
+                    path = apply_host_prefix(raw_path, normalized_prefix)
+                else:
+                    path = apply_route_prefix(raw_path, normalized_prefix)
                 # An unspecified method (``None``) expands to the full HTTP set
                 # ONLY when there is binding evidence that the Azure runtime
                 # answers every method (an ``@app.route`` binding that omits
