@@ -26,6 +26,7 @@ breaks either entry point again.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -84,3 +85,45 @@ def test_default_run_deselects_e2e_tests_at_collection_not_runtime() -> None:
     assert "6 deselected" in output, output
     for name in _E2E_TEST_NAMES:
         assert name not in output, f"{name!r} was collected despite the default filter:\n{output}"
+
+
+def test_e2e_azure_env_guard_rejects_an_unconfigured_invocation() -> None:
+    """The Hatch `e2e-azure` script is wired to run scripts/require_e2e_env.py
+    before pytest (pyproject.toml), specifically to protect the DIRECT
+    `hatch run e2e-azure` entry point: #787's Makefile preflight only covers
+    `make e2e-local`/`make e2e-azure`, not this one. Before this guard,
+    running it with E2E_BASE_URL/E2E_EXPECTED_VERSION unset collected all six
+    tests, skipped every one via their own skipif, and exited 0 -- a
+    dedicated run that looked successful but certified nothing.
+    """
+    env = dict(os.environ)
+    env.pop("E2E_BASE_URL", None)
+    env.pop("E2E_EXPECTED_VERSION", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/require_e2e_env.py"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "E2E_BASE_URL" in result.stderr
+    assert "E2E_EXPECTED_VERSION" in result.stderr
+
+
+def test_e2e_azure_env_guard_passes_a_fully_configured_invocation() -> None:
+    env = dict(os.environ)
+    env["E2E_BASE_URL"] = "https://example.invalid"
+    env["E2E_EXPECTED_VERSION"] = "0.0.0"
+
+    result = subprocess.run(
+        [sys.executable, "scripts/require_e2e_env.py"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
