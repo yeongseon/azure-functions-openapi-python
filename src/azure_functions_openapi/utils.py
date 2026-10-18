@@ -109,6 +109,29 @@ def _rewrite_ref_with_map(value: str, name_map: dict[str, str]) -> str:
     return value
 
 
+def _rewrite_discriminator_with_map(
+    discriminator: dict[str, Any], name_map: dict[str, str]
+) -> dict[str, Any]:
+    """Rewrite a Discriminator Object's ``mapping`` values only.
+
+    A Discriminator Object's ``mapping`` dict maps an arbitrary string key to
+    a component reference; its VALUES (not its keys) may need renaming. This
+    is scoped to an actual ``discriminator`` object (rather than matching any
+    key literally named "mapping" anywhere in a schema tree) so an ordinary
+    property that happens to be named "mapping" is never mistaken for one.
+    """
+    rewritten = dict(discriminator)
+    mapping = discriminator.get("mapping")
+    if isinstance(mapping, dict):
+        rewritten["mapping"] = {
+            mapping_key: _rewrite_ref_with_map(mapping_value, name_map)
+            if isinstance(mapping_value, str)
+            else _rewrite_refs_with_map(mapping_value, name_map)
+            for mapping_key, mapping_value in mapping.items()
+        }
+    return rewritten
+
+
 def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
     if not name_map:
         return obj
@@ -117,19 +140,174 @@ def _rewrite_refs_with_map(obj: Any, name_map: dict[str, str]) -> Any:
         for key, value in obj.items():
             if key == "$ref" and isinstance(value, str):
                 rewritten[key] = _rewrite_ref_with_map(value, name_map)
-            elif key == "mapping" and isinstance(value, dict):
-                rewritten[key] = {
-                    mapping_key: _rewrite_ref_with_map(mapping_value, name_map)
-                    if isinstance(mapping_value, str)
-                    else _rewrite_refs_with_map(mapping_value, name_map)
-                    for mapping_key, mapping_value in value.items()
-                }
+            elif key == "discriminator" and isinstance(value, dict):
+                rewritten[key] = _rewrite_discriminator_with_map(value, name_map)
             else:
                 rewritten[key] = _rewrite_refs_with_map(value, name_map)
         return rewritten
     if isinstance(obj, list):
         return [_rewrite_refs_with_map(item, name_map) for item in obj]
     return obj
+
+
+def _referenced_batch_schema_names(obj: Any, batch_names: set[str]) -> set[str]:
+    """Return which *batch_names* this schema tree references via ``$ref``
+    or ``discriminator.mapping``, mirroring :func:`_rewrite_refs_with_map`'s
+    traversal shape so dependency ordering always matches what gets rewritten.
+    """
+    refs: set[str] = set()
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if key == "$ref" and isinstance(value, str):
+                ref_name = _schema_ref_name(value)
+                if ref_name in batch_names:
+                    refs.add(ref_name)
+            elif key == "discriminator" and isinstance(value, dict):
+                mapping = value.get("mapping")
+                if isinstance(mapping, dict):
+                    for mapping_value in mapping.values():
+                        if isinstance(mapping_value, str):
+                            ref_name = _schema_ref_name(mapping_value)
+                            if ref_name in batch_names:
+                                refs.add(ref_name)
+                        else:
+                            refs.update(_referenced_batch_schema_names(mapping_value, batch_names))
+            else:
+                refs.update(_referenced_batch_schema_names(value, batch_names))
+    elif isinstance(obj, list):
+        for item in obj:
+            refs.update(_referenced_batch_schema_names(item, batch_names))
+    return refs
+
+
+def _schema_ref_name(value: str) -> str | None:
+    if value.startswith("#/components/schemas/"):
+        return value.split("#/components/schemas/", 1)[1]
+    return None
+
+
+def _dependency_first_schema_groups(batch: dict[str, dict[str, Any]]) -> list[list[str]]:
+    """Return batch names grouped into strongly-connected components (Tarjan),
+    ordered so a referenced dependency's group always comes before its
+    dependents' group. A self- or mutually-recursive cluster of names forms
+    one group; everything else is its own single-name group.
+    """
+    batch_names = set(batch)
+    graph = {
+        name: _referenced_batch_schema_names(schema, batch_names) for name, schema in batch.items()
+    }
+
+    index = 0
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    indexes: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    groups: list[list[str]] = []
+
+    def strongconnect(name: str) -> None:
+        nonlocal index
+        indexes[name] = index
+        lowlinks[name] = index
+        index += 1
+        stack.append(name)
+        on_stack.add(name)
+
+        for dependency in graph[name]:
+            if dependency not in indexes:
+                strongconnect(dependency)
+                lowlinks[name] = min(lowlinks[name], lowlinks[dependency])
+            elif dependency in on_stack:
+                lowlinks[name] = min(lowlinks[name], indexes[dependency])
+
+        if lowlinks[name] == indexes[name]:
+            group_set: set[str] = set()
+            while True:
+                member = stack.pop()
+                on_stack.remove(member)
+                group_set.add(member)
+                if member == name:
+                    break
+            groups.append([batch_name for batch_name in batch if batch_name in group_set])
+
+    for name in batch:
+        if name not in indexes:
+            strongconnect(name)
+
+    return groups
+
+
+def _schema_name_candidate(safe_base: str, candidate_number: int) -> str:
+    if candidate_number <= 1:
+        return safe_base
+    return f"{safe_base}_{candidate_number}"
+
+
+def _schema_name_candidate_number(safe_base: str, candidate: str) -> int:
+    if candidate == safe_base:
+        return 1
+    prefix = f"{safe_base}_"
+    if candidate.startswith(prefix):
+        suffix = candidate[len(prefix) :]
+        if suffix.isdecimal():
+            return max(2, int(suffix))
+    return 2
+
+
+def _resolve_name_collision_with_map(
+    name: str,
+    schema: dict[str, Any],
+    claimed: dict[str, dict[str, Any]],
+    current_name_map: dict[str, str],
+    *,
+    pinned_candidate: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    """Resolve one batch member's name against a trial map that already
+    includes the candidate being tested, so a self- or mutually-recursive
+    schema's own references are rewritten under the SAME hypothesis being
+    checked -- never compared in a stale, not-yet-rewritten form. Without
+    this, a schema that genuinely differs from a same-named existing
+    component can falsely appear identical (or vice versa) depending on
+    which rewrite pass happens to run first, oscillating forever (#791).
+
+    ``pinned_candidate`` makes a retry monotonic for a batch member already
+    renamed in an earlier pass within the same cyclic group: it resumes
+    checking from that candidate's own suffix number rather than restarting
+    at the original (sanitized) name, so a member can only ever advance to a
+    later free suffix, never fall back to one already proven to collide.
+    """
+    safe_base = _sanitize_component_name(name)
+    candidate_number = (
+        _schema_name_candidate_number(safe_base, pinned_candidate)
+        if pinned_candidate is not None
+        else 1
+    )
+    rejected_a_real_collision = False
+
+    while True:
+        candidate = _schema_name_candidate(safe_base, candidate_number)
+        trial_name_map = dict(current_name_map)
+        if candidate == name:
+            trial_name_map.pop(name, None)
+        else:
+            trial_name_map[name] = candidate
+
+        rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, trial_name_map))
+
+        if candidate not in claimed:
+            if rejected_a_real_collision:
+                logger.warning(
+                    "Schema name collision while registering %r: %r already exists in "
+                    "components.schemas with different content; emitting deterministic "
+                    "alias %r instead. Rename the producer model to silence this warning.",
+                    name,
+                    safe_base,
+                    candidate,
+                )
+            return candidate, rewritten_schema
+        if claimed[candidate] == rewritten_schema:
+            return candidate, rewritten_schema
+        rejected_a_real_collision = True
+        candidate_number += 1
 
 
 def _register_schema_graph(
@@ -144,10 +322,20 @@ def _register_schema_graph(
     by :func:`model_to_schema`, :func:`type_to_schema`, and
     :func:`hoist_inline_defs` so all three paths resolve collisions the same
     way: against both pre-existing ``components['schemas']`` entries and other
-    members of this same batch, re-comparing each schema for equality only
-    *after* its own references are rewritten with the current name map -- so a
-    renamed child is reflected in its parent's content before the parent
-    itself is compared -- repeating until a full pass renames nothing further.
+    members of this same batch.
+
+    Batch members are processed in dependency-first order via strongly
+    connected components (:func:`_dependency_first_schema_groups`): a group
+    referenced by another group is always resolved first, so an acyclic
+    parent sees its (possibly renamed) child's final name before the parent
+    itself is compared for dedup -- preserving the original behavior for the
+    common, non-recursive case. Within a self- or mutually-recursive group,
+    each member's candidate name is validated by rewriting that member's OWN
+    schema under a trial map that already includes the candidate (see
+    :func:`_resolve_name_collision_with_map`), and resolution is monotonic
+    (a member may advance to a later free suffix but never revert to one
+    already shown to collide) -- which is what makes convergence guaranteed
+    instead of oscillating between two differently-wrong name maps (#791).
 
     Returns a sparse ``original_name -> resolved_name`` map containing only
     the names that were actually renamed (empty when nothing collided). Look
@@ -156,28 +344,69 @@ def _register_schema_graph(
     into ``components['schemas']``, skipping any name whose existing content
     is already identical so repeated registration of the same input is a
     no-op. Entries in ``batch`` are never mutated -- every rewrite builds a
-    new dict.
+    new dict. A pre-existing component is never silently overwritten with
+    different content; an internal invariant violation raises ``RuntimeError``
+    rather than corrupting ``components['schemas']``.
     """
     schemas = components.setdefault("schemas", {})
+    claimed: dict[str, dict[str, Any]] = dict(schemas)
     name_map: dict[str, str] = {}
-    while True:
-        claimed: dict[str, dict[str, Any]] = dict(schemas)
-        updated_name_map: dict[str, str] = {}
-        for name, schema in batch.items():
-            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, name_map))
-            resolved_name = _resolve_name_collision(name, rewritten_schema, claimed)
-            if resolved_name != name:
-                updated_name_map[name] = resolved_name
-            claimed[resolved_name] = rewritten_schema
-        if updated_name_map == name_map:
-            break
-        name_map = updated_name_map
+
+    for group in _dependency_first_schema_groups(batch):
+        local_name_map: dict[str, str] = {}
+
+        while True:
+            changed = False
+            pass_claimed = dict(claimed)
+
+            for name in group:
+                current_name_map = {**name_map, **local_name_map}
+                resolved_name, rewritten_schema = _resolve_name_collision_with_map(
+                    name,
+                    batch[name],
+                    pass_claimed,
+                    current_name_map,
+                    pinned_candidate=local_name_map.get(name),
+                )
+
+                previous_resolved_name = local_name_map.get(name, name)
+                if resolved_name != previous_resolved_name:
+                    changed = True
+                    if resolved_name == name:
+                        local_name_map.pop(name, None)
+                    else:
+                        local_name_map[name] = resolved_name
+
+                pass_claimed[resolved_name] = rewritten_schema
+
+            if not changed:
+                break
+
+        name_map.update(local_name_map)
+
+        for name in group:
+            final_name = name_map.get(name, name)
+            final_schema = cast(dict[str, Any], _rewrite_refs_with_map(batch[name], name_map))
+            if final_name in claimed and claimed[final_name] != final_schema:
+                raise RuntimeError(
+                    "Schema collision resolution produced an inconsistent result for "
+                    f"{name!r} resolved as {final_name!r}; this indicates a bug in "
+                    "_register_schema_graph's collision resolution, not a usage error."
+                )
+            claimed[final_name] = final_schema
 
     for name, schema in batch.items():
         final_name = name_map.get(name, name)
         final_schema = cast(dict[str, Any], _rewrite_refs_with_map(schema, name_map))
-        if final_name not in schemas or schemas[final_name] != final_schema:
-            schemas[final_name] = final_schema
+        if final_name in schemas:
+            if schemas[final_name] != final_schema:
+                raise RuntimeError(
+                    "Schema collision resolution produced an inconsistent result during "
+                    f"write-back for {name!r} resolved as {final_name!r}; this indicates a "
+                    "bug in _register_schema_graph's collision resolution, not a usage error."
+                )
+            continue
+        schemas[final_name] = final_schema
 
     return name_map
 
