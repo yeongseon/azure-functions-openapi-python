@@ -145,8 +145,27 @@ def render_swagger_ui(
     for header, value in headers.items():
         response.headers[header] = value
 
-    logger.info(f"Swagger UI rendered with enhanced security headers for URL: {sanitized_url}")
+    redacted_url = _redact_query_for_logging(sanitized_url)
+    logger.info(f"Swagger UI rendered with enhanced security headers for URL: {redacted_url}")
     return response
+
+
+def _redact_query_for_logging(url: str) -> str:
+    """Strip the query string from ``url`` before it is written to a log.
+
+    Protected documentation routes may forward an Azure Functions key as a
+    ``?code=...`` query value so the browser can fetch the protected
+    specification (see :mod:`azure_functions_openapi.docs_routes`). That key
+    must reach the rendered page, but it must never be copied into
+    application logs. Only the path portion is useful for diagnostics, so
+    everything from the first ``?`` onward is dropped here. The *served* URL
+    (used in the HTML/JS response) is unaffected — only the logged
+    representation is redacted.
+    """
+    if not url or not isinstance(url, str):
+        return url
+    path, _sep, _query = url.partition("?")
+    return path
 
 
 def _sanitize_html_content(content: str) -> str:
@@ -189,7 +208,10 @@ def _sanitize_url(url: str) -> str:
     # This blocks quotes, backslashes, angle brackets, and other characters
     # that could break out of JS string literals or HTML attributes.
     if not re.match(r"^[a-zA-Z0-9/_\-.~:?#\[\]@!$&()*+,;=%]+$", sanitized):
-        logger.warning("URL contains disallowed characters, falling back to default: %s", url)
+        logger.warning(
+            "URL contains disallowed characters, falling back to default: %s",
+            _redact_query_for_logging(url),
+        )
         return "/api/openapi.json"
 
     return sanitized

@@ -115,12 +115,21 @@ perf: ensure-hatch
 
 .PHONY: e2e-local
 e2e-local: ensure-hatch
-	@echo "Running e2e tests against local Azurite (E2E_BASE_URL=http://localhost:7071)..."
-	@E2E_BASE_URL=http://localhost:7071 $(HATCH) run e2e-azure
+	@E2E_EXPECTED_VERSION=$${E2E_EXPECTED_VERSION:-$$($(HATCH) version)}; \
+	echo "Running e2e tests against local Azurite (E2E_BASE_URL=http://localhost:7071, E2E_EXPECTED_VERSION=$$E2E_EXPECTED_VERSION)..."; \
+	E2E_BASE_URL=http://localhost:7071 E2E_EXPECTED_VERSION="$$E2E_EXPECTED_VERSION" $(HATCH) run e2e-azure
 
 .PHONY: e2e-azure
 e2e-azure: ensure-hatch
-	@echo "Running e2e tests against Azure (E2E_BASE_URL must be set)..."
+	@if [ -z "$$E2E_BASE_URL" ]; then \
+		echo "Error: E2E_BASE_URL is required, e.g.:"; \
+		echo "  E2E_BASE_URL=https://<app>.azurewebsites.net E2E_EXPECTED_VERSION=<deployed-version> make e2e-azure"; \
+		echo "Running this target with E2E_BASE_URL unset would collect the e2e"; \
+		echo "tests but skip every one of them, exiting 0 -- an unintentionally"; \
+		echo "successful-looking run that certified nothing."; \
+		exit 1; \
+	fi
+	@echo "Running e2e tests against Azure host $$E2E_BASE_URL (E2E_EXPECTED_VERSION=$${E2E_EXPECTED_VERSION:-<unset>})..."
 	@$(HATCH) run e2e-azure
 
 .PHONY: build

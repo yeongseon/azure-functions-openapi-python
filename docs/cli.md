@@ -195,8 +195,23 @@ openapi-spec-validator openapi.yaml
 
 ## CI example
 
+Two different things can be checked in CI, and they are not the same recipe:
+
+- **[Basic usage](#basic-usage)** (above) has no `--app` target. It is useful
+  for trying the tool, but with no application imported the registry is
+  empty: `generate` succeeds with `paths: {}`, and a schema validator accepts
+  that empty document too. Neither command on its own proves anything about
+  your actual API.
+- **Application validation** (below) imports your real `FunctionApp`, fails
+  the build on generation diagnostics, and fails the build if no paths were
+  discovered — the recipe to use for CI that is meant to catch regressions in
+  your documented API surface.
+
 When passing `--app` in CI, first review the
-[`--app` import-execution warning](#endpoint-metadata-discovery-modulevariable).
+[`--app` import-execution warning](#endpoint-metadata-discovery-modulevariable):
+import-time side effects (network clients, environment validation that
+raises, and so on) must be build-time-safe, guarded behind an environment
+flag if necessary.
 
 ```yaml
 name: OpenAPI Validation
@@ -211,13 +226,47 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install tools
-        run: pip install azure-functions-openapi openapi-spec-validator
+      - name: Install tools and application dependencies
+        # Generating with --app imports your application module, so its own
+        # dependencies (azure-functions, any requirements.txt, etc.) must
+        # already be importable before the next step runs.
+        run: |
+          pip install azure-functions-openapi openapi-spec-validator
+          pip install -r requirements.txt
       - name: Generate spec
-        run: azure-functions-openapi generate --openapi-version 3.1 --output openapi.json
+        # --app function_app:app: substitute your actual module path and
+        # FunctionApp variable name. Run from the directory function_app is
+        # importable from (or set PYTHONPATH), matching normal Python import
+        # resolution -- the CLI does not search for it.
+        #
+        # --strict --fail-on-warnings surface generation diagnostics (a
+        # malformed registry entry, version skew, a namespace fallback, a
+        # spec-validation issue) as a build failure. This is a different
+        # concern from the next step: these flags check how the spec was
+        # generated, not whether the resulting document is schema-valid.
+        #
+        # --fail-on-empty-paths is the guard this recipe depends on: without
+        # it, a forgotten --app target (or wrong module:variable) silently
+        # produces an empty-but-schema-valid document, and the next step
+        # (openapi-spec-validator) reports success on it.
+        run: |
+          azure-functions-openapi generate \
+            --app function_app:app \
+            --openapi-version 3.1 \
+            --strict \
+            --fail-on-warnings \
+            --fail-on-empty-paths \
+            --output openapi.json
       - name: Validate spec
+        # Checks that the document is schema-valid OpenAPI -- it does not
+        # check that the document describes your application's endpoints;
+        # that is what --fail-on-empty-paths above is for.
         run: openapi-spec-validator openapi.json
 ```
+
+To deliberately generate (and validate) an empty document — for example, to
+smoke-test the toolchain itself before any routes exist yet — omit `--app`
+and `--fail-on-empty-paths`, matching the [basic usage](#basic-usage) example.
 
 ## Troubleshooting
 
@@ -240,6 +289,11 @@ jobs:
   ```bash
   azure-functions-openapi generate --app function_app:my_app --title "My API"
   ```
+
+- In CI, add `--fail-on-empty-paths` so a forgotten `--app` target or a wrong
+  `module:variable` fails the build instead of silently producing (and
+  validating) an empty document — see the [CI example](#ci-example).
+
 ### Unsupported version error
 
 - Use only `--openapi-version 3.0`, `--openapi-version 3.1`, or `--openapi-version 3.2`
