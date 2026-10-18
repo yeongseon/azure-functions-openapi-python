@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import re
-from typing import Any, cast, get_origin
+from typing import Any, Literal, cast, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -559,11 +559,31 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any], *, hoist_flat: bo
     return cast(dict[str, Any], _rewrite_refs_with_map(normalized_root, name_map))
 
 
-def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
+def model_to_schema(
+    model_cls: Any,
+    components: dict[str, Any] | None = None,
+    *,
+    mode: Literal["validation", "serialization"] = "validation",
+) -> dict[str, Any]:
     """Return OpenAPI schema from a Pydantic model class.
     Parameters:
         model_cls: Pydantic model class.
         components: OpenAPI components dict to register schemas.
+        mode: ``"validation"`` (the default, matching ``model_json_schema()``'s
+            own default) describes the shape the model *accepts* -- the
+            appropriate role for a request body or parameter. ``"serialization"``
+            describes the shape the model *produces* -- the appropriate role for
+            a response -- which can differ from the validation shape for a model
+            using ``validation_alias``/``serialization_alias``, a
+            ``@computed_field``, or a field serializer. A model's own
+            ``model_config = ConfigDict(json_schema_mode_override=...)``, if
+            set, takes precedence over whatever is requested here (Pydantic
+            applies it internally). Passing the correct mode is what gives the
+            request and response schemas for the same model distinct component
+            identities when their contents differ: the schema is computed before
+            the collision check below, so validation- and serialization-mode
+            content for one model class collide and alias apart exactly like
+            two different classes would.
     Returns:
         dict[str, Any]: Schema with $ref to components.schemas.
     """
@@ -575,14 +595,14 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
         )
 
     if isinstance(model_cls, type) and issubclass(model_cls, BaseModel):
-        schema = model_cls.model_json_schema(ref_template="#/components/schemas/{model}")
+        schema = model_cls.model_json_schema(mode=mode, ref_template="#/components/schemas/{model}")
     else:
         if get_origin(model_cls) is None:
             raise TypeError(
                 "model_to_schema expects a Pydantic v2 BaseModel subclass "
                 "(missing model_json_schema). Pydantic v1 is not supported."
             )
-        return type_to_schema(model_cls, components)
+        return type_to_schema(model_cls, components, mode=mode)
 
     normalized, definitions = _collect_schemas(schema)
     batch: dict[str, dict[str, Any]] = {model_cls.__name__: normalized}
@@ -593,7 +613,12 @@ def model_to_schema(model_cls: Any, components: dict[str, Any] | None = None) ->
     return {"$ref": f"#/components/schemas/{root_name}"}
 
 
-def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> dict[str, Any]:
+def type_to_schema(
+    type_hint: Any,
+    components: dict[str, Any] | None = None,
+    *,
+    mode: Literal["validation", "serialization"] = "validation",
+) -> dict[str, Any]:
     """Convert a Python type hint into a JSON Schema fragment.
 
     Parameters:
@@ -603,6 +628,9 @@ def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> 
             generated schema is returned directly. When provided, referenced
             definitions are merged into its ``schemas`` mapping and the
             returned fragment points to the registered definitions as needed.
+        mode: ``"validation"`` (default) or ``"serialization"`` -- see
+            :func:`model_to_schema` for what each means and why it matters for
+            a model nested inside this type hint (e.g. ``list[Model]``).
     Returns:
         A JSON Schema object for ``type_hint``. Depending on ``components``
         and the type hint, this is either an inline schema or a fragment with
@@ -610,10 +638,10 @@ def type_to_schema(type_hint: Any, components: dict[str, Any] | None = None) -> 
     """
     if isinstance(type_hint, type) and issubclass(type_hint, BaseModel):
         if components is None:
-            return type_hint.model_json_schema()
-        return model_to_schema(type_hint, components)
+            return type_hint.model_json_schema(mode=mode)
+        return model_to_schema(type_hint, components, mode=mode)
 
-    schema = TypeAdapter(type_hint).json_schema()
+    schema = TypeAdapter(type_hint).json_schema(mode=mode)
     if components is None:
         return schema
 
