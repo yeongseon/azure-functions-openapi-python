@@ -256,3 +256,45 @@ class TestEndToEndResponseSerializationMode:
         # Then: both sides resolve to the one component -- no spurious "_2".
         assert request_ref == response_ref == "#/components/schemas/SymmetricModel"
         assert "SymmetricModel_2" not in spec["components"]["schemas"]
+
+    def test_earlier_request_schema_survives_a_later_generic_response_registration(
+        self,
+    ) -> None:
+        # Given: an earlier route's validation-mode request registers
+        # NestedAliasModel (deduping its AliasModel child against nothing
+        # yet, so no alias is needed at this point), then a LATER route's
+        # generic response shorthand (list[NestedAliasModel], exercising
+        # type_to_schema's own collision path, #796) registers the SAME
+        # model name again, now in serialization mode -- its child's
+        # DIFFERING serialization-mode content must collide and alias apart
+        # from the already-registered parent, not silently overwrite it.
+        @openapi(route="earlier", method="post", requests=NestedAliasModel)
+        def earlier_request() -> None: ...
+
+        @openapi(route="later", method="get", responses={200: list[NestedAliasModel]})
+        def later_response() -> None: ...
+
+        # When
+        spec = generate_openapi_spec(strict=True)
+        components = spec["components"]["schemas"]
+
+        # Then: the earlier request's component is completely unaffected --
+        # still describing the validation-mode (input_name) contract.
+        request_ref = spec["paths"]["/api/earlier"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"]
+        request_schema = components[request_ref.rsplit("/", 1)[1]]
+        request_item_ref = request_schema["properties"]["item"]["$ref"]
+        request_item_schema = components[request_item_ref.rsplit("/", 1)[1]]
+        assert set(request_item_schema["properties"]) == {"input_name"}
+
+        # And: the later response's component correctly describes the
+        # serialization-mode (output_name/length) contract, as its own
+        # distinct component.
+        items_ref = spec["paths"]["/api/later"]["get"]["responses"]["200"]["content"][
+            "application/json"
+        ]["schema"]["items"]["$ref"]
+        response_schema = components[items_ref.rsplit("/", 1)[1]]
+        response_item_ref = response_schema["properties"]["item"]["$ref"]
+        response_item_schema = components[response_item_ref.rsplit("/", 1)[1]]
+        assert set(response_item_schema["properties"]) == {"output_name", "length"}

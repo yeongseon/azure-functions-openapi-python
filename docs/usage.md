@@ -173,6 +173,18 @@ kept under distinct component names rather than one silently overwriting the
 other; when the shapes are identical, they still resolve to one shared
 component.
 
+This package only documents the schema — it does not serialize your
+handler's return value. A serialization-mode schema for a model with
+`serialization_alias` describes the *aliased* wire shape, so your handler
+must actually produce that shape to match: `model.model_dump(mode="json",
+by_alias=True)`, not a bare `model_dump(mode="json")`, which emits field
+*names* and would not match a response schema documented with aliases. A
+model's own `model_config = ConfigDict(json_schema_mode_override=...)`, if
+set, pins its schema to that one mode regardless of which mode is
+requested here — Pydantic applies it internally — so such a model's
+request and response schemas are identical by the model's own design, not
+by this package's inference.
+
 ### Style B: Raw schema dictionaries
 
 Best when you do not use Pydantic. Pass a raw requestBody schema dict to

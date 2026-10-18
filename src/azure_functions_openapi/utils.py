@@ -276,11 +276,25 @@ def hoist_inline_defs(schema: Any, components: dict[str, Any], *, hoist_flat: bo
 
     schemas = components.setdefault("schemas", {})
 
+    # Reassess each definition's collision AFTER its own references are
+    # rewritten with the current name map, repeating until a full pass
+    # renames nothing further -- matching model_to_schema()'s own fixed-point
+    # loop below. A single pass (comparing each definition's UNREWRITTEN
+    # content against `schemas`) can dedupe a parent whose child is about to
+    # be renamed, then silently overwrite that parent with its OWN
+    # post-rewrite content once the child's rename is applied, corrupting an
+    # unrelated, already-registered schema under the parent's name.
     name_map: dict[str, str] = {}
-    for name, definition in definitions.items():
-        resolved_name = _resolve_name_collision(name, definition, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
+    while True:
+        updated_name_map: dict[str, str] = {}
+        for name, definition in definitions.items():
+            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(definition, name_map))
+            resolved_name = _resolve_name_collision(name, rewritten_schema, schemas)
+            if resolved_name != name:
+                updated_name_map[name] = resolved_name
+        if updated_name_map == name_map:
+            break
+        name_map = updated_name_map
 
     if name_map:
         definitions = {
@@ -412,11 +426,23 @@ def type_to_schema(
     schemas = components.setdefault("schemas", {})
     normalized, definitions = _collect_schemas(schema)
 
+    # Reassess each definition's collision AFTER its own references are
+    # rewritten with the current name map, repeating until a full pass
+    # renames nothing further -- matching model_to_schema()'s fixed-point
+    # loop, for the same reason: a single pass can dedupe a parent whose
+    # child is about to be renamed, then silently overwrite that parent with
+    # its OWN post-rewrite content once the child's rename is applied.
     name_map: dict[str, str] = {}
-    for name, local_schema in definitions.items():
-        resolved_name = _resolve_name_collision(name, local_schema, schemas)
-        if resolved_name != name:
-            name_map[name] = resolved_name
+    while True:
+        updated_name_map: dict[str, str] = {}
+        for name, local_schema in definitions.items():
+            rewritten_schema = cast(dict[str, Any], _rewrite_refs_with_map(local_schema, name_map))
+            resolved_name = _resolve_name_collision(name, rewritten_schema, schemas)
+            if resolved_name != name:
+                updated_name_map[name] = resolved_name
+        if updated_name_map == name_map:
+            break
+        name_map = updated_name_map
 
     if name_map:
         normalized = cast(dict[str, Any], _rewrite_refs_with_map(normalized, name_map))
