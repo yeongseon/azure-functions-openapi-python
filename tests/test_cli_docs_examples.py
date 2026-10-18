@@ -42,19 +42,24 @@ def _generate(*extra_args: str, cwd: Path, env: dict[str, str] | None = None) ->
 
 
 class TestDocumentedCIRecipeAgainstARealApp:
-    def test_documented_command_discovers_the_app_s_known_path(self) -> None:
-        # Given/When: the exact flags docs/cli.md's CI example documents,
-        # run from the repository root the way a checkout-based CI job
-        # would, against the repository's own representative example app.
+    def test_documented_command_discovers_the_app_s_known_path(self, tmp_path: Path) -> None:
+        # Given: an isolated directory with a copy of the representative example app,
+        # so generation does not modify the live checkout.
+        example_app_src = _REPO_ROOT / "examples" / "webhook_receiver" / "function_app.py"
+        example_app_dst = tmp_path / "function_app.py"
+        example_app_dst.write_text(example_app_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+        # When: the exact flags docs/cli.md's CI example documents,
+        # run from the isolated temp directory, against the copied app.
         returncode, output = _generate(
             "--app",
-            "examples.webhook_receiver.function_app:app",
+            "function_app:app",
             "--openapi-version",
             "3.1",
             "--strict",
             "--fail-on-warnings",
             "--fail-on-empty-paths",
-            cwd=_REPO_ROOT,
+            cwd=tmp_path,
         )
 
         # Then: success, and the generated document names a real, known
