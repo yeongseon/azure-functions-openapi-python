@@ -1,5 +1,6 @@
 # tests/test_utils_enhanced.py
 
+import copy
 from typing import Any, Literal, cast
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ import pytest
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.utils import (
     _collect_schemas,
+    _register_schema_graph,
     _resolve_name_collision,
     _rewrite_ref,
     _rewrite_refs_with_map,
@@ -515,6 +517,285 @@ class TestRewriteRefsWithMap:
         }
         result = _rewrite_refs_with_map(obj, {"Foo": "Foo_2"})
         assert result["properties"]["child"]["$ref"] == "#/components/schemas/Foo_2"
+
+    def test_rewrites_discriminator_mapping_values(self) -> None:
+        obj: dict[str, Any] = {
+            "discriminator": {
+                "propertyName": "kind",
+                "mapping": {"cat": "#/components/schemas/Cat"},
+            },
+        }
+        result = _rewrite_refs_with_map(obj, {"Cat": "Cat_2"})
+        assert result["discriminator"]["mapping"] == {"cat": "#/components/schemas/Cat_2"}
+
+    def test_does_not_rewrite_an_ordinary_property_named_mapping(self) -> None:
+        """Regression: a response property literally named "mapping" must
+        never be mistaken for a Discriminator Object's own ``mapping`` field
+        just because it shares that key name -- only a real ``discriminator``
+        object's ``mapping`` values are reference targets.
+        """
+        obj: dict[str, Any] = {
+            "properties": {
+                "mapping": {"type": "string", "const": "#/components/schemas/Cat"},
+            },
+        }
+        result = _rewrite_refs_with_map(obj, {"Cat": "Cat_2"})
+        assert result["properties"]["mapping"] == {
+            "type": "string",
+            "const": "#/components/schemas/Cat",
+        }
+
+    def test_rewrites_ref_inside_an_ordinary_property_named_discriminator(self) -> None:
+        """Regression (#791 follow-up): a field literally named
+        ``discriminator`` whose own schema is a plain ``{"$ref": ...}`` is an
+        ordinary property, not an OpenAPI Discriminator Object (which
+        requires ``propertyName``/``mapping``). It must still reach the
+        generic $ref-rewriting branch -- not be silently skipped by routing
+        it through the discriminator-specific handler, which only knows how
+        to touch a ``mapping`` key it doesn't have.
+        """
+        obj: dict[str, Any] = {
+            "properties": {
+                "discriminator": {"$ref": "#/components/schemas/Child"},
+            },
+        }
+        result = _rewrite_refs_with_map(obj, {"Child": "Child_2"})
+        assert result["properties"]["discriminator"] == {"$ref": "#/components/schemas/Child_2"}
+
+    def test_still_rewrites_a_real_discriminator_object(self) -> None:
+        """A genuine Discriminator Object (has propertyName) is unaffected
+        by the ordinary-property distinction above.
+        """
+        obj: dict[str, Any] = {
+            "oneOf": [{"$ref": "#/components/schemas/Cat"}],
+            "discriminator": {
+                "propertyName": "kind",
+                "mapping": {"cat": "#/components/schemas/Cat"},
+            },
+        }
+        result = _rewrite_refs_with_map(obj, {"Cat": "Cat_2"})
+        assert result["discriminator"]["mapping"] == {"cat": "#/components/schemas/Cat_2"}
+        assert result["oneOf"] == [{"$ref": "#/components/schemas/Cat_2"}]
+
+
+class TestRegisterSchemaGraph:
+    """Test _register_schema_graph's collision resolution (#791)."""
+
+    def test_self_recursive_collision_does_not_oscillate_or_overwrite(self) -> None:
+        # Given: two pre-existing, mutually-recursive components, and a NEW
+        # batch member that happens to share one of their names while being
+        # self-recursive itself -- the exact shape that made the old
+        # consecutive-name_map convergence check oscillate forever between
+        # two different (and each individually unsafe) resolutions.
+        components: dict[str, Any] = {
+            "schemas": {
+                "Node": {
+                    "type": "object",
+                    "properties": {"next": {"$ref": "#/components/schemas/Node_2"}},
+                },
+                "Node_2": {
+                    "type": "object",
+                    "properties": {"next": {"$ref": "#/components/schemas/Node"}},
+                },
+            },
+        }
+        existing_node = copy.deepcopy(components["schemas"]["Node"])
+        existing_node_2 = copy.deepcopy(components["schemas"]["Node_2"])
+        batch = {
+            "Node": {
+                "type": "object",
+                "properties": {"next": {"$ref": "#/components/schemas/Node"}},
+            },
+        }
+
+        # When
+        name_map = _register_schema_graph(batch, components)
+
+        # Then: terminates (the test itself would hang/timeout otherwise),
+        # resolves to a fresh name, and never corrupts either existing entry.
+        assert name_map == {"Node": "Node_3"}
+        assert components["schemas"]["Node"] == existing_node
+        assert components["schemas"]["Node_2"] == existing_node_2
+        assert components["schemas"]["Node_3"] == {
+            "type": "object",
+            "properties": {"next": {"$ref": "#/components/schemas/Node_3"}},
+        }
+
+    def test_dedupes_identical_self_recursive_schema(self) -> None:
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {"next": {"$ref": "#/components/schemas/Node"}},
+        }
+        components: dict[str, Any] = {"schemas": {"Node": copy.deepcopy(schema)}}
+
+        name_map = _register_schema_graph({"Node": copy.deepcopy(schema)}, components)
+
+        assert name_map == {}
+        assert components["schemas"] == {"Node": schema}
+
+    def test_acyclic_parent_sees_renamed_child_before_its_own_dedup_check(self) -> None:
+        # Given: an existing Parent that already references Child_2 (not
+        # Child), and a new batch registering a Parent referencing Child plus
+        # a colliding Child whose content actually matches the EXISTING
+        # Child_2. Parent must be compared only after Child's own rename is
+        # resolved, so Parent correctly dedupes against the existing entry
+        # instead of being needlessly renamed to Parent_2.
+        components: dict[str, Any] = {
+            "schemas": {
+                "Child": {"type": "string"},
+                "Child_2": {"type": "integer"},
+                "Parent": {
+                    "type": "object",
+                    "properties": {"child": {"$ref": "#/components/schemas/Child_2"}},
+                },
+            },
+        }
+        batch: dict[str, dict[str, Any]] = {
+            "Parent": {
+                "type": "object",
+                "properties": {"child": {"$ref": "#/components/schemas/Child"}},
+            },
+            "Child": {"type": "integer"},
+        }
+
+        name_map = _register_schema_graph(batch, components)
+
+        assert name_map == {"Child": "Child_2"}
+        assert "Parent_2" not in components["schemas"]
+        assert components["schemas"]["Parent"]["properties"]["child"] == {
+            "$ref": "#/components/schemas/Child_2",
+        }
+
+    def test_mutually_recursive_pair_both_colliding_resolves_without_hanging(self) -> None:
+        """Broader than the 1-member oscillation case: both halves of a new
+        mutually-recursive pair collide with an existing mutually-recursive
+        pair of the same names, so BOTH batch members need renaming together.
+        """
+        components: dict[str, Any] = {
+            "schemas": {
+                "A": {"type": "object", "properties": {"b": {"$ref": "#/components/schemas/B"}}},
+                "B": {"type": "object", "properties": {"a": {"$ref": "#/components/schemas/A"}}},
+            },
+        }
+        existing_a = copy.deepcopy(components["schemas"]["A"])
+        existing_b = copy.deepcopy(components["schemas"]["B"])
+        batch = {
+            "A": {
+                "type": "object",
+                "properties": {
+                    "b": {"$ref": "#/components/schemas/B"},
+                    "extra": {"type": "string"},
+                },
+            },
+            "B": {
+                "type": "object",
+                "properties": {
+                    "a": {"$ref": "#/components/schemas/A"},
+                    "extra": {"type": "string"},
+                },
+            },
+        }
+
+        name_map = _register_schema_graph(batch, components)
+
+        assert components["schemas"]["A"] == existing_a
+        assert components["schemas"]["B"] == existing_b
+        resolved_a = name_map.get("A", "A")
+        resolved_b = name_map.get("B", "B")
+        assert resolved_a != "A"
+        assert resolved_b != "B"
+        assert components["schemas"][resolved_a]["properties"]["b"] == {
+            "$ref": f"#/components/schemas/{resolved_b}"
+        }
+        assert components["schemas"][resolved_b]["properties"]["a"] == {
+            "$ref": f"#/components/schemas/{resolved_a}"
+        }
+
+    def test_discriminator_mapping_reference_drives_dependency_order(self) -> None:
+        """A batch member's dependency on another batch member expressed
+        purely through ``discriminator.mapping`` (not a plain ``$ref``) must
+        still be discovered, so the referenced member's group is resolved
+        -- and renamed, if colliding -- before the one that maps to it.
+        """
+        components: dict[str, Any] = {"schemas": {"Cat": {"type": "string"}}}
+        batch: dict[str, dict[str, Any]] = {
+            "Pet": {
+                "oneOf": [{"$ref": "#/components/schemas/Cat"}],
+                "discriminator": {
+                    "propertyName": "kind",
+                    "mapping": {"cat": "#/components/schemas/Cat"},
+                },
+            },
+            "Cat": {"type": "object", "properties": {"meow": {"type": "boolean"}}},
+        }
+
+        name_map = _register_schema_graph(batch, components)
+
+        assert name_map == {"Cat": "Cat_2"}
+        assert components["schemas"]["Pet"]["discriminator"]["mapping"] == {
+            "cat": "#/components/schemas/Cat_2"
+        }
+        assert components["schemas"]["Pet"]["oneOf"] == [{"$ref": "#/components/schemas/Cat_2"}]
+
+    def test_repeated_registration_of_aliased_mutually_recursive_graph_is_a_no_op(self) -> None:
+        """Regression (#791 follow-up): registering the exact same colliding
+        mutually-recursive pair a SECOND time must resolve to the SAME
+        aliases as the first, not keep minting new ones and growing the
+        component count forever.
+        """
+        components: dict[str, Any] = {
+            "schemas": {
+                "A": {"type": "string"},
+                "B": {"type": "string"},
+            },
+        }
+        batch = {
+            "A": {"type": "object", "properties": {"b": {"$ref": "#/components/schemas/B"}}},
+            "B": {"type": "object", "properties": {"a": {"$ref": "#/components/schemas/A"}}},
+        }
+
+        first_map = _register_schema_graph(copy.deepcopy(batch), components)
+        schemas_after_first = copy.deepcopy(components["schemas"])
+        second_map = _register_schema_graph(copy.deepcopy(batch), components)
+
+        assert first_map == {"A": "A_2", "B": "B_2"}
+        assert second_map == first_map
+        assert components["schemas"] == schemas_after_first
+        assert set(components["schemas"]) == {"A", "B", "A_2", "B_2"}
+
+    def test_independent_children_of_a_shared_parent_resolve_deterministically(self) -> None:
+        """Regression (#791 follow-up): two UNRELATED (non-recursive) batch
+        members that are both referenced by the same parent must resolve to
+        a fixed, reproducible pair of aliases -- not one that depends on
+        Python's per-process string hash seed. Mirrors the exact reported
+        shape: a parent referencing two independent children, one of which
+        collides with a pre-existing, differently-typed component sharing
+        the OTHER child's post-collision name.
+        """
+        components: dict[str, Any] = {"schemas": {"Thing": {"type": "string"}}}
+        batch = {
+            "Parent": {
+                "type": "object",
+                "properties": {
+                    "a": {"$ref": "#/components/schemas/Thing"},
+                    "b": {"$ref": "#/components/schemas/Thing_2"},
+                },
+            },
+            "Thing": {"type": "object", "properties": {"x": {"type": "integer"}}},
+            "Thing_2": {"type": "object", "properties": {"y": {"type": "integer"}}},
+        }
+
+        name_map = _register_schema_graph(batch, components)
+
+        assert name_map == {"Thing": "Thing_2", "Thing_2": "Thing_2_2"}
+        assert components["schemas"]["Parent"]["properties"]["a"] == {
+            "$ref": "#/components/schemas/Thing_2"
+        }
+        assert components["schemas"]["Parent"]["properties"]["b"] == {
+            "$ref": "#/components/schemas/Thing_2_2"
+        }
+        assert components["schemas"]["Thing_2"]["properties"] == {"x": {"type": "integer"}}
+        assert components["schemas"]["Thing_2_2"]["properties"] == {"y": {"type": "integer"}}
 
 
 class TestModelToSchemaCollisionPath:

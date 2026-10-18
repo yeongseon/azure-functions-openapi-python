@@ -19,9 +19,12 @@ verification and the PyPI upload. What is left for a human is review and confirm
 
 ## If something went wrong
 
-- A failed gate uploads nothing, so the version is still free. Fix and re-run
-  `gh workflow run publish-pypi.yml --ref main -f tag=vX.Y.Z`, or fix forward and let the next
-  Release PR cut a new version. Never move or reuse a tag.
+- A failed gate uploads nothing, so the version is still free. For an external/transient failure
+  (flaky Azure deploy, PyPI outage, runner hiccup), re-run the same tagged candidate with
+  `gh workflow run publish-pypi.yml --ref vX.Y.Z` (no inputs — the workflow reads the version from
+  the dispatch ref itself, so the ref must be the tag, not `main`). For a failure that needs a code
+  or workflow correction, fix forward on `main` and let the next Release PR cut a new version
+  instead. Never move or reuse a tag.
 - No Release PR appearing? First check that `RELEASE_PLEASE_TOKEN` has not expired. Then check for a stale `autorelease: pending` label on an already-merged
   Release PR — Release Please will not open another while one looks in flight, and it reports
   success while doing nothing.

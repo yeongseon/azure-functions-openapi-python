@@ -23,7 +23,7 @@ def python_handler_name(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="openapi.json")
 def openapi_spec(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(get_openapi_json(), mimetype="application/json")
+    return func.HttpResponse(get_openapi_json(app=app), mimetype="application/json")
 
 
 @app.route(route="docs")
