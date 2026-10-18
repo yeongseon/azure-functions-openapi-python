@@ -1,7 +1,7 @@
 # src/azure_functions_openapi/spec.py
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 import copy
 from dataclasses import dataclass, field
 import json
@@ -1203,6 +1203,37 @@ def generate_openapi_spec(
 
 _PATH_PARAM_RE = re.compile(r"\{([^}]+)\}")
 
+# Path Item Object fields (OpenAPI 3.x Path Item Object) that hold Path Item
+# metadata rather than an operation. ``additionalOperations`` is listed too:
+# it is a *map* of operations, not an operation itself, so it is unpacked
+# into its own nested entries by ``_iter_path_operations`` below instead of
+# being yielded as a single operation keyed "ADDITIONALOPERATIONS" (#785).
+_PATH_ITEM_METADATA_FIELDS: frozenset[str] = frozenset(
+    {"summary", "description", "servers", "parameters", "$ref", "additionalOperations"}
+)
+
+
+def _iter_path_operations(path_item: dict[str, Any]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield every operation on a Path Item Object as ``(method_label, operation)``.
+
+    Treats any directly-keyed, dict-valued field as an operation -- standard
+    methods, ``query``, and (pre-#471-restructuring) a custom method still
+    keyed directly -- except the Path Item Object's own metadata fields.
+    ``additionalOperations`` is unpacked into its own nested entries instead
+    of being yielded as one operation, so a custom method such as
+    ``PROPFIND`` is validated against its own parameters rather than the map
+    that contains it. Used consistently by ``_validate_spec`` so the
+    pre-restructuring and final-document checks agree (#785).
+    """
+    for method, operation in path_item.items():
+        if method == "additionalOperations":
+            if isinstance(operation, dict):
+                yield from operation.items()
+            continue
+        if method in _PATH_ITEM_METADATA_FIELDS or not isinstance(operation, dict):
+            continue
+        yield method.upper(), operation
+
 
 def _validate_spec(spec: dict[str, Any]) -> list[str]:
     """Post-generation validation of the OpenAPI spec.
@@ -1245,8 +1276,8 @@ def _validate_spec(spec: dict[str, Any]) -> list[str]:
     for path, methods in spec.get("paths", {}).items():
         template_vars = set(_PATH_PARAM_RE.findall(path))
 
-        for method, operation in methods.items():
-            op_label = f"{method.upper()} {path}"
+        for method_label, operation in _iter_path_operations(methods):
+            op_label = f"{method_label} {path}"
 
             # --- operationId uniqueness + non-empty ---
             op_id = operation.get("operationId")

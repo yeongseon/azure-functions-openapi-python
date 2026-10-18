@@ -46,6 +46,54 @@ def test_installed_console_script_imports_app_from_invocation_directory(
     assert "/api/items" in json.loads(output.read_text(encoding="utf-8"))["paths"]
 
 
+def test_custom_method_with_path_param_passes_fail_on_warnings(tmp_path: Path) -> None:
+    """#785: additionalOperations' own entries must be validated, not the map.
+
+    A custom HTTP method (OpenAPI 3.2 additionalOperations, #471) with a path
+    parameter was previously validated against the additionalOperations map
+    itself, producing a false "no matching path parameter" warning that
+    failed --strict --fail-on-warnings for an otherwise-valid spec.
+    """
+    # Given: a project registering a valid custom-method route.
+    (tmp_path / "valid_propfind.py").write_text(
+        "from azure_functions_openapi import openapi\n"
+        "@openapi(route='files/{id}', method='PROPFIND')\n"
+        "def propfind(): pass\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "openapi.json"
+    console_script = Path(sys.executable).parent / "azure-functions-openapi"
+
+    # When: generating with the same gates the issue's CLI reproduction used.
+    result = subprocess.run(
+        [
+            str(console_script),
+            "generate",
+            "--app",
+            "valid_propfind",
+            "--openapi-version",
+            "3.2",
+            "--strict",
+            "--fail-on-warnings",
+            "--output",
+            str(output),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Then: no false-positive warning gates the exit code, and the valid
+    # custom-method operation is written with its own path parameter intact.
+    assert result.returncode == 0, result.stderr
+    spec = json.loads(output.read_text(encoding="utf-8"))
+    propfind_op = spec["paths"]["/api/files/{id}"]["additionalOperations"]["PROPFIND"]
+    assert propfind_op["parameters"] == [
+        {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
+    ]
+
+
 class TestMain:
     """Tests for main() entry point."""
 

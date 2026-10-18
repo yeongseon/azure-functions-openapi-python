@@ -12,6 +12,7 @@ from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
+    generate_openapi_report,
     generate_openapi_spec,
     get_openapi_json,
     get_openapi_yaml,
@@ -647,6 +648,33 @@ class TestAdditionalOperations3_2:
         additional = spec["paths"]["/api/r"]["additionalOperations"]
         assert list(additional.keys()) == sorted(additional.keys())
         assert set(additional.keys()) == {"LINK", "PURGE"}
+
+    def test_custom_method_path_parameter_is_not_falsely_flagged_missing(self) -> None:
+        """#785: validation must visit additionalOperations' own entries.
+
+        A custom method with a path parameter was previously validated
+        against the additionalOperations map itself (which has no
+        "parameters" key), producing a false "no matching path parameter"
+        warning and failing --strict/--fail-on-warnings for a valid spec.
+        """
+        from azure_functions_openapi.decorator import clear_openapi_registry, openapi
+
+        clear_openapi_registry()
+
+        @openapi(route="files/{id}", method="PROPFIND")
+        def propfind() -> None:
+            pass
+
+        try:
+            report = generate_openapi_report(openapi_version=OPENAPI_VERSION_3_2, strict=True)
+        finally:
+            clear_openapi_registry()
+
+        path_item = report.spec["paths"]["/api/files/{id}"]
+        assert path_item["additionalOperations"]["PROPFIND"]["parameters"] == [
+            {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
+        ]
+        assert report.warnings == ()
 
 
 class TestValidateMethodTokens:
