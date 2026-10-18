@@ -71,14 +71,14 @@ def test_conflicting_request_model_shorthand_raises(openapi_above_route: bool) -
 
         @openapi(requests=_Authored)
         @app.route(route="orders", methods=["POST"])
-        @validate_http(body=_Validated)
+        @validate_http(body=_Validated)  # type: ignore[untyped-decorator]
         def orders(req: Any, body: Any) -> Any:
             return body
     else:
 
         @app.route(route="orders", methods=["POST"])
         @openapi(requests=_Authored)
-        @validate_http(body=_Validated)
+        @validate_http(body=_Validated)  # type: ignore[untyped-decorator]
         def orders(req: Any, body: Any) -> Any:  # noqa: F811
             return body
 
@@ -93,7 +93,7 @@ def test_conflicting_response_model_shorthand_raises() -> None:
 
     @openapi(responses=_Authored)
     @app.route(route="orders", methods=["GET"])
-    @validate_http(response_model=_Validated)
+    @validate_http(response_model=_Validated)  # type: ignore[untyped-decorator]
     def orders(req: Any) -> Any: ...
 
     with pytest.raises(OpenAPISpecConfigError, match="Conflicting status 200"):
@@ -107,7 +107,7 @@ def test_request_conflict_detected_even_when_response_matches() -> None:
 
     @openapi(requests=_Authored, responses=_Validated)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_Validated)
+    @validate_http(body=_Validated, response_model=_Validated)  # type: ignore[untyped-decorator]
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -122,7 +122,7 @@ def test_response_conflict_detected_even_when_request_matches() -> None:
 
     @openapi(requests=_Validated, responses=_Authored)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_OtherValidated)
+    @validate_http(body=_Validated, response_model=_OtherValidated)  # type: ignore[untyped-decorator]
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -137,7 +137,7 @@ def test_equivalent_model_declared_through_both_decorators_merges() -> None:
 
     @openapi(requests=_Validated, responses=_Validated)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_Validated)
+    @validate_http(body=_Validated, response_model=_Validated)  # type: ignore[untyped-decorator]
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -156,7 +156,7 @@ def test_inferred_response_is_still_superseded_by_validation_metadata() -> None:
 
     @openapi()
     @app.route(route="orders", methods=["GET"])
-    @validate_http(response_model=_Validated)
+    @validate_http(response_model=_Validated)  # type: ignore[untyped-decorator]
     def orders(req: Any) -> _Authored:
         raise NotImplementedError
 
