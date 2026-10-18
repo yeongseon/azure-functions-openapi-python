@@ -6,6 +6,12 @@ body:
   - type: markdown
     attributes:
       value: |
+        Describe this repository's problem, evidence, and completion criteria.
+        Explain why any external project or source is relevant to the work here.
+        See [Repository scope](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/AGENTS.md#repository-scope).
+  - type: markdown
+    attributes:
+      value: |
         Thanks for suggesting a feature!
 
   - type: textarea
