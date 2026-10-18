@@ -187,8 +187,35 @@ class TestExplicitRouteOverrideCompatibilityPreserved:
 
         assert list(spec["paths"]) == ["/api/legacy"]
 
+    def test_explicit_override_and_discovered_binding_do_not_collide_on_registry_key(
+        self,
+    ) -> None:
+        # Given: an explicit @openapi(route=...) override whose route happens
+        # to share a literal prefix segment, registered alongside a SEPARATE
+        # handler whose route is genuinely discovered from its own binding --
+        # the exact combination that made both resolve to the same registry
+        # key ("get::/api/api/users") before #797's fix, silently dropping
+        # one operation via reg.set().
+        app = func.FunctionApp()
 
-class TestSwaggerHelperFetchUrlMatchesRegisteredRoute:
+        @app.route(route="users_impl_a", methods=["GET"])
+        @openapi(route="/api/users", summary="Explicit override handler")
+        def handler_a(req: func.HttpRequest) -> func.HttpResponse:
+            return func.HttpResponse("a")
+
+        @openapi(summary="Discovered binding handler")
+        @app.route(route="api/users", methods=["GET"])
+        def handler_b(req: func.HttpRequest) -> func.HttpResponse:
+            return func.HttpResponse("b")
+
+        # When
+        spec = generate_openapi_spec(app=app, route_prefix="/api", strict=True)
+
+        # Then: both operations survive as distinct paths, matching their
+        # own provenance -- the explicit override still dedupes, and the
+        # discovered binding still always-prepends.
+        assert sorted(spec["paths"]) == ["/api/api/users", "/api/users"]
+
     def test_json_route_sharing_prefix_segment_is_fetched_at_its_real_host_url(self) -> None:
         # Given: register_openapi_routes()'s own json_route is registered
         # directly as an SDK binding (host-relative), sharing the "api"

@@ -31,6 +31,7 @@ from azure_functions_openapi.routes import (
     BODYLESS_HTTP_METHODS,
     DEFAULT_ROUTE_PREFIX,
     apply_host_prefix,
+    apply_route_prefix,
     normalize_route_prefix,
 )
 from azure_functions_openapi.utils import type_to_schema
@@ -79,6 +80,8 @@ def _normalize_path(
     route: str | None,
     function_name: str,
     route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    *,
+    host_relative: bool = True,
 ) -> str:
     """Compose a path key for the OpenAPI registry from a binding route.
 
@@ -87,12 +90,21 @@ def _normalize_path(
     serves. Pass ``""`` for hosts that disable the prefix and any other
     value (e.g. ``"/v1"``) for custom prefixes.
 
-    ``route`` is host-relative (a binding route, or a caller-supplied
-    fallback standing in for one) -- never an explicit ``@openapi(route=...)``
-    override -- so the prefix is always prepended via
+    ``host_relative`` must mirror the SAME provenance spec.py's own path
+    construction uses (``_route_host_relative`` / ``route is None``): when
+    ``True`` (the default -- a binding route, or a caller-supplied fallback
+    standing in for one), the prefix is always prepended via
     :func:`~azure_functions_openapi.routes.apply_host_prefix`, never
     deduplicated against a route whose own first segment happens to match it
-    (#784).
+    (#784). When ``False`` -- an explicit ``@openapi(route=...)`` override
+    passed through as ``route`` -- the prefix is applied with the
+    dedup-aware :func:`~azure_functions_openapi.routes.apply_route_prefix`
+    instead, so the registry key this produces always agrees with the final
+    documented path spec.py computes for the SAME entry. Disagreeing between
+    the two let an explicit override and an unrelated discovered binding
+    route collide on the same registry key and silently overwrite one
+    another, even though their documented paths were meant to be distinct
+    (#797).
     """
     prefix = normalize_route_prefix(route_prefix)
     raw = (route or function_name or "").strip()
@@ -100,7 +112,9 @@ def _normalize_path(
         raw = function_name
     if not raw.startswith("/"):
         raw = f"/{raw}"
-    return apply_host_prefix(raw, prefix)
+    if host_relative:
+        return apply_host_prefix(raw, prefix)
+    return apply_route_prefix(raw, prefix)
 
 
 def _extract_http_binding(function: Any) -> Any | None:
@@ -674,7 +688,24 @@ def scan_endpoint_metadata(
             entry_name = (
                 canonical_target.get("function_name") if canonical_target is not None else None
             ) or function_name
-            path = _normalize_path(entry_route or raw_route, entry_name, route_prefix)
+            # entry_route is host-relative unless it is a genuine explicit
+            # @openapi(route=...) override: that is exactly what
+            # canonical_target's own _route_host_relative flag (stamped at
+            # decoration time, #784) already records. Falling back to
+            # raw_route (always host-relative) when there is no explicit
+            # route at all keeps this agreeing with apply_host_prefix's
+            # always-prepend behavior for that case.
+            entry_host_relative = (
+                entry_route is None or bool(canonical_target.get("_route_host_relative"))
+                if canonical_target is not None
+                else True
+            )
+            path = _normalize_path(
+                entry_route or raw_route,
+                entry_name,
+                route_prefix,
+                host_relative=entry_host_relative,
+            )
 
         # Return-type inference (P1-A): for a bare ``@app.route`` handler with no
         # ``@openapi`` entry and no validation enrichment, infer the 200 response
