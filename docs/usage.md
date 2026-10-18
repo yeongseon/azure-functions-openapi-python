@@ -161,6 +161,30 @@ class OrderResponse(BaseModel):
 
 `responses=OrderResponse` derives the `200` response schema from the model.
 
+The request schema describes what a model *accepts* (Pydantic's
+`validation` mode); the response schema describes what a handler's return
+value actually *produces* (`serialization` mode). These usually match, but
+can differ for a model using `validation_alias`/`serialization_alias`, a
+`@computed_field`, or a field serializer — for example, a field that is read
+using one name and written back using another, or a derived field that only
+appears in the serialized output. When the same model is used for both
+`requests` and `responses` and the two shapes differ, both are generated and
+kept under distinct component names rather than one silently overwriting the
+other; when the shapes are identical, they still resolve to one shared
+component.
+
+This package only documents the schema — it does not serialize your
+handler's return value. A serialization-mode schema for a model with
+`serialization_alias` describes the *aliased* wire shape, so your handler
+must actually produce that shape to match: `model.model_dump(mode="json",
+by_alias=True)`, not a bare `model_dump(mode="json")`, which emits field
+*names* and would not match a response schema documented with aliases. A
+model's own `model_config = ConfigDict(json_schema_mode_override=...)`, if
+set, pins its schema to that one mode regardless of which mode is
+requested here — Pydantic applies it internally — so such a model's
+request and response schemas are identical by the model's own design, not
+by this package's inference.
+
 ### Style B: Raw schema dictionaries
 
 Best when you do not use Pydantic. Pass a raw requestBody schema dict to

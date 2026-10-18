@@ -261,11 +261,20 @@ The project includes a real Azure end-to-end test workflow that deploys an actua
 ### Workflow
 
 - **File**: `.github/workflows/e2e-azure.yml`
-- **Trigger**: Manual (`workflow_dispatch`) or weekly schedule (Mondays 02:00 UTC)
+- **Trigger**: `workflow_dispatch` (manual, standalone verification/debugging) or `workflow_call`
+  (invoked as a gate inside `publish-pypi.yml` for every release — see
+  [Release Process](release_process.md)). There is no recurring schedule.
+- **Runtime default**: Python 3.12 unless a `workflow_dispatch`/`workflow_call` caller passes a
+  different `python_version` input. This is the Azure *certification* default, not a claim that
+  every release is certified across the full CI matrix (Python 3.11–3.14, see above) — the
+  certification covers one representative interpreter per run.
 - **Infrastructure**: Azure Consumption plan, `koreacentral` region
 - **Cleanup**: Resource group deleted immediately after tests (`if: always()`)
 
 ### Running E2E Tests
+
+Standalone, manual run against the tip of `main` (all inputs are optional; this does not certify a
+specific release tag the way the `publish-pypi.yml`-invoked run does):
 
 ```bash
 gh workflow run e2e-azure.yml --ref main

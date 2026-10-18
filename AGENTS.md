@@ -107,7 +107,28 @@ Release Please runs with `secrets.RELEASE_PLEASE_TOKEN`, a fine-grained PAT, ins
 
 ## Issue Conventions
 
-Follow these conventions when opening issues so the backlog stays consistent with sibling DX Toolkit repositories.
+Follow these conventions when opening or editing issues in this repository.
+
+### Repository scope
+
+- Explain the problem, proposed work, acceptance criteria, and priority using
+  verified evidence and user impact in this repository.
+- Apply reusable ideas to this repository's actual code, configuration, and
+  conventions. Another project's policy or implementation is not evidence that
+  the same requirement applies here.
+- Remove copied project names, issue links, process labels, and release
+  assumptions that are unrelated to the requested work.
+- Keep relevant technical evidence and source attribution, including actual
+  dependencies, integrations, upstream defects, and official documentation.
+  Explain the relationship and the work owned by this repository. Apply the
+  same local-evidence requirement to explicitly requested comparisons.
+- Before creating or editing an issue, search for duplicates and review every
+  project name and repository link in the title and body. The issue must be
+  understandable without following an unrelated project's issue or policy.
+- After saving, fetch the issue again and verify the saved title, body, and
+  labels before reporting completion. Apply these checks to issues created
+  through the API or CLI as well as through the issue forms.
+
 
 ### Title
 
@@ -128,7 +149,7 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 - Items intentionally excluded, with links to the issues that track them.
 
 ## References
-- PRs, ADRs, sibling issues, external docs.
+- Relevant issues, PRs, ADRs, official documentation, and documented dependencies or integrations.
 ```
 
 ### Labels
@@ -155,9 +176,9 @@ When splitting a large piece of work into focused issues, keep the umbrella open
 - Cross-repo audit findings may be **referenced** from a local issue for context (a plain link is fine), but the local issue must be closeable on this repo's work alone. Never leave an issue here open pending another repo's fix.
 - If you catch yourself building a checklist of `owner/other-repo#N` items to "drive from here," stop — that is the cross-repo umbrella anti-pattern. Close it as `not planned` and let each repo track its own child issue.
 
-### Issue-creation access (fleet policy)
+### Issue-creation access
 
-Keep issue creation **open/unrestricted** on every public toolkit repository (issue tracker enabled, no `interaction-limits`). External bug reports are the only inbound support channel, so restricting issue creation suppresses the signal we most need. Do not enable an interaction limit or restrict issue creation without an explicit, documented reason recorded in an issue first.
+Keep issue creation **open/unrestricted** in this repository (issue tracker enabled, no `interaction-limits`). External bug reports are the only inbound support channel, so restricting issue creation suppresses the signal we most need. Do not enable an interaction limit or restrict issue creation without an explicit, documented reason recorded in an issue first.
 
 ### Project management model
 
@@ -227,7 +248,7 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
 ### Recovery
-- **Any gate failed.** Nothing was uploaded, so the version is still free. Fix the cause and re-run the workflow on the same tag (`gh workflow run publish-pypi.yml --ref main -f tag=vX.Y.Z`), or fix forward on `main` and let the next Release PR cut a new version. Never move or reuse a tag.
+- **Any gate failed.** Nothing was uploaded, so the version is still free. `publish-pypi.yml` runs automatically on every `v*` tag push, and `workflow_dispatch` is its recovery path for re-running that same trigger manually — it takes **no inputs**; the workflow reads the version to verify from `github.ref_name`, so the dispatch **ref** must be the existing tag itself: `gh workflow run publish-pypi.yml --ref vX.Y.Z` (not `--ref main` with a `tag=` input — that input does not exist, and dispatching against `main` would compare the package version against the literal ref name `main` and fail the check even if it were accepted). Use this to retry the *same unchanged* tagged candidate after an external or transient gate failure (a flaky Azure deploy, a PyPI outage, a runner hiccup). If the failure instead requires a code or workflow correction, fix forward on `main` and let the next Release PR cut a new version — never move or reuse a tag to make a changed commit appear to be the same release candidate.
 - **A tag exists but was never published.** A valid resting state. Re-run publish, or abandon the version and let the next release take the following number.
 - **Release PR stopped appearing.** Check for a stale `autorelease: pending` label on an already-merged Release PR — Release Please treats that as a release still in flight and will not open another. This failure is silent: the workflow still reports success.
 - **Break-glass (automation unavailable).** Bump `__version__`, match `.release-please-manifest.json`, commit, tag, and push. The tag starts the same gated workflow — never bypass it.
@@ -288,7 +309,7 @@ When using AI-assisted development:
 
 - Prefer small, reviewable changes.
 - Do not guess about behavior that can be verified.
-- Keep repository structure aligned with sibling repositories.
+- Follow this repository's established structure, scope, and contribution rules.
 - Update docs, examples, and tests together when behavior changes.
 
 ## Final Rule
