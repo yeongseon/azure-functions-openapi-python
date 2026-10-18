@@ -24,7 +24,9 @@ from typing import Any, Literal
 from pydantic import BaseModel
 import pytest
 
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import clear_openapi_registry, register_openapi_metadata
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
@@ -32,6 +34,7 @@ from azure_functions_openapi.spec import (
     _collapse_nullable_combinator,
     _convert_schema_to_3_0,
     _convert_schemas_to_3_0,
+    collect_spec_warnings,
     generate_openapi_spec,
 )
 
@@ -96,9 +99,13 @@ class TestConvertSchemaTo30Scalars:
         assert "type" not in result
 
     def test_enum_with_null(self) -> None:
+        # Regression (#782): ``None`` must stay IN the enum -- a sibling
+        # ``nullable: true`` alone does not exempt ``enum`` from its own
+        # closed-list check under a real OAS 3.0 validator (see
+        # ``TestNullableInstanceValidation`` for the instance-level proof).
         result = _convert_schema_to_3_0({"enum": [None, "a", "b"]})
 
-        assert result["enum"] == ["a", "b"]
+        assert result["enum"] == [None, "a", "b"]
         assert result["nullable"] is True
 
     def test_non_nullable_passthrough(self) -> None:
@@ -481,24 +488,34 @@ class TestNullableInstanceValidation:
         # Then: it is still rejected.
         assert errors != []
 
-    def test_self_referential_nullable_model_does_not_recurse_forever(self) -> None:
+    def test_self_referential_nullable_model_raises_under_strict(self) -> None:
         # Given: a model whose only nullable field refers back to itself.
+        # The resolving-set cycle guard inlines one level of the
+        # self-reference -- as deep as it can go without looping -- but the
+        # next level back to the same component has no OpenAPI 3.0 form that
+        # can mark a bare $ref nullable, so a null value at that depth is
+        # unrepresentable, not merely approximated (#782 follow-up).
         registry = OpenAPIRegistry()
         register_openapi_metadata("/tree", "GET", response_model=_TreeNode, registry=registry)
 
-        # When: generation completes (would hang/overflow without the
-        # resolving-set cycle guard. The guard inlines one level of the
-        # self-reference -- as deep as it can go without looping -- and the
-        # next level back to the same component falls back to the pre-#782
-        # allOf form, which stays structurally valid but, like every
-        # nullable $ref before this fix, does not itself satisfy a null
-        # at that depth).
+        # When / Then: strict mode must fail rather than silently emit a
+        # schema that rejects a valid null at the recursive edge.
+        with pytest.raises(OpenAPISpecConfigError, match="cannot be inlined"):
+            generate_openapi_spec(
+                openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=True
+            )
+
+    def test_self_referential_nullable_model_warns_under_non_strict(self) -> None:
+        # Given: the same self-referential model, generated non-strict.
+        registry = OpenAPIRegistry()
+        register_openapi_metadata("/tree", "GET", response_model=_TreeNode, registry=registry)
         spec = generate_openapi_spec(
-            openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=True
+            openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=False
         )
 
         # Then: a leaf instance (null at the one level the guard inlines)
-        # validates with zero errors.
+        # still validates with zero errors -- only the deeper recursive edge
+        # is affected, not the whole schema.
         validator = _oas30_validator_for(spec, "/api/tree", "get")
         leaf_instance = _TreeNode(label="leaf").model_dump(mode="json")
         assert list(validator.iter_errors(leaf_instance)) == []
@@ -509,6 +526,157 @@ class TestNullableInstanceValidation:
             "properties"
         ]["next"]
         assert nested_next["allOf"] == [{"$ref": "#/components/schemas/_TreeNode"}]
+
+        # And the unrepresentable recursive edge is reported through the
+        # same structured channel as any other silent-loss downgrade, so
+        # ``--fail-on-warnings``/``collect_spec_warnings`` can observe it.
+        drops = [
+            w
+            for w in collect_spec_warnings(spec, registry=registry)
+            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
+        ]
+        assert any("_TreeNode" in d.message for d in drops)
+
+    def test_nullable_ref_wrapper_siblings_are_preserved_and_enforced(self) -> None:
+        # Given: a nullable $ref whose WRAPPER node (not the referenced
+        # schema) carries both a cosmetic sibling ("description") and a
+        # structurally enforceable one ("maxProperties") -- the single-$ref
+        # inlining branch used to fully replace the wrapper's own content,
+        # silently dropping every one of these (#782 follow-up finding 1).
+        openapi_schema_validator = pytest.importorskip("openapi_schema_validator")
+        schemas = {
+            "Address": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}, "zip": {"type": "string"}},
+            },
+            "Account": {
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/Address",
+                                "description": "primary address",
+                                "maxProperties": 1,
+                            },
+                            {"type": "null"},
+                        ]
+                    }
+                },
+            },
+        }
+
+        converted, lossy = _convert_schemas_to_3_0(schemas)
+        address_field = converted["Account"]["properties"]["address"]
+
+        # Then: both sibling keys survive onto the merged schema object...
+        assert address_field["description"] == "primary address"
+        assert address_field["maxProperties"] == 1
+        assert address_field["nullable"] is True
+        assert address_field["type"] == "object"
+        assert lossy == []
+
+        # ...and the surviving document is itself valid OpenAPI 3.0...
+        doc = {
+            "openapi": "3.0.3",
+            "info": {"title": "t", "version": "1.0.0"},
+            "paths": {},
+            "components": {"schemas": converted},
+        }
+        pytest.importorskip("openapi_spec_validator").validate(doc)
+
+        # ...and "maxProperties" is a real, ENFORCED constraint, not inert
+        # JSON: null and a single-property instance validate, but an
+        # instance with both properties populated is correctly rejected.
+        validator = openapi_schema_validator.OAS30Validator(
+            {**address_field, "components": doc["components"]}
+        )
+        assert list(validator.iter_errors(None)) == []
+        assert list(validator.iter_errors({"city": "Seoul"})) == []
+        assert list(validator.iter_errors({"city": "Seoul", "zip": "04524"})) != []
+
+    def test_nullable_ref_to_nested_union_accepts_every_branch(self) -> None:
+        # Given: a nullable $ref that resolves to a schema which ITSELF
+        # carries a nested anyOf (e.g. a ``RootModel[str | int]``-style
+        # component) rather than a plain scalar/object -- distinct from the
+        # OUTER nullable-collapsing anyOf this module rewrites (#782 follow-up
+        # finding 2).
+        openapi_schema_validator = pytest.importorskip("openapi_schema_validator")
+        schemas = {
+            "StrOrInt": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+            "Thing": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "anyOf": [{"$ref": "#/components/schemas/StrOrInt"}, {"type": "null"}]
+                    }
+                },
+            },
+        }
+
+        converted, lossy = _convert_schemas_to_3_0(schemas)
+        assert lossy == []
+        doc = {
+            "openapi": "3.0.3",
+            "info": {"title": "t", "version": "1.0.0"},
+            "paths": {},
+            "components": {"schemas": converted},
+        }
+        pytest.importorskip("openapi_spec_validator").validate(doc)
+
+        value_field = converted["Thing"]["properties"]["value"]
+        validator = openapi_schema_validator.OAS30Validator(
+            {**value_field, "components": doc["components"]}
+        )
+        # Then: null and both union members all validate.
+        assert list(validator.iter_errors(None)) == []
+        assert list(validator.iter_errors("hello")) == []
+        assert list(validator.iter_errors(42)) == []
+
+    def test_nullable_literal_const_mixed_with_other_branches_accepts_every_branch(
+        self,
+    ) -> None:
+        # Given: ``Literal["fixed"] | int | None`` -- a multi-member anyOf
+        # where ONE non-null branch is a closed single-value ``const`` and
+        # another is an ordinary scalar type (#782 follow-up finding 2).
+        openapi_schema_validator = pytest.importorskip("openapi_schema_validator")
+        schemas = {
+            "Mixed": {
+                "type": "object",
+                "properties": {
+                    "x": {
+                        "anyOf": [
+                            {"const": "fixed", "type": "string"},
+                            {"type": "integer"},
+                            {"type": "null"},
+                        ]
+                    }
+                },
+            }
+        }
+
+        converted, lossy = _convert_schemas_to_3_0(schemas)
+        assert lossy == []
+        doc = {
+            "openapi": "3.0.3",
+            "info": {"title": "t", "version": "1.0.0"},
+            "paths": {},
+            "components": {"schemas": converted},
+        }
+        pytest.importorskip("openapi_spec_validator").validate(doc)
+
+        x_field = converted["Mixed"]["properties"]["x"]
+        validator = openapi_schema_validator.OAS30Validator(
+            {**x_field, "components": doc["components"]}
+        )
+        # Then: null, the const match, and the int branch all validate...
+        assert list(validator.iter_errors(None)) == []
+        assert list(validator.iter_errors("fixed")) == []
+        assert list(validator.iter_errors(5)) == []
+        # ...but a string that is neither the const nor absent is still
+        # rejected -- the fix must not widen the closed const into "any
+        # string".
+        assert list(validator.iter_errors("other")) != []
 
 
 class TestOverlappingTupleInstanceValidation:

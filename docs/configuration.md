@@ -238,6 +238,16 @@ the CLI's `--fail-on-warnings`). A tuple whose positions all share the
 identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
 schema already describes it faithfully.
 
+A nullable field that refers back to its own model, directly or through
+another model (e.g. a tree/linked-list node whose "next" is
+`Optional[SameModel]`), has one level of the self-reference inlined so the
+leaf case works, but the recursive edge one level deeper has no OpenAPI 3.0
+form that can mark a bare `$ref` nullable — the same representability gap as
+the tuple case above, not merely an approximation. `strict=True` raises
+`OpenAPISpecConfigError`; non-strict generation keeps the schema (valid for
+every instance except a `null` at that one recursive edge) and emits the same
+structured `version-downgrade-drop` warning.
+
 ### What changes in 3.1 / 3.2 mode
 
 - nullable schemas are converted from `nullable: true` to `type: [<type>, "null"]`
@@ -260,9 +270,11 @@ via `querystring=`:
 ```python
 from pydantic import BaseModel
 
+
 class SearchQuery(BaseModel):
     q: str
     limit: int = 10
+
 
 @openapi(
     method="get",
@@ -270,8 +282,7 @@ class SearchQuery(BaseModel):
     # querystring_media_type defaults to application/x-www-form-urlencoded
 )
 @app.route(route="search", methods=["GET"])
-def search(req):
-    ...
+def search(req): ...
 ```
 
 This emits a single `in: querystring` parameter whose content schema is derived
@@ -297,9 +308,7 @@ spec = generate_openapi_spec(
     title="Catalog API",
     version="2026.03",
     description="Catalog service",
-    security_schemes={
-        "BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}
-    },
+    security_schemes={"BearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "JWT"}},
 )
 ```
 
@@ -367,9 +376,7 @@ You can define schemes in two places.
 ### Global in spec generator
 
 ```python
-global_schemes = {
-    "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}
-}
+global_schemes = {"ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "X-API-Key"}}
 
 json_spec = get_openapi_json(security_schemes=global_schemes)
 ```
