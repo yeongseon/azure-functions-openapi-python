@@ -1,10 +1,21 @@
 """E2E tests for azure-functions-openapi running on a real Azure Functions host.
 
 Usage:
-    E2E_BASE_URL=https://<app>.azurewebsites.net pytest tests/e2e -v
+    E2E_BASE_URL=https://<app>.azurewebsites.net \
+    E2E_EXPECTED_VERSION=<deployed-version> \
+    make e2e-azure
 
-The E2E_BASE_URL environment variable must point to the deployed Function App.
-Tests are skipped automatically when the variable is not set (local unit test runs).
+Every test in this module carries the `e2e` marker (see pytestmark below), so
+pyproject.toml's default addopts ("-m 'not e2e and not perf'") excludes them
+from the regular unit-test run, and a bare `pytest tests/e2e -v` now exits 5
+("no tests collected") instead of running them -- use the dedicated
+`make e2e-azure` (or `make e2e-local` against a local Azurite host) entry
+point above, which selects `-m e2e` explicitly and validates both required
+environment variables before running.
+
+E2E_BASE_URL must point to the deployed Function App; tests are skipped
+automatically when it is not set (so a plain `make test` run, which does not
+select `-m e2e` at all, is unaffected either way).
 """
 
 from __future__ import annotations
@@ -15,6 +26,12 @@ import time
 import pytest
 import requests
 import yaml  # PyYAML
+
+# #787: every test in this module requires a real deployed host. Without this
+# marker, pyproject.toml's default addopts ('-m not e2e and not perf') cannot
+# exclude these from the regular unit-test run, and the dedicated e2e
+# selectors (`pytest -m e2e ...`) collect nothing instead of these six tests.
+pytestmark = pytest.mark.e2e
 
 BASE_URL = os.environ.get("E2E_BASE_URL", "").rstrip("/")
 EXPECTED_VERSION = os.environ.get("E2E_EXPECTED_VERSION", "").strip()

@@ -198,7 +198,7 @@ def test_strict_decorator_request_failure_identifies_operation(
     )
     failure = TypeError("request conversion failed")
 
-    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+    def fail_conversion(model: Any, components: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
         raise failure
 
     monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)
@@ -230,7 +230,7 @@ def test_strict_programmatic_response_failure_identifies_status(
     )
     failure = TypeError("response conversion failed")
 
-    def fail_conversion(model: Any, components: dict[str, Any]) -> dict[str, Any]:
+    def fail_conversion(model: Any, components: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
         raise failure
 
     monkeypatch.setattr("azure_functions_openapi.spec.model_to_schema", fail_conversion)

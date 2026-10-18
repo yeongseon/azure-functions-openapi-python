@@ -526,16 +526,23 @@ def _resolve_media_schema(
     ``content.<media>.itemSchema`` position: a Pydantic ``BaseModel`` subclass,
     a generic collection alias (e.g. ``list[Model]``), or a raw inline
     JSON-Schema dict.
+
+    This helper is only ever called from the per-status ``responses=``
+    shorthand (including the raw-type-hint form return-type inference stores),
+    so a model/generic shorthand here always describes a response: generation
+    uses Pydantic's *serialization* mode, matching what the handler's return
+    value actually serializes to rather than what a request body accepts
+    (#783).
     """
     if isinstance(raw_schema, type) and issubclass(raw_schema, BaseModel):
         # Unified per-status model shorthand (#410): resolve the model to a
         # $ref here, where the components registry is available.
-        return model_to_schema(raw_schema, components)
+        return model_to_schema(raw_schema, components, mode="serialization")
     if get_origin(raw_schema) is not None:
         # Generic collection alias shorthand (#450), e.g. list[Model]: resolve
         # via TypeAdapter to a valid array schema; hoist_inline_defs expects a
         # dict JSON-Schema and would break on a raw alias.
-        return type_to_schema(raw_schema, components)
+        return type_to_schema(raw_schema, components, mode="serialization")
     return hoist_inline_defs(raw_schema, components, hoist_flat=hoist_flat_schemas)
 
 
@@ -659,8 +666,19 @@ def generate_openapi_spec(
                 # registration. A bare ``@openapi`` with no binding leaves the
                 # method unresolved and emits a single ``get`` operation, and an
                 # explicit method is emitted as a single operation, unchanged.
+                #
+                # An app scan (``scan_endpoint_metadata``) discovers the binding's
+                # real method set and concretizes ``method`` accordingly -- which
+                # means it can no longer tell auto-expansion apart from a
+                # genuinely explicit single method by itself. The scan preserves
+                # that provenance independently under ``_methods_expanded`` (#781);
+                # prefer it whenever present, and fall back to the ``method is
+                # None`` inference only for entries no scan has ever touched.
                 raw_method = meta.get("method")
-                if raw_method is None:
+                if "_methods_expanded" in meta:
+                    methods_to_emit = [str(raw_method).lower()] if raw_method else ["get"]
+                    methods_expanded = bool(meta["_methods_expanded"])
+                elif raw_method is None:
                     if meta.get("_expand_all_methods"):
                         methods_to_emit = list(ALL_HTTP_METHODS)
                         methods_expanded = True
@@ -736,7 +754,9 @@ def generate_openapi_spec(
                             target_status = key
                             break
                     try:
-                        model_schema = model_to_schema(meta["response_model"], components)
+                        model_schema = model_to_schema(
+                            meta["response_model"], components, mode="serialization"
+                        )
                         if target_status not in responses:
                             responses[target_status] = {
                                 "description": "Successful Response",
@@ -879,7 +899,7 @@ def generate_openapi_spec(
                         "querystring_media_type", "application/x-www-form-urlencoded"
                     )
                     if qs_model is not None:
-                        qs_resolved = model_to_schema(qs_model, components)
+                        qs_resolved = model_to_schema(qs_model, components, mode="validation")
                     else:
                         qs_resolved = hoist_inline_defs(
                             qs_schema, components, hoist_flat=hoist_flat_schemas
@@ -977,7 +997,9 @@ def generate_openapi_spec(
                             "required": required,
                             "content": {
                                 "application/json": {
-                                    "schema": model_to_schema(meta["request_model"], components)
+                                    "schema": model_to_schema(
+                                        meta["request_model"], components, mode="validation"
+                                    )
                                 }
                             },
                         }

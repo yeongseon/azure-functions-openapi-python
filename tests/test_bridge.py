@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any, cast
+from unittest.mock import patch
 
 from pydantic import BaseModel
 import pytest
@@ -11,6 +12,7 @@ from azure_functions_openapi.bridge import (
     _HANDLER_METADATA_ATTR,
     _extract_methods,
     _field_type_to_schema,
+    _find_model_conflict,
     _merge_parameters,
     _model_to_parameters,
     _models_conflict,
@@ -1051,6 +1053,143 @@ def test_models_conflict_detects_request_body_mismatch() -> None:
         )
         is True
     )
+
+
+# ---------------------------------------------------------------------------
+# Cross-representation conflict detection: requests=/responses= model
+# shorthand vs the raw request_body/response an endpoint producer discovers
+# (issue #780).
+# ---------------------------------------------------------------------------
+
+
+def test_find_model_conflict_detects_cross_representation_request_conflict() -> None:
+    existing = {"request_model": CreateBody}
+    discovered = {"request_body": {"type": "object", "properties": {"other": {"type": "integer"}}}}
+    assert _find_model_conflict(existing, discovered) == "request body"
+
+
+def test_find_model_conflict_no_conflict_for_equivalent_cross_representation_request() -> None:
+    existing = {"request_model": CreateBody}
+    discovered = {"request_body": CreateBody.model_json_schema()}
+    assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_detects_cross_representation_response_conflict() -> None:
+    existing = {"response_model": ResponseModel}
+    discovered = {
+        "response": {
+            "200": {
+                "description": "ok",
+                "content": {"application/json": {"schema": AltResponseModel.model_json_schema()}},
+            }
+        }
+    }
+    assert _find_model_conflict(existing, discovered) == "status 200"
+
+
+def test_find_model_conflict_no_conflict_for_equivalent_cross_representation_response() -> None:
+    existing = {"response_model": ResponseModel}
+    discovered = {
+        "response": {
+            "200": {
+                "description": "ok",
+                "content": {"application/json": {"schema": ResponseModel.model_json_schema()}},
+            }
+        }
+    }
+    assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_request_and_response_are_detected_independently() -> None:
+    # A request-side conflict must surface even when the response side
+    # matches, and must identify the request -- not the response.
+    existing = {"request_model": CreateBody, "response_model": ResponseModel}
+    discovered_matching_response_only = {
+        "request_body": {"type": "object", "properties": {"other": {"type": "integer"}}},
+        "response": {
+            "200": {
+                "description": "ok",
+                "content": {"application/json": {"schema": ResponseModel.model_json_schema()}},
+            }
+        },
+    }
+    assert _find_model_conflict(existing, discovered_matching_response_only) == "request body"
+
+    # And the reverse: a response-side conflict must surface even when the
+    # request side matches, identifying the response -- not the request.
+    discovered_matching_request_only = {
+        "request_body": CreateBody.model_json_schema(),
+        "response": {
+            "200": {
+                "description": "ok",
+                "content": {"application/json": {"schema": AltResponseModel.model_json_schema()}},
+            }
+        },
+    }
+    assert _find_model_conflict(existing, discovered_matching_request_only) == "status 200"
+
+
+def test_find_model_conflict_response_model_targets_first_declared_2xx_status() -> None:
+    # response_model has no inherent status of its own; it must be compared
+    # against whichever 2xx status the raw side already declares (here 201),
+    # not unconditionally assumed to be "200".
+    existing = {"response_model": ResponseModel}
+    discovered = {
+        "response": {
+            "201": {
+                "description": "created",
+                "content": {"application/json": {"schema": AltResponseModel.model_json_schema()}},
+            }
+        }
+    }
+    assert _find_model_conflict(existing, discovered) == "status 201"
+
+
+def test_find_model_conflict_ignores_response_when_inferred() -> None:
+    # An inferred response (P1-A) is the lowest-precedence source and must
+    # never conflict with discovered validation metadata -- it is superseded
+    # in _merge_into_existing instead.
+    existing = {"response_model": ResponseModel, "_response_inferred": True}
+    discovered = {
+        "response": {
+            "200": {
+                "description": "ok",
+                "content": {"application/json": {"schema": AltResponseModel.model_json_schema()}},
+            }
+        }
+    }
+    assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_unpaired_response_model_with_no_overlap_does_not_abort() -> None:
+    # Given: a response_model whose schema conversion would genuinely fail,
+    # paired against discovered metadata that declares only a 4xx status --
+    # so the synthesized 2xx entry (default target "200") never overlaps with
+    # anything on the other side, and there is nothing to actually compare.
+    existing = {
+        "request_body": {"type": "object"},
+        "response": {"404": {"description": "Not Found"}},
+    }
+    discovered = {
+        "request_body": {"type": "object"},
+        "response_model": ResponseModel,
+    }
+
+    # When/Then: scanning must not abort on the unpaired model's conversion
+    # failure, since it was never going to be compared against anything.
+    with patch.object(ResponseModel, "model_json_schema", side_effect=RuntimeError("boom")):
+        assert _find_model_conflict(existing, discovered) is None
+
+
+def test_find_model_conflict_unpaired_request_model_with_no_contract_does_not_abort() -> None:
+    # Given: a request_model whose schema conversion would genuinely fail,
+    # paired against discovered metadata that declares no request contract at
+    # all (query-only), so there is nothing to compare the request against.
+    existing = {"parameters": [{"in": "query", "name": "q"}]}
+    discovered = {"request_model": ResponseModel}
+
+    with patch.object(ResponseModel, "model_json_schema", side_effect=RuntimeError("boom")):
+        assert _find_model_conflict(existing, discovered) is None
 
 
 def test_field_type_to_schema_primitives_and_collected_defs() -> None:
