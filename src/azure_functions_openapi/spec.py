@@ -645,8 +645,19 @@ def generate_openapi_spec(
                 # registration. A bare ``@openapi`` with no binding leaves the
                 # method unresolved and emits a single ``get`` operation, and an
                 # explicit method is emitted as a single operation, unchanged.
+                #
+                # An app scan (``scan_endpoint_metadata``) discovers the binding's
+                # real method set and concretizes ``method`` accordingly -- which
+                # means it can no longer tell auto-expansion apart from a
+                # genuinely explicit single method by itself. The scan preserves
+                # that provenance independently under ``_methods_expanded`` (#781);
+                # prefer it whenever present, and fall back to the ``method is
+                # None`` inference only for entries no scan has ever touched.
                 raw_method = meta.get("method")
-                if raw_method is None:
+                if "_methods_expanded" in meta:
+                    methods_to_emit = [str(raw_method).lower()] if raw_method else ["get"]
+                    methods_expanded = bool(meta["_methods_expanded"])
+                elif raw_method is None:
                     if meta.get("_expand_all_methods"):
                         methods_to_emit = list(ALL_HTTP_METHODS)
                         methods_expanded = True

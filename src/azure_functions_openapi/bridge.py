@@ -67,6 +67,25 @@ def _stamp_auth_level(entry: dict[str, Any], auth_level: str | None) -> None:
     entry["_auth_level"] = auth_level
 
 
+def _stamp_methods_expanded(entry: dict[str, Any], methods_expanded: bool) -> None:
+    """Record whether this operation's now-concrete ``method`` came from
+    auto-expanding an unspecified-``methods=`` binding.
+
+    A canonical ``@openapi`` entry registered with ``method=None`` is exploded
+    into one concrete per-method entry during an app scan (see
+    ``explode_canonical`` below), and a bare binding-derived operation is
+    registered with a concrete ``method`` directly. Either way, the entry's
+    own ``method`` field can no longer tell
+    :func:`azure_functions_openapi.spec.generate_openapi_spec` whether this
+    operation is one of several auto-expanded siblings (needing a suffixed
+    ``operationId`` and the automatic bodyless-method rules) or a genuinely
+    explicit single-method operation. Stamping the scan's own
+    ``methods_expanded`` verdict under the private ``_methods_expanded`` key
+    preserves that provenance independently of the concrete method value.
+    """
+    entry["_methods_expanded"] = methods_expanded
+
+
 def _normalize_method(method: Any) -> str:
     if method is None:
         return "get"
@@ -885,6 +904,22 @@ def scan_endpoint_metadata(
                     entry = reg.get(f"{method}::{path}")
                     if entry is not None:
                         _stamp_auth_level(entry, auth_level)
+
+        # Stamp auto-expansion provenance (#781) onto every per-method
+        # operation this function produced, for the same reason and at the
+        # same point as the auth-level stamp above: a concrete ``method`` can
+        # no longer tell spec.py whether it was auto-expanded from an
+        # unspecified-``methods=`` binding (needing a suffixed operationId and
+        # the automatic bodyless-method rules) or genuinely explicit. The
+        # un-exploded ``canonical_target`` is deliberately left unstamped: an
+        # explicit ``@openapi(method=...)`` is a single operation regardless
+        # of what the binding would have expanded to, so spec.py's own
+        # ``raw_method is not None`` fallback already resolves it correctly.
+        with reg.lock:
+            for method in methods:
+                entry = reg.get(f"{method}::{path}")
+                if entry is not None:
+                    _stamp_methods_expanded(entry, methods_expanded)
 
         # After exploding a method=None @openapi entry into per-method entries,
         # drop the original so spec.py does not additionally emit it as a bare
