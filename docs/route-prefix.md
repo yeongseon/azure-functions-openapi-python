@@ -49,6 +49,31 @@ rejected because converting them to required plain strings would describe a
 different route contract. See [Route inline constraints](configuration.md#route-inline-constraints)
 for the complete supported subset and strict/non-strict behavior.
 
+## Discovered SDK binding routes are never deduplicated
+
+The idempotent dedup in the previous section applies only to an **explicit**
+`@openapi(route=...)` override, where the author is naming the already-prefixed
+URL as a convenience. It does not apply to a route **discovered** from the
+underlying `@app.route(...)` binding (whether through app-scan auto-discovery,
+a validation-bridge producer, or `@openapi` inferring the route directly from
+the binding below it) — those routes are host-relative, and Azure Functions
+composes the served URL as `routePrefix + '/' + routeTemplate`
+**unconditionally**, even when the route's own first segment happens to equal
+the prefix:
+
+```python
+@openapi(summary="List users")
+@app.route(route="api/users", methods=["GET"])   # → /api/api/users, not /api/users
+def list_users(req): ...
+```
+
+This matches what the Azure Functions host actually serves: a function bound
+to route `api/users` under `routePrefix: "api"` is reachable at
+`/api/api/users`, not `/api/users`. If this collision is unintended, rename the
+binding's `route=` so it does not repeat the configured prefix, or write an
+explicit `@openapi(route="/api/users")` override instead, which keeps the
+dedup behavior described above.
+
 ## Customising the prefix
 
 ### No prefix

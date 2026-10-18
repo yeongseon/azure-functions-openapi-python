@@ -959,13 +959,17 @@ def test_scan_supports_custom_prefix() -> None:
     assert "post::/v1/users" in get_openapi_registry()
 
 
-def test_scan_does_not_double_apply_prefix() -> None:
+def test_scan_always_prepends_prefix_to_discovered_route() -> None:
+    # Regression (#784): a discovered SDK binding route is host-relative, so
+    # the host prefix is always prepended -- even when the route's own first
+    # segment happens to equal the prefix. Azure composes the served URL as
+    # routePrefix + '/' + routeTemplate unconditionally.
     app = _make_app(route="/api/users", metadata={"body": CreateBody})
 
     scan_endpoint_metadata(app, route_prefix="/api")
 
-    assert "post::/api/users" in get_openapi_registry()
-    assert "post::/api/api/users" not in get_openapi_registry()
+    assert "post::/api/api/users" in get_openapi_registry()
+    assert "post::/api/users" not in get_openapi_registry()
 
 
 def test_scan_normalizes_prefix_with_trailing_slash() -> None:
@@ -1000,13 +1004,15 @@ def test_scan_does_not_treat_apidocs_as_already_prefixed() -> None:
     assert "post::/apidocs" not in get_openapi_registry()
 
 
-def test_scan_treats_exact_prefix_match_as_already_prefixed() -> None:
+def test_scan_route_exactly_equal_to_prefix_generates_both_segments() -> None:
+    # Regression (#784): the route is host-relative, so an exact match with
+    # the prefix is not deduplicated -- Azure still serves both segments.
     app = _make_app(route="/api", metadata={"body": CreateBody})
 
     scan_endpoint_metadata(app, route_prefix="/api")
 
-    assert "post::/api" in get_openapi_registry()
-    assert "post::/api/api" not in get_openapi_registry()
+    assert "post::/api/api" in get_openapi_registry()
+    assert "post::/api" not in get_openapi_registry()
 
 
 def test_bridge_helpers_cover_default_normalization_paths() -> None:
