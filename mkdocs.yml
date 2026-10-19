@@ -44,6 +44,7 @@ nav:
       - Testing: testing.md
       - Guidelines: contributing.md
       - Agent Playbook: agent-playbook.md
+      - Review Evidence Policy: review-evidence-policy.md
   - Decisions:
       - "ADR 0001: Inference default policy": decisions/0001-inference-default-policy.md
   - Troubleshooting: troubleshooting.md
