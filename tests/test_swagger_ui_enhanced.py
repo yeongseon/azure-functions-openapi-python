@@ -154,6 +154,30 @@ class TestRenderSwaggerUI:
         html_content = response.get_body().decode()
         assert "console.log('API Response:'" in html_content
 
+    def test_render_swagger_ui_client_logging_redacts_query_string(self) -> None:
+        """Regression (#806): opted-in client console.log must not echo a live
+        ``?code=...`` credential embedded in the fetched response URL.
+
+        Protected docs routes forward the caller's real function key into
+        ``openapi_url`` so the browser can re-fetch the protected spec. When
+        ``enable_client_logging=True``, the injected JS must strip the query
+        string from ``response.url`` before logging it, mirroring the
+        server-side ``_redact_query_for_logging`` convention (#778).
+        """
+        response = render_swagger_ui(
+            openapi_url="/api/openapi.json?code=DUMMY-NOT-A-REAL-KEY",
+            enable_client_logging=True,
+        )
+        html_content = response.get_body().decode()
+
+        # The served page still carries the real key for the actual fetch.
+        assert "DUMMY-NOT-A-REAL-KEY" in html_content
+
+        # But the injected client-side logger must never log the raw URL —
+        # only a query-stripped variant.
+        assert "console.log('API Response:', response.status, response.url);" not in html_content
+        assert "response.url.split('?')[0]" in html_content
+
     @patch("azure_functions_openapi.swagger_ui.logger")
     def test_render_swagger_ui_logging(self, mock_logger: Any) -> None:
         """Test that render_swagger_ui logs correctly."""

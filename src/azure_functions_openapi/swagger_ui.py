@@ -78,7 +78,7 @@ def render_swagger_ui(
     if enable_client_logging:
         response_interceptor = """
             responseInterceptor: function(response) {
-              console.log('API Response:', response.status, response.url);
+              console.log('API Response:', response.status, response.url.split('?')[0]);
               return response;
             }
     """
