@@ -92,3 +92,23 @@ def test_gate_accepts_a_successful_unknown_dependency() -> None:
     jobs["future-job"] = {"result": "success", "outputs": {}}
 
     assert run_gate(jobs).returncode == 0
+
+
+@pytest.mark.parametrize(
+    "job", ["test", "minimum-dependencies", "azure-functions-2x", "host-smoke"]
+)
+def test_execution_lanes_share_runner_and_always_upload_evidence(job: str) -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"][job]["steps"]
+    commands = "\n".join(step.get("run", "") for step in steps)
+    assert "python -m tools.verification " in commands
+    assert "hatch run" not in commands
+    uploads = [step for step in steps if step.get("with", {}).get("path") == "test-results/**"]
+    assert uploads
+    assert all(step.get("if") == "always()" for step in uploads)
+
+
+def test_quality_uses_complete_canonical_gate() -> None:
+    workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["quality"]["steps"]
+    assert any(step.get("run") == "make check" for step in steps)
