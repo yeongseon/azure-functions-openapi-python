@@ -55,38 +55,53 @@ if os.getenv("ENABLE_API_DOCS") == "true":
 Set `ENABLE_API_DOCS=true` only in environments where these routes should
 exist. Any other value, including an unset setting, omits them at import time.
 
-### 2. Require an Azure Functions key for direct spec access
+### 2. Protect documentation with an Azure Functions key
 
-Functions authentication can protect direct JSON/YAML downloads, but it does
-not by itself produce a working protected Swagger UI. Loading `/api/docs` with
-an `x-functions-key` header or `?code=` authenticates only the page request.
-`render_swagger_ui()` makes a separate browser request to `openapi_url`; it does
-not forward the page's header or query parameter. A function-scoped key for the
-docs function may also be unauthorized for the JSON function.
-
-Protect a specification route when direct, non-interactive access is needed:
+When key-protected documentation is required, explicitly select header forwarding:
 
 ```python
-@app.route(route="openapi.json", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
-def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse(
-        get_openapi_json(title="My API", app=app),
-        mimetype="application/json",
-    )
+from azure_functions_openapi import register_openapi_routes
+
+register_openapi_routes(
+    app,
+    title="My API",
+    version="1.0.0",
+    auth_level=func.AuthLevel.FUNCTION,
+    docs_key_forwarding="header",
+)
 ```
 
-Call that route with an `x-functions-key` header or a `?code=` query parameter.
-Passing a key in `openapi_url`, such as
-`/api/openapi.json?code=<host-key>`, can make Swagger UI fetch the protected
-specification, but is discouraged except in a trusted internal environment:
-the key appears in the generated page and may be recorded in browser history,
-proxy/access logs, or other systems that log request URLs. `render_swagger_ui()`
-does not write the key to this package's own application logs, but that does
-not control what other layers between the browser and the function record.
-Prefer conditional registration (pattern 1) or protect the UI and
-spec together with cookie/session-based edge authentication (pattern 3). An
-anonymous specification route is another option only when it is conditionally
-registered in trusted environments and its exposure is intentional.
+Navigate to `/api/docs?code=<key-authorized-for-both-functions>`. The server
+does **not** echo that query value into the served HTML/JavaScript or the
+configured specification URL. The browser reads the key from its own page URL,
+immediately removes all `code` values with `history.replaceState` (preserving
+other parameters and the fragment), and sends it as `x-functions-key` **only**
+on Swagger UI's same-origin specification download. The specification request
+URL contains no forwarded key. Try-it-out operations, cross-origin URLs,
+protocol-relative URLs, and absolute HTTPS specification URLs never receive
+this page key. Without a page key, no header is added.
+
+**Limits:** the initial documentation navigation still contains `?code=` until
+the script runs. Server/proxy/access logs and browser history before replacement
+may record it; `replaceState` cannot erase earlier copies. The key also remains
+in browser memory for the page lifetime. A function-scoped key authorizes only
+its own function: use a host key or a key valid for both the docs and JSON
+functions, not merely the docs function's key. Do not use a master key for
+routine documentation access. Prefer edge authentication (pattern 3) in production.
+Core Tools does not enforce function-key authentication locally, so a local
+successful request proves neither key validity nor enforcement on Azure.
+
+For direct JSON/YAML downloads, send an `x-functions-key` header. The low-level
+renderer can opt in with `render_swagger_ui(forward_page_key_header=True)`;
+it cannot read or forward a header from the initial page request.
+
+**Migration:** `docs_key_forwarding=None` currently retains legacy query forwarding
+and emits a `DeprecationWarning` once per protected registration. Silence it by
+choosing `"header"` explicitly (recommended), or `"none"` for edge-authenticated
+or intentionally anonymous specifications. Explicit `"query"` retains the old
+key-in-HTML/spec-URL exposure and is only a compatibility escape hatch. The
+default will change to `"header"` in a future minor release before 1.0.
+Anonymous registrations never forward a page key, in any mode.
 
 ### 3. Enforce access at the platform edge
 
@@ -99,6 +114,11 @@ URL from bypassing that control (for example, with access restrictions or
 private networking).
 
 ### Swagger UI Try-it-out behavior
+
+**Local demonstration versus production:** the default anonymous documentation
+registration and enabled Try-it-out are development conveniences, not production
+access controls. Make production exposure deliberate using patterns 1–3 above,
+and authenticate API operations independently of documentation access.
 
 `render_swagger_ui()` enables Try-it-out and allows all supported submit methods:
 `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, and `OPTIONS`. Anyone who can
@@ -178,9 +198,16 @@ You can provide a custom CSP policy:
 ```python
 from azure_functions_openapi.swagger_ui import render_swagger_ui
 
-custom_csp = "default-src 'self'; script-src 'self'"
+custom_csp = (
+    "default-src 'self'; script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; connect-src 'self'"
+)
 response = render_swagger_ui(custom_csp=custom_csp)
 ```
+
+Keep `{nonce}` in `script-src` so the renderer's inline scripts can run. The
+placeholder is replaced consistently in the response header and HTML-escaped
+meta tag. The default policy permits only same-origin spec/API connections.
 
 ### Security Headers
 
