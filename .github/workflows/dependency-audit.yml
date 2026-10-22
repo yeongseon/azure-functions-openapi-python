@@ -15,49 +15,40 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Set up Python 3.14
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
-
-      - name: Install pip-audit and runtime dependencies
+      - name: Build wheel and isolated reporting environments
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'pip-audit==2.10.1' .
-
-      - name: Audit runtime dependencies
+          python -m pip install 'pip-audit==2.10.1' build
+          python -m build --wheel
+          python -m venv --without-pip "$RUNNER_TEMP/runtime"
+          python -m pip --python "$RUNNER_TEMP/runtime/bin/python" install dist/*.whl
+          python -m venv --without-pip "$RUNNER_TEMP/development"
+          python -m pip --python "$RUNNER_TEMP/development/bin/python" install '.[dev]'
+      - name: Report runtime dependency policy
         id: runtime
         continue-on-error: true
         run: |
-          set +e
-          python -m pip_audit --format markdown > runtime-audit.md
-          status=$?
-          set -e
-          cat runtime-audit.md >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Install development dependencies
-        run: python -m pip install '.[dev]'
-
-      - name: Audit runtime and development dependencies
-        id: development
+          site_packages=$("$RUNNER_TEMP/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          python -m tools.dependency_audit_policy --site-packages "$site_packages" --output security-results/runtime
+      - name: Report development dependencies with the same classifier
+        if: always()
         continue-on-error: true
         run: |
-          set +e
-          python -m pip_audit --format markdown > development-audit.md
-          status=$?
-          set -e
-          cat development-audit.md >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Summarize audit outcomes
-        env:
-          RUNTIME_OUTCOME: ${{ steps.runtime.outcome }}
-          DEVELOPMENT_OUTCOME: ${{ steps.development.outcome }}
+          site_packages=$("$RUNNER_TEMP/development/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          python -m tools.dependency_audit_policy --site-packages "$site_packages" --development --output security-results/development
+      - name: Verify pinned CDN integrity
+        if: always()
+        continue-on-error: true
         run: |
-          {
-            echo "## Dependency audit outcomes"
-            echo "- Runtime dependencies: ${RUNTIME_OUTCOME}"
-            echo "- Runtime + development dependencies: ${DEVELOPMENT_OUTCOME}"
-          } >> "$GITHUB_STEP_SUMMARY"
+          site_packages=$("$RUNNER_TEMP/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          PYTHONPATH="$site_packages" "$RUNNER_TEMP/runtime/bin/python" -m tools.browser_integrity --output security-results/browser
+      - name: Upload redacted reporting evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dependency-security-report
+          path: security-results/**
+          if-no-files-found: error
