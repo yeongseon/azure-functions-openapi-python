@@ -26,8 +26,14 @@ This also applies when using the API or CLI.
 5. Record review evidence per [docs/review-evidence-policy.md](review-evidence-policy.md) in the PR's "Review Evidence" section before merging — advisory, not a required check.
 
 ## Validation
+- `make doctor` checks tools read-only; func/Azurite are required for live local lanes.
+- `make check` runs complete non-mutating lint, format, types, security and policy checks.
 - `make test`
-- `make lint`
-- `make typecheck`
-- `make security`
-- `make build`
+- `make integration` starts the real host and an isolated emulator with cleanup.
+- `make verify` is the full local gate; `make check-all` is an exact alias.
+- `make e2e-azure` separately certifies an explicitly configured deployed candidate.
+- `make report` renders saved `test-results/` evidence without rerunning checks.
+- `make clean` removes generated artifacts, never `.venv` or shared emulator data.
+
+See [Development Guide](development.md#makefile-targets) for the command contract;
+`lint`, `typecheck`, `security`, `build`, `docs`, `perf` and demos are focused/partial.

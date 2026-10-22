@@ -26,11 +26,17 @@ tests/
 
 ## Running Tests
 
-Run the full test suite:
+Run the offline suite (no host/emulator/cloud), with the existing 95% floor:
 
 ```bash
 make test
 ```
+
+`make integration` separately owns a real Functions host and isolated Azurite.
+`make verify` (also `make check-all`) always runs quality, offline tests, host smoke,
+performance budgets, wheel build/install smoke and strict docs. Missing live tools
+fail closed. `make report` renders saved evidence; see the
+[Development Guide](development.md#makefile-targets) for layout and status meanings.
 
 Run tests with coverage reporting:
 
@@ -96,6 +102,7 @@ Ensure invalid inputs raise `ValueError` with descriptive messages:
 ```python
 def test_invalid_route_raises():
     with pytest.raises(ValueError, match="Invalid route path"):
+
         @openapi(summary="Bad", route="../../etc/passwd")
         def bad_route(req):
             pass
@@ -138,6 +145,7 @@ class ItemResponse(BaseModel):
     id: int
     name: str
 
+
 def test_response_model_schema():
     @openapi(
         summary="Get item",
@@ -164,9 +172,7 @@ def test_security_scheme_in_components():
         summary="Protected",
         route="/api/protected",
         security=[{"BearerAuth": []}],
-        security_scheme={
-            "BearerAuth": {"type": "http", "scheme": "bearer"}
-        },
+        security_scheme={"BearerAuth": {"type": "http", "scheme": "bearer"}},
     )
     def protected(req):
         pass
@@ -207,6 +213,7 @@ exists and the OpenAPI registry is populated:
 ```python
 def test_webhook_receiver_example_registers_metadata():
     import importlib
+
     mod = importlib.import_module("examples.webhook_receiver.function_app")
     registry = get_openapi_registry()
     assert len(registry) > 0
@@ -246,12 +253,13 @@ Examples:
 
 The CI workflow runs:
 
-1. `make lint` -- Ruff linting
-2. `make typecheck` -- mypy type checking
-3. `make test` -- pytest with coverage
-4. `make security` -- Bandit security scan
+1. `make check` -- Ruff, strict mypy once, Bandit and repository policy checks
+2. `python -m tools.verification test` -- the same runner as `make test`, on each matrix interpreter
+3. `python -m tools.verification integration` -- the same managed real-host smoke as local
+4. Existing wheel, lowest-dependency, docs, and Azure release gates remain separate
 
-All four steps must pass for a PR to be mergeable. The matrix covers
+Required jobs must pass for a PR to be mergeable. Evidence artifacts upload even on failure.
+The matrix covers
 Python 3.11, 3.12, 3.13, and 3.14.
 
 ## Real Azure E2E Tests
