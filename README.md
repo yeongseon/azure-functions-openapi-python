@@ -37,17 +37,17 @@ Azure Functions Python v2 has no built-in API documentation story:
         "/api/users": {
             "post": {
                 "summary": "Create user",
-                "requestBody": { "...": "..." },
-                "responses": { "200": { "...": "..." } }
+                "requestBody": {"...": "..."},
+                "responses": {"200": {"...": "..."}},
             }
         }
     }
 }
 
+
 # function_app.py — no connection to the spec above
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
 ```
 
 Spec drifts. Consumers guess. No Swagger UI.
@@ -73,8 +73,8 @@ class UserResponse(BaseModel):
     responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
+
 
 # Auto-generated endpoints:
 # GET /api/openapi.json  — generated from registered metadata and bindings
@@ -308,6 +308,27 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
 The anonymous documentation routes above are intended for local development;
 review [production exposure and protection options](docs/security.md#protecting-documentation-routes) before deployment.
 
+For key-protected docs, explicitly opt into browser-side header forwarding:
+
+```python
+register_openapi_routes(
+    app,
+    title="Private API",
+    version="1.0.0",
+    auth_level=func.AuthLevel.FUNCTION,
+    docs_key_forwarding="header",
+)
+```
+
+The page key is not echoed into HTML or the spec URL; the browser removes `code`
+from its address bar and sends `x-functions-key` only on the same-origin spec
+download, never Try-it-out. The initial navigation URL can still reach access
+logs before replacement, and the key must authorize both functions. Prefer edge
+authentication in production. The default `None` retains legacy query forwarding
+with a `DeprecationWarning` for protected registrations; select `"header"`,
+`"none"` (no forwarding), or explicitly `"query"` (legacy exposure). The default
+will become `"header"` in a future minor release before 1.0.
+
 <details>
 <summary>Advanced: describe the schema with raw JSON Schema instead of Pydantic</summary>
 
@@ -335,8 +356,7 @@ review [production exposure and protection options](docs/security.md#protecting-
     },
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
-def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 </details>
