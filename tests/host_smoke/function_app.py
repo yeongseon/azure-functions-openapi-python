@@ -43,3 +43,16 @@ registered_docs = register_openapi_routes(
     docs_route="registered/docs",
     name_prefix="registered",
 )
+
+
+protected_docs = register_openapi_routes(
+    app,
+    title="Protected host smoke",
+    version="1",
+    json_route="protected/openapi.json",
+    yaml_route="protected/openapi.yaml",
+    docs_route="protected/docs",
+    name_prefix="protected",
+    auth_level=func.AuthLevel.FUNCTION,
+    docs_key_forwarding="header",
+)
