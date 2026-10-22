@@ -190,10 +190,11 @@ This repository is **issue-based, not milestone-based**. Track and group work us
 - Before adding any organizational structure, check whether the repository already has an established convention. A category being empty or unused (zero milestones, no `epic:*` labels) is evidence to follow the existing pattern, not to introduce a new one.
 
 ## Validation
-- `make test`
-- `make lint`
-- `make typecheck`
-- `make build`
+- `make doctor`
+- `make check`
+- `make test` (offline, 95% coverage)
+- `make integration` (requires func + Azurite)
+- `make verify` (`make check-all` is an exact backward-compatible alias)
 
 ## Release Process
 
@@ -275,15 +276,19 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 | Purpose | Command |
 | --- | --- |
 | Environment setup | `make install` |
+| CI-selected interpreter setup | `make install-ci` |
+| Read-only prerequisite diagnostics | `make doctor` |
 | Format code | `make format` |
 | Check formatting (`src`, `tests`) | `make format-check` |
-| Lint | `make lint` |
-| Type check | `make typecheck` |
-| Tests | `make test` |
-| Coverage | `make cov` |
-| Full validation | `make check-all` |
-| Docs build | `make docs` |
-| Package build | `make build` |
+| Complete non-mutating quality gate | `make check` |
+| Offline tests with 95% coverage | `make test` |
+| Managed local host/emulator tests | `make integration` |
+| Full local validation | `make verify` (`make check-all` alias) |
+| Configured Azure candidate certification | `make e2e-azure` |
+| Render saved evidence | `make report` |
+| Generated artifact cleanup only | `make clean` |
+| Focused lint/types/coverage | `make lint`, `make typecheck`, `make cov` |
+| Focused docs/package/performance | `make docs`, `make build`, `make perf` |
 
 ## Compatibility Rules
 
@@ -297,7 +302,7 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 - Public APIs require tests.
 - Bug fixes require regression tests.
 - Representative and complex examples must remain smoke-tested.
-- `make check-all` is the minimum merge gate.
+- `make verify` is the minimum local merge gate; `make check-all` aliases it exactly.
 
 ## Commit Rules
 
