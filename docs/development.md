@@ -136,13 +136,17 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make lint` | Run linter (ruff + mypy) |
 | `make typecheck` | Run mypy type checking |
 | `make security` | Run Bandit security scan |
-| `make test` | Run pytest |
+| `make test` | Offline pytest with 95% coverage, saved JUnit/coverage/summary |
 | `make cov` | Run tests with coverage (gate: `fail_under = 95`) |
 | `make e2e-local` | Run e2e tests against local Azurite on `:7071` |
 | `make e2e-azure` | Run e2e tests against Azure (`E2E_BASE_URL` required) |
 | `make lint-workflows` | Lint release workflows, action pins, and the Hatch matrix |
-| `make check` | Run lint + typecheck |
-| `make check-all` | Run lint-workflows + check + test + security |
+| `make install-ci` | Install extras on CI's explicitly selected interpreter |
+| `make check` | Non-mutating lint, format, types once, Bandit and policy checks |
+| `make integration` | Real Functions host + isolated Azurite, managed readiness/cleanup |
+| `make verify` | Check + test + integration + perf + wheel smoke + strict docs |
+| `make check-all` | Exact backward-compatible alias for `verify` |
+| `make report` | Render last saved evidence without rerunning tests |
 | `make docs` | Build the MkDocs site |
 | `make docs-serve` | Serve the docs locally with live reload |
 | `make demo` | Run the Swagger UI and example demos |
@@ -155,11 +159,32 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make reset` | Deep clean, then reinstall the env |
 | `make hatch-clean` | Remove the Hatch environment |
 | `make clean` | Remove build artifacts |
-| `make clean-all` | Deep clean (caches, coverage, venv) |
+| `make clean-all` | Alias of artifact-only `clean`; never deletes `.venv` |
 | `make help` | List available targets |
 
 Coverage is enforced at **95%** (`fail_under = 95` in `pyproject.toml`); a drop
 below that fails the build.
+
+`make doctor` is read-only and fails for missing required tools. It reports the
+actual interpreter; func/Azurite are required only for integration/verify.
+Local commands use Hatch's Python 3.11; CI uses its selected `PYTHON` directly.
+Install Hatch once in an isolated tool environment; routine commands never upgrade
+pip or reinstall Hatch. `install` does not change the global interpreter.
+
+All targets besides the canonical contract (`install`, `install-ci`, `doctor`,
+`format`, `format-check`, `check`, `test`, `integration`, `verify`, `e2e-azure`,
+`report`, `clean`) are focused/partial or maintenance commands. Demos are optional.
+`e2e-local` is a local-emulator check, never real Azure certification.
+
+Evidence is saved under gitignored `test-results/`: `test/` contains `junit.xml`,
+`coverage.xml`, `summary.json`; `integration/` contains `junit/junit.xml`, logs and
+summary; `verify/` contains aggregate summary, `lanes.json` and environment metadata;
+`azure-e2e/` contains JUnit, logs and summary with the expected deployed version.
+Each lane also saves `environment.json`. Console and Actions summaries use the same
+JSON counts/status. PASS requires execution; zero/all-skipped/missing prerequisites
+are INCOMPLETE, errors are FAIL, and NOT_APPLICABLE is reserved for unsupported lanes.
+`verify` never silently omits a required lane. `e2e-azure` requires both
+`E2E_BASE_URL` and `E2E_EXPECTED_VERSION` and never provisions resources.
 
 > For the full release workflow, see [Release Process](release_process.md).
 
