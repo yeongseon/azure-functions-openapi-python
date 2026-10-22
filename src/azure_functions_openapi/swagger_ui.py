@@ -31,6 +31,8 @@ def render_swagger_ui(
     openapi_url: str = "/api/openapi.json",
     custom_csp: str | None = None,
     enable_client_logging: bool = False,
+    *,
+    forward_page_key_header: bool = False,
 ) -> HttpResponse:
     """
     Render Swagger UI with enhanced security headers and CSP protection.
@@ -40,6 +42,9 @@ def render_swagger_ui(
         openapi_url: URL to the OpenAPI specification
         custom_csp: Custom Content Security Policy (optional)
         enable_client_logging: Whether to enable browser-side response logging
+        forward_page_key_header: Read and remove the page's code query in the browser,
+            forwarding it only as a header on the same-origin spec download. Absolute
+            HTTPS spec URLs are supported but never receive the page key.
 
     Returns:
         HttpResponse with Swagger UI HTML and security headers
@@ -83,6 +88,37 @@ def render_swagger_ui(
             }
     """
 
+    page_key_script = ""
+    key_interceptor = ""
+    if forward_page_key_header:
+        allowed_js = json.dumps(sanitized_url.startswith("/") and not openapi_url.startswith("//"))
+        page_key_script = f"""<script nonce="{nonce}">
+          const pageQuery = new URLSearchParams(window.location.search);
+          const pageKey = pageQuery.get('code');
+          if (pageQuery.has('code')) {{
+            const pageUrl = new URL(window.location.href);
+            pageUrl.searchParams.delete('code');
+            history.replaceState(history.state, '',
+              pageUrl.pathname + pageUrl.search + pageUrl.hash);
+          }}
+          const specKeyForwardingAllowed = {allowed_js};
+        </script>
+        """
+        key_interceptor = f"""
+              if (pageKey && specKeyForwardingAllowed && request.loadSpec === true &&
+                  !request.url.startsWith('//')) {{
+                try {{
+                  const specUrl = new URL({safe_url_js}, window.location.href);
+                  const requestUrl = new URL(request.url, window.location.href);
+                  if (requestUrl.origin === window.location.origin &&
+                      requestUrl.href === specUrl.href) {{
+                    request.headers['x-functions-key'] = pageKey;
+                  }}
+                }} catch (error) {{
+                  if (!(error instanceof TypeError)) throw error;
+                }}
+              }}"""
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -102,7 +138,7 @@ def render_swagger_ui(
       </head>
       <body>
         <div id="swagger-ui"></div>
-        <script src="{_SWAGGER_UI_CDN_BASE}/swagger-ui-bundle.js"
+        {page_key_script}<script src="{_SWAGGER_UI_CDN_BASE}/swagger-ui-bundle.js"
                 integrity="{_SWAGGER_UI_BUNDLE_SRI}"
                 crossorigin="anonymous"></script>
         <script nonce="{nonce}">
@@ -117,7 +153,7 @@ def render_swagger_ui(
             supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'],
             requestInterceptor: function(request) {{
               // Add security headers to requests
-              request.headers['X-Requested-With'] = 'XMLHttpRequest';
+              request.headers['X-Requested-With'] = 'XMLHttpRequest';{key_interceptor}
               return request;
             }},
             {response_interceptor}
@@ -193,6 +229,12 @@ def _sanitize_url(url: str) -> str:
     not match the allowed character set is replaced with the default.
     """
     if not url or not isinstance(url, str):
+        return "/api/openapi.json"
+
+    if url.startswith("//"):
+        logger.warning(
+            "Protocol-relative specification URL rejected: %s", _redact_query_for_logging(url)
+        )
         return "/api/openapi.json"
 
     # Block dangerous URI schemes and HTML event handlers
