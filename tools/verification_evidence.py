@@ -17,6 +17,14 @@ import xml.etree.ElementTree as ET
 Status = Literal["PASS", "FAIL", "INCOMPLETE", "NOT_APPLICABLE"]
 
 
+def read_xml_root(path: Path) -> ET.Element:
+    """Parse a locally generated report, refusing entity declarations."""
+    data = path.read_bytes()
+    if b"<!ENTITY" in data.upper():
+        raise ValueError("XML reports must not declare entities")
+    return ET.fromstring(data)
+
+
 @dataclass(frozen=True, slots=True)
 class Summary:
     schema_version: int
@@ -80,7 +88,7 @@ def collect(directory: Path, command: list[str], exit_code: int) -> Summary:
     cases: list[ET.Element] = []
     for path in directory.rglob("*.xml"):
         if "junit" in path.name:
-            cases.extend(ET.parse(path).getroot().iter("testcase"))
+            cases.extend(read_xml_root(path).iter("testcase"))
     skipped = sum(case.find("skipped") is not None for case in cases)
     failed = sum(
         case.find("failure") is not None or case.find("error") is not None for case in cases
@@ -94,7 +102,7 @@ def collect(directory: Path, command: list[str], exit_code: int) -> Summary:
     coverage_path = directory / "coverage.xml"
     coverage = None
     if coverage_path.exists():
-        coverage = float(ET.parse(coverage_path).getroot().get("line-rate", "0"))
+        coverage = float(read_xml_root(coverage_path).get("line-rate", "0"))
     return Summary(
         1,
         directory.name,
