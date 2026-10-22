@@ -3,8 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import re
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlencode
+import warnings
 
 import azure.functions as func
 
@@ -41,6 +42,7 @@ def register_openapi_routes(
     name_prefix: str = "openapi",
     spec_options: Mapping[str, Any] | None = None,
     enabled: bool = True,
+    docs_key_forwarding: Literal["header", "query", "none"] | None = None,
 ) -> DocsRoutes:
     """Register opt-in JSON, YAML, and Swagger UI routes on ``app``.
 
@@ -50,10 +52,14 @@ def register_openapi_routes(
 
     The supplied app remains the routing authority. No routes are registered
     until this function is called, and ``enabled=False`` performs no mutation.
-    For protected routes, a ``code`` query value on the docs request is copied
-    into the specification URL. The key must authorize the JSON route; host or
-    master keys span functions, while function-scoped keys do not. Keys in page
-    URLs may be retained in browser history and logs.
+    For protected routes, ``docs_key_forwarding="header"`` lets the browser
+    remove ``code`` from its page URL and send it only in the same-origin spec
+    request's ``x-functions-key`` header, without server-side key echo.
+    ``"query"`` preserves legacy spec-URL forwarding; ``"none"`` never forwards.
+    The default ``None`` preserves ``"query"`` with a DeprecationWarning for
+    protected routes; it will change to ``"header"`` in a future minor before 1.0.
+    Anonymous routes never forward. The key must authorize both docs and JSON
+    functions. The initial navigation URL can still be retained in access logs.
     """
     routes = (json_route, yaml_route, docs_route)
     for route in routes:
@@ -63,6 +69,8 @@ def register_openapi_routes(
         raise ValueError("Documentation routes must be distinct")
     if not isinstance(auth_level, func.AuthLevel):
         raise TypeError("auth_level must be an azure.functions.AuthLevel")
+    if docs_key_forwarding not in (None, "header", "query", "none"):
+        raise ValueError('docs_key_forwarding must be "header", "query", "none", or None')
     if not name_prefix.strip():
         raise ValueError("name_prefix must be non-empty")
     suffixes = tuple(_function_suffix(route) for route in routes)
@@ -78,6 +86,16 @@ def register_openapi_routes(
     if reserved_options:
         names = ", ".join(sorted(reserved_options))
         raise ValueError(f"spec_options cannot override: {names}")
+
+    protected = auth_level is not func.AuthLevel.ANONYMOUS
+    if protected and docs_key_forwarding is None:
+        warnings.warn(
+            "The legacy docs key-in-URL forwarding exposes reusable keys in served HTML "
+            'and specification request URLs. Pass docs_key_forwarding="header" (or "none") '
+            'explicitly; the default will change to "header" in a future minor release before 1.0.',
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
     def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         from azure_functions_openapi import get_openapi_json
@@ -115,11 +133,16 @@ def register_openapi_routes(
         # actually serves it, even when json_route's own first segment
         # happens to equal the configured prefix.
         openapi_url = apply_host_prefix(f"/{json_route}", prefix)
-        code = req.params.get("code")
-        if auth_level is not func.AuthLevel.ANONYMOUS and code is not None:
-            separator = "&" if "?" in openapi_url else "?"
-            openapi_url = f"{openapi_url}{separator}{urlencode({'code': code})}"
-        return render_swagger_ui(title=f"{title} Docs", openapi_url=openapi_url)
+        if protected and docs_key_forwarding in (None, "query"):
+            code = req.params.get("code")
+            if code is not None:
+                separator = "&" if "?" in openapi_url else "?"
+                openapi_url = f"{openapi_url}{separator}{urlencode({'code': code})}"
+        return render_swagger_ui(
+            title=f"{title} Docs",
+            openapi_url=openapi_url,
+            forward_page_key_header=protected and docs_key_forwarding == "header",
+        )
 
     registered_json = _register_handler(app, openapi_json, json_route, auth_level, name_prefix)
     registered_yaml = _register_handler(app, openapi_yaml, yaml_route, auth_level, name_prefix)

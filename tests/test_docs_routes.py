@@ -142,6 +142,7 @@ def test_register_openapi_routes_supports_custom_routes_names_auth_and_options()
         docs_route="reference",
         route_prefix="gateway/",
         auth_level=func.AuthLevel.FUNCTION,
+        docs_key_forwarding="query",
         name_prefix="private",
         spec_options={"description": "Private contract", "strict": True},
     )
