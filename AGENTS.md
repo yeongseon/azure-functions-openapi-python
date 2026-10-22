@@ -245,6 +245,7 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 | `cookbook-smoke` | downstream import/registration drift |
 | `cookbook-host-smoke` | candidate wheel installs cleanly and a real `func` host + Azurite boots with it present, no cloud. NOTE: the cookbook HTTP examples do not import this package, so this is a host-boot smoke, **not** proof of this package's own runtime behavior (tracked separately) |
 | `azure-e2e` | cloud-only drift — deploys to real Azure, runs the live e2e suite, uploads an `azure-cert` record |
+| `runtime-dependency-audit` | blocks unexcepted runtime advisories and CDN/SRI failures on the candidate wheel; see [SECURITY.md](SECURITY.md) for evidence, expiry and tool-error policy |
 | `publish` | uploads the exact artifact `build` produced; it never rebuilds |
 
 ### Recovery
