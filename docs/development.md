@@ -159,7 +159,7 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make reset` | Deep clean, then reinstall the env |
 | `make hatch-clean` | Remove the Hatch environment |
 | `make clean` | Remove build artifacts |
-| `make clean-all` | Alias of artifact-only `clean`; never deletes `.venv` |
+| `make clean-all` | `clean` plus bytecode caches and the project-local `.venv` (maintenance only) |
 | `make help` | List available targets |
 
 Coverage is enforced at **95%** (`fail_under = 95` in `pyproject.toml`); a drop

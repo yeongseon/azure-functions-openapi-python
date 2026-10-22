@@ -94,7 +94,7 @@ jobs:
       - name: Install package with dev extras
         run: make install-ci
 
-      - name: Lint workflows (pin hygiene + release-gate canonical SHAs)
+      - name: Quality gate (make check)
         run: make check
 
       - name: Ruff format check (changed Python files)

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
+from dataclasses import asdict, replace
+import json
 import os
 from pathlib import Path
 import shutil
@@ -99,8 +100,6 @@ def verify() -> int:
         code = run(["make", target], directory / "logs" / f"{target}.log", 1200)
         path = Path("test-results") / target / "summary.json"
         if target in {"test", "integration"} and path.exists():
-            import json
-
             summary = Summary(**json.loads(path.read_text()))
             if code and summary.status == "PASS":
                 summary = replace(summary, status="FAIL", exit_code=code)
@@ -145,9 +144,6 @@ def verify() -> int:
         0 if status == "PASS" else 1,
         reason="; ".join(f"{item.lane}={item.status}" for item in outcomes),
     )
-    from dataclasses import asdict
-    import json
-
     (directory / "lanes.json").write_text(json.dumps([asdict(s) for s in outcomes], indent=2))
     publish(save(directory, aggregate))
     return aggregate.exit_code

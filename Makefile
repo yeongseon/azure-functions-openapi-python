@@ -247,8 +247,13 @@ doctor:
 clean:
 	@$(RUN) -m tools.verification clean
 
+# Deep clean (maintenance, not part of the canonical contract): artifacts plus the
+# project-local virtual environment. `make clean` never touches `.venv`.
 .PHONY: clean-all
 clean-all: clean
+	@find . -type d -name "__pycache__" -not -path "./.git/*" -exec rm -rf {} +
+	@find . -type f \( -name "*.pyc" -o -name "*.pyo" \) -not -path "./.git/*" -delete
+	@rm -rf .DS_Store $(VENV_DIR)
 
 .PHONY: help
 help:
