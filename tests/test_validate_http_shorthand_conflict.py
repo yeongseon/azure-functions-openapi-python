@@ -14,6 +14,7 @@ against the real companion package end to end.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import importlib
 from typing import Any
 
@@ -33,6 +34,14 @@ try:
     HAS_VALIDATION = True
 except ImportError:
     HAS_VALIDATION = False
+
+
+def _validator() -> Callable[..., Callable[[Callable[..., Any]], Callable[..., Any]]]:
+    decorator: Callable[..., Callable[[Callable[..., Any]], Callable[..., Any]]] = (
+        importlib.import_module("azure_functions_validation").validate_http
+    )
+    return decorator
+
 
 pytestmark = pytest.mark.skipif(
     not HAS_VALIDATION,
@@ -63,7 +72,7 @@ class _OtherValidated(BaseModel):
     "openapi_above_route", [True, False], ids=["openapi-above", "openapi-below"]
 )
 def test_conflicting_request_model_shorthand_raises(openapi_above_route: bool) -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
@@ -71,14 +80,14 @@ def test_conflicting_request_model_shorthand_raises(openapi_above_route: bool) -
 
         @openapi(requests=_Authored)
         @app.route(route="orders", methods=["POST"])
-        @validate_http(body=_Validated)  # type: ignore[untyped-decorator]
+        @validate_http(body=_Validated)
         def orders(req: Any, body: Any) -> Any:
             return body
     else:
 
         @app.route(route="orders", methods=["POST"])
         @openapi(requests=_Authored)
-        @validate_http(body=_Validated)  # type: ignore[untyped-decorator]
+        @validate_http(body=_Validated)
         def orders(req: Any, body: Any) -> Any:  # noqa: F811
             return body
 
@@ -87,13 +96,13 @@ def test_conflicting_request_model_shorthand_raises(openapi_above_route: bool) -
 
 
 def test_conflicting_response_model_shorthand_raises() -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
     @openapi(responses=_Authored)
     @app.route(route="orders", methods=["GET"])
-    @validate_http(response_model=_Validated)  # type: ignore[untyped-decorator]
+    @validate_http(response_model=_Validated)
     def orders(req: Any) -> Any: ...
 
     with pytest.raises(OpenAPISpecConfigError, match="Conflicting status 200"):
@@ -101,13 +110,13 @@ def test_conflicting_response_model_shorthand_raises() -> None:
 
 
 def test_request_conflict_detected_even_when_response_matches() -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
     @openapi(requests=_Authored, responses=_Validated)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_Validated)  # type: ignore[untyped-decorator]
+    @validate_http(body=_Validated, response_model=_Validated)
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -116,13 +125,13 @@ def test_request_conflict_detected_even_when_response_matches() -> None:
 
 
 def test_response_conflict_detected_even_when_request_matches() -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
     @openapi(requests=_Validated, responses=_Authored)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_OtherValidated)  # type: ignore[untyped-decorator]
+    @validate_http(body=_Validated, response_model=_OtherValidated)
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -131,13 +140,13 @@ def test_response_conflict_detected_even_when_request_matches() -> None:
 
 
 def test_equivalent_model_declared_through_both_decorators_merges() -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
     @openapi(requests=_Validated, responses=_Validated)
     @app.route(route="orders", methods=["POST"])
-    @validate_http(body=_Validated, response_model=_Validated)  # type: ignore[untyped-decorator]
+    @validate_http(body=_Validated, response_model=_Validated)
     def orders(req: Any, body: Any) -> Any:
         return body
 
@@ -150,13 +159,13 @@ def test_equivalent_model_declared_through_both_decorators_merges() -> None:
 
 
 def test_inferred_response_is_still_superseded_by_validation_metadata() -> None:
-    from azure_functions_validation import validate_http
+    validate_http = _validator()
 
     app = func.FunctionApp()
 
     @openapi()
     @app.route(route="orders", methods=["GET"])
-    @validate_http(response_model=_Validated)  # type: ignore[untyped-decorator]
+    @validate_http(response_model=_Validated)
     def orders(req: Any) -> _Authored:
         raise NotImplementedError
 
