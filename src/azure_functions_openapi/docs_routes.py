@@ -79,7 +79,7 @@ def register_openapi_routes(
         names = ", ".join(sorted(reserved_options))
         raise ValueError(f"spec_options cannot override: {names}")
 
-    def openapi_json(_req: func.HttpRequest) -> func.HttpResponse:
+    def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
         from azure_functions_openapi import get_openapi_json
 
         return func.HttpResponse(
@@ -93,7 +93,7 @@ def register_openapi_routes(
             mimetype="application/json",
         )
 
-    def openapi_yaml(_req: func.HttpRequest) -> func.HttpResponse:
+    def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
         from azure_functions_openapi import get_openapi_yaml
 
         return func.HttpResponse(
