@@ -53,7 +53,8 @@ git checkout -b feat/add-cookie-parameter-support
 make check-all
 ```
 
-This runs linting (Ruff), type checking (mypy), and the full test suite.
+This aliases `make verify`: quality + offline tests + managed host/Azurite + perf +
+wheel build/install smoke + strict docs. Core Tools and Azurite are required.
 
 4. **Commit changes** using [Conventional Commits](https://www.conventionalcommits.org/) format:
 
@@ -120,14 +121,20 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 | `make lint` | Run Ruff + mypy |
 | `make typecheck` | Run mypy type checking |
 | `make security` | Run Bandit security scan |
-| `make test` | Run pytest |
+| `make test` | Offline pytest, 95% coverage and saved JUnit/coverage/summary |
 | `make cov` | Run tests with coverage (gated at 95%) |
 | `make lint-workflows` | Lint release workflows, action pins, Hatch matrix |
-| `make check` | Run lint + typecheck |
-| `make check-all` | Run lint-workflows + check + test + security (full gate) |
+| `make check` | Non-mutating lint, format, types once, security and policy checks |
+| `make integration` | Managed real Functions host and isolated Azurite |
+| `make verify` | Full deterministic local gate |
+| `make check-all` | Exact backward-compatible alias of `verify` |
+| `make report` | Render saved evidence only |
+| `make clean` | Generated artifacts only; preserve environments/shared data |
 | `make docs` | Build the MkDocs site |
 
 See [Development Guide](development.md#makefile-targets) for the complete list.
+`style`, `lint`, `typecheck`, `security`, `cov`, `lint-workflows` and `docs` are
+focused/partial checks, not substitutes for `verify`.
 
 ### Pre-commit hooks
 

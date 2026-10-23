@@ -194,8 +194,7 @@ jobs:
 
       - name: Run e2e tests
         run: |
-          pytest tests/e2e -v -m e2e --no-cov \
-            --junitxml=e2e-report/junit.xml \
+          python -m tools.verification azure-e2e -v \
             --html=e2e-report/report.html --self-contained-html
         env:
           E2E_BASE_URL: https://${{ steps.names.outputs.app }}.azurewebsites.net
@@ -211,7 +210,7 @@ jobs:
           import sys
           import xml.etree.ElementTree as ET
 
-          root = ET.parse("e2e-report/junit.xml").getroot()
+          root = ET.parse("test-results/azure-e2e/junit.xml").getroot()
           suite = root if root.tag == "testsuite" else root.find("testsuite")
           tests = int(suite.get("tests", 0))
           skipped = int(suite.get("skipped", 0))
@@ -304,7 +303,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: e2e-report/
+          path: |
+            e2e-report/
+            test-results/**
           retention-days: 30
 
   cleanup:

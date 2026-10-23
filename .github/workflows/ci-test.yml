@@ -92,20 +92,10 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install package with dev extras
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: make install-ci
 
-      - name: Lint workflows (pin hygiene + release-gate canonical SHAs)
-        run: |
-          python tools/lint_release_workflows.py
-          python tools/lint_workflow_pins.py
-          python tools/lint_hatch_matrix.py
-
-      - name: Ruff style check
-        run: |
-          ruff check src tests
-          ruff format --check src tests
+      - name: Quality gate (make check)
+        run: make check
 
       - name: Ruff format check (changed Python files)
         if: github.event_name == 'pull_request'
@@ -114,8 +104,12 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python tools/check_pr_format.py "$PR_BASE_SHA" "$PR_HEAD_SHA"
 
-      - name: Type check (mypy, strict)
-        run: mypy src tests
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quality-evidence
+          path: test-results/**
 
   test:
     name: Test (Py ${{ matrix.python-version }}, af ${{ matrix.azure-functions-version }})
@@ -169,9 +163,7 @@ jobs:
           PY
 
       - name: Install package with dev extras (on the matrix interpreter)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: make install-ci
 
       - name: Install azure-functions ${{ matrix.azure-functions-version }}
         run: |
@@ -206,25 +198,32 @@ jobs:
           IS_COVERAGE_CELL: ${{ matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' }}
         run: |
           if [ "$IS_COVERAGE_CELL" = "true" ]; then
-            pytest tests/
+            python -m tools.verification test
           else
-            pytest tests/ --no-cov
+            python -m tools.verification test --no-cov
           fi
 
       - name: Verify coverage output
         if: matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest'
-        run: ls -lh coverage.xml
+        run: ls -lh test-results/test/coverage.xml
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' && github.actor != 'dependabot[bot]'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
+          files: ./test-results/test/coverage.xml
           verbose: true
           fail_ci_if_error: false
         env:
           CODECOV_RETRIES: 3
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-evidence-py${{ matrix.python-version }}-af${{ matrix.azure-functions-version }}
+          path: test-results/**
 
   docs-check:
     name: Documentation checks
@@ -255,7 +254,14 @@ jobs:
         run: pytest tests/test_screenshot_manifest.py --no-cov
 
       - name: Build docs (strict)
-        run: mkdocs build --strict
+        run: make docs
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-evidence
+          path: test-results/**
 
   # Advisory regression lane: visible on PRs/main but intentionally omitted
   # from ci-required so noisy shared-runner timing cannot block a merge.
@@ -280,6 +286,13 @@ jobs:
 
       - name: Check spec-generation budgets
         run: make perf
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: perf-evidence
+          path: test-results/**
 
   # The single required status check for branch protection.
   #
@@ -390,7 +403,14 @@ jobs:
           PY
 
       - name: Run full suite against minimum runtime dependencies
-        run: pytest tests/ --no-cov
+        run: python -m tools.verification test --no-cov
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: minimum-dependencies-evidence
+          path: test-results/**
 
   artifact-build:
     name: Build compatibility artifacts
@@ -540,87 +560,18 @@ jobs:
 
       - name: Install Functions Core Tools v4 and smoke app
         run: |
-          npm install --global azure-functions-core-tools@4 --unsafe-perm true
-          python -m venv tests/host_smoke/.venv
-          tests/host_smoke/.venv/bin/python -m pip install --upgrade pip
-          cd tests/host_smoke
-          .venv/bin/python -m pip install -r requirements.txt
+          npm install --global azure-functions-core-tools@4 azurite --unsafe-perm true
+          make install-ci
 
       - name: Exercise OpenAPI routes on a real Functions host
-        run: |
-          npx --yes azurite --silent > "$RUNNER_TEMP/azurite.log" 2>&1 &
-          azurite_pid=$!
-          trap 'kill "$azurite_pid" "$host_pid" 2>/dev/null || true' EXIT
+        run: python -m tools.verification integration
 
-          cd tests/host_smoke
-          export PATH="$PWD/.venv/bin:$PATH"
-          timeout 120s func start --verbose > "$RUNNER_TEMP/host-smoke.log" 2>&1 &
-          host_pid=$!
-
-          ready=false
-          for _ in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:7071/api/custom_name \
-              --output "$RUNNER_TEMP/custom-route.json"; then
-              ready=true
-              break
-            fi
-            if ! kill -0 "$host_pid" 2>/dev/null; then
-              break
-            fi
-            sleep 2
-          done
-
-          if [ "$ready" != true ]; then
-            cat "$RUNNER_TEMP/host-smoke.log"
-            echo "::error::The custom-name route did not become ready"
-            exit 1
-          fi
-
-          python -c 'import json, pathlib; assert json.loads(pathlib.Path("'"$RUNNER_TEMP"'/custom-route.json").read_text()) == {"function_name": "custom_name"}'
-          curl --fail --silent http://127.0.0.1:7071/api/openapi.json \
-            --output "$RUNNER_TEMP/openapi.json"
-          python - <<'PY'
-          import json
-          import os
-          import pathlib
-          import urllib.request
-
-          spec = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "openapi.json").read_text())
-          assert spec["openapi"], "spec is missing the 'openapi' version key"
-          paths = spec["paths"]
-
-          # #786: the fixture previously documented the pre-function_name route
-          # ('/api/python_handler_name') while the host actually served
-          # '/api/custom_name', and the host-smoke job passed anyway because it
-          # only checked a hard-coded URL, never the generated document itself.
-          assert "/api/python_handler_name" not in paths, (
-              f"spec still documents the stale pre-function_name route; paths={sorted(paths)}"
-          )
-          app_paths = [p for p in paths if p not in ("/api/openapi.json", "/api/docs")]
-          assert app_paths == ["/api/custom_name"], (
-              f"expected the documented app route to be exactly ['/api/custom_name'], got {app_paths}"
-          )
-
-          # Exercise the URL taken FROM the generated document -- not a second
-          # hard-coded '/api/custom_name' literal -- so a documentation/runtime
-          # mismatch cannot hide behind two copies of the same string.
-          documented_path = app_paths[0]
-          with urllib.request.urlopen(f"http://127.0.0.1:7071{documented_path}") as resp:
-              body = json.loads(resp.read())
-          assert body == {"function_name": "custom_name"}, body
-          PY
-          curl --fail --silent http://127.0.0.1:7071/api/docs \
-            --output "$RUNNER_TEMP/swagger.html"
-          grep -q 'SwaggerUIBundle' "$RUNNER_TEMP/swagger.html"
-
-          kill "$host_pid" 2>/dev/null || true
-          wait "$host_pid" 2>/dev/null || true
-          cat "$RUNNER_TEMP/host-smoke.log"
-
-          if grep -Eq "0 functions (loaded|found \(Worker\))|No job functions found|Executed 'Functions\..*' \(Failed" "$RUNNER_TEMP/host-smoke.log"; then
-            echo "::error::The Functions host reported indexing or invocation errors"
-            exit 1
-          fi
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: host-evidence-py${{ matrix.python-version }}
+          path: test-results/**
 
   # azure-functions 2.x compatibility proof lane (issues #488 / #528),
   # following the sibling proof-lane pattern (azure-functions-validation #351 /
@@ -697,4 +648,11 @@ jobs:
         # `FunctionBuilder._function` private-attribute tripwires also run,
         # proving the adapter surface holds under azure-functions 2.x.
         run: |
-          pytest tests/ --no-cov -q -o "pythonpath=."
+          python -m tools.verification test --no-cov -q -o "pythonpath=."
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheel-2x-evidence-py${{ matrix.python-version }}
+          path: test-results/**

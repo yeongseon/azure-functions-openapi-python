@@ -62,17 +62,19 @@ your machine's default interpreter is newer. From the repository root, run:
 make install
 ```
 
-This creates the repository's `.venv` when needed, installs Hatch, creates the
-Hatch environment, and installs the development dependencies. No Azure account
-or deployed Function App is required for the standard local checks.
+Install Hatch once in an isolated tool environment before running this command.
+It creates the Hatch environment and installs development/docs dependencies and
+local pre-commit hooks; it never upgrades pip or modifies the global interpreter.
+Routine checks do not bootstrap tools. No Azure account is needed locally.
+CI uses `make install-ci PYTHON=python` to install into the interpreter selected by
+`actions/setup-python`, never the Python 3.11 Hatch environment.
 
 Run the same checks used by the project locally:
 
 ```bash
 make test
-make lint
-make typecheck
-make build
+make check
+make verify
 ```
 
 The default test command excludes real-Azure end-to-end tests. Those tests need
@@ -80,19 +82,67 @@ an `E2E_BASE_URL`; use `make e2e-azure` only when that environment is available.
 
 ## Project Commands
 
-```bash
-make format      # Format code with ruff
-make lint        # Lint with ruff
-make typecheck   # Type check with mypy
-make test        # Run tests
-make cov         # Run tests with coverage
-make perf        # Check spec-generation performance budgets
-make check-all   # Run the full local gate
+| Command | Contract |
+| --- | --- |
+| `make install` | Isolated Hatch development environment and local hooks |
+| `make install-ci` | Install extras into CI's explicitly selected `PYTHON` |
+| `make doctor` | Read-only prerequisites; non-zero when required tools are missing |
+| `make format` | Mutating Ruff formatting |
+| `make format-check` | Non-mutating formatting check |
+| `make check` | Ruff lint/format, strict mypy once, Bandit, workflow and repository policy checks |
+| `make test` | Offline suite, `not e2e and not perf`, existing 95% coverage floor |
+| `make integration` | Real Functions host plus isolated Azurite, bounded readiness and cleanup |
+| `make verify` | Always check + test + integration + perf + wheel build/install smoke + strict docs |
+| `make e2e-azure` | Existing deployment only; requires `E2E_BASE_URL` and `E2E_EXPECTED_VERSION` |
+| `make report` | Render saved evidence without executing any lane |
+| `make clean` | Remove generated evidence/build/cache artifacts; preserve `.venv` and shared data |
+
+`make check-all` is a backward-compatible alias for **exactly `make verify`**.
+Full local verification requires Core Tools (`func`) and Azurite on PATH. Doctor
+lists these as required-for-integration/verify, not requirements for offline tests.
+Integration uses temporary storage and ephemeral ports; it never uses shared emulator
+volumes or provisions Azure resources. Core Tools may need its extension bundle cached.
+The import-only regression tests in `tests/host_smoke/test_fixture_routes.py` remain
+offline; only `make integration` starts the live host.
+
+Focused/partial targets remain available: `lint`, `style`, `typecheck`, `security`,
+`lint-workflows`, `cov` (HTML coverage), `perf`, `build`, `wheel-smoke`, `docs`, and
+`demo*`. Demo/screenshots are never offline-test prerequisites. `e2e-local` targets
+an already-running local emulator app on port 7071 and is **not Azure certification**.
+
+### Verification evidence
+
+Generated, gitignored evidence lives under:
+
+```text
+test-results/
+  test/{junit.xml,coverage.xml,summary.json,environment.json,logs/}
+  integration/{summary.json,environment.json,junit/junit.xml,logs/}
+  verify/{summary.json,environment.json,lanes.json,logs/}
+  azure-e2e/{summary.json,environment.json,junit.xml,logs/}
 ```
+
+Every summary records schema version, lane/command, selected/passed/failed/skipped
+counts, status, exit code and supporting paths. Console and Actions Job Summary
+render the same saved fields. CI uploads evidence with `if: always()`.
+Environment metadata records the actual Python/runtime and installed SDK/package
+versions, plus the explicitly configured Azure candidate version. Credentials and
+connection strings are redacted from saved summaries, XML and logs.
+
+- **PASS**: required checks succeeded and tests actually executed.
+- **FAIL**: process/check failure, test failure or timeout.
+- **INCOMPLETE**: missing prerequisites, missing/invalid JUnit, zero execution,
+  all skipped, or any skipped required live test. Optional offline skips remain visible.
+- **NOT_APPLICABLE**: reserved for explicitly unsupported lanes, never a fallback
+  for missing tools. No required local lane is currently unsupported.
+
+`verify/lanes.json` retains separate host, perf and wheel outcomes. Local success
+does not imply Azure certification: only the configured Azure suite proves the
+deployed candidate version. A non-successful required lane exits non-zero.
 
 Before opening a PR, run `ruff format --check <changed-python-files>` (or
 `ruff format <changed-python-files>` to fix them). `make format-check` checks
-`src` and `tests` without changing files. CI checks those same trees and also
+`src`, `tests`, and the verification helpers without changing files. CI checks those trees and also
 reports formatting failures on changed Python files in a dedicated step.
 
 ## GitHub Actions Pinning

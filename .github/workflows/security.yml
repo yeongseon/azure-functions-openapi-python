@@ -23,10 +23,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Hatch and dependencies via Makefile
-        run: |
-          pip install hatch
-          make install
+      - name: Install dependencies on the selected interpreter
+        run: make install-ci
 
       - name: Run Bandit
         run: make security
