@@ -113,6 +113,7 @@ def render_swagger_ui(
                   if (requestUrl.origin === window.location.origin &&
                       requestUrl.href === specUrl.href) {{
                     request.headers['x-functions-key'] = pageKey;
+                    request.redirect = 'error';
                   }}
                 }} catch (error) {{
                   if (!(error instanceof TypeError)) throw error;

@@ -7,7 +7,9 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 (async () => {
   let browser;
   try {
-    browser = await chromium.launch({ headless: true });
+    browser = await chromium.launch({ headless: true,
+      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+      args: ['--no-sandbox'] });
   } catch (error) {
     if (error.message.includes("Executable doesn't exist")) {
       process.stderr.write('Chromium executable not installed');
@@ -36,7 +38,8 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
       window.SwaggerUIBundle = config => {
         window.intercept = config.requestInterceptor;
         const spec = config.requestInterceptor({ url: config.url, loadSpec: true, headers: {} });
-        window.specDone = fetch(spec.url, { headers: spec.headers }).then(response => response.json());
+        window.specDone = fetch(spec.url, spec).then(response => response.json());
+        window.specRedirect = spec.redirect;
         return {};
       };
       window.SwaggerUIBundle.presets = { apis: {} };
@@ -48,6 +51,8 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
       assert.equal(page.url(), `${origin}/api/docs?keep=yes#section`);
       const specRequest = requests.filter(request => request.url === '/api/openapi.json').at(-1);
       assert.equal(specRequest.key, query.includes('CANARY') ? 'CANARY_KEY_9f3a' : undefined);
+      assert.equal(await page.evaluate(() => window.specRedirect),
+        query.includes('CANARY') ? 'error' : undefined);
       assert.ok(!specRequest.url.includes('code='));
       const leaked = await page.evaluate(() => {
         const urls = [

@@ -32,6 +32,7 @@ def test_header_script_uses_nonce_and_spec_only_guard(custom_csp: str | None) ->
     assert "requestUrl.origin === window.location.origin" in body
     assert "requestUrl.href === specUrl.href" in body
     assert "request.headers['x-functions-key'] = pageKey" in body
+    assert "request.redirect = 'error'" in body
     for forbidden in ("localStorage", "sessionStorage", "document.cookie", "console.log"):
         assert forbidden not in body
 
