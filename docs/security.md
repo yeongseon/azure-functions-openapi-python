@@ -80,11 +80,17 @@ on Swagger UI's same-origin specification download. The specification request
 URL contains no forwarded key. Try-it-out operations, cross-origin URLs,
 protocol-relative URLs, and absolute HTTPS specification URLs never receive
 this page key. Without a page key, no header is added.
+When the key header is attached, the specification fetch uses `redirect: 'error'`:
+any redirect fails closed with Swagger UI's normal specification-load error,
+without requesting the redirect destination, even on the same origin.
 
 **Limits:** the initial documentation navigation still contains `?code=` until
 the script runs. Server/proxy/access logs and browser history before replacement
 may record it; `replaceState` cannot erase earlier copies. The key also remains
-in browser memory for the page lifetime. A function-scoped key authorizes only
+in browser memory for the page lifetime. In particular,
+`performance.getEntriesByType("navigation")[0].name` retains the original
+`?code=` navigation URL after `history.replaceState`; cleaning the address bar
+does not clear this page-lifetime navigation-timing entry. A function-scoped key authorizes only
 its own function: use a host key or a key valid for both the docs and JSON
 functions, not merely the docs function's key. Do not use a master key for
 routine documentation access. Prefer edge authentication (pattern 3) in production.
