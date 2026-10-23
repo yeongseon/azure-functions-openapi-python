@@ -14,6 +14,25 @@ Recommended branch prefixes:
 - `chore/` for tooling and maintenance
 - `ci/` for workflow updates
 
+## Pull Request Review and Merge Policy
+
+Apply identical acceptance criteria regardless of whether changes were
+written by a person or with OpenCode, Codex, Claude Code, ChatGPT,
+Copilot or another tool. No specific AI review stage is required.
+
+- Create a focused PR linked to the relevant issue, with tests, affected
+  docs, and clear reporting of local checks not run.
+- Use **required GitHub CI status checks at the final PR head** as the
+  authoritative validation outcome. Run `make check-all` locally when
+  practical, but local execution is a recommendation rather than a separate
+  merge requirement. GitHub CI does not imply a particular runner type.
+- Review behavior, tests, compatibility, security and maintainability.
+  Oracle, Copilot and other AI review outputs are optional advisory context.
+- Resolve or disposition blocking findings, respect existing coverage,
+  Azure integration and release protection, and have the responsible
+  maintainer make the final merge decision. Security/CI permission and
+  release/publishing changes require explicit independent scrutiny.
+
 ## Development Workflow
 
 1. Create a branch from `main`.
@@ -23,7 +42,7 @@ Recommended branch prefixes:
    git checkout -b feat/your-feature-name
    ```
 2. Write code and tests.
-3. Run the local quality gate.
+3. Run the local quality gate when practical; required GitHub CI is authoritative.
    ```bash
    make check-all
    ```

@@ -39,7 +39,7 @@ relevant root document in the same pull request or commit series.
 
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
-- Run `hatch run pytest --cov --cov-report=term-missing -q` to verify before submitting changes.
+- For optional local verification, run `hatch run pytest --cov --cov-report=term-missing -q`; required GitHub CI remains authoritative.
 - Any PR that drops coverage below 95% must include additional tests to compensate.
 - Preserve the package's Python compatibility and public CLI behavior unless the change explicitly updates the contract.
 - Keep documentation examples, generated schema expectations, and tests synchronized.
@@ -49,6 +49,27 @@ relevant root document in the same pull request or commit series.
 - English (`README.md`) is the **canonical** source of truth for all documentation. Translated READMEs (`README.ko.md`, `README.ja.md`, `README.zh-CN.md`) are **best-effort**, community-maintained, and may lag the English source.
 - Translation sync is **not** required in the same PR as an English change, and a PR is **never** blocked by translation drift. Update translations opportunistically; when you do, keep them faithful to the current English source.
 - Each translated README carries a staleness banner linking back to the canonical English README. Keep that banner in place so readers always know the translation may be out of date.
+
+## Unified PR Review and Merge Policy
+
+The same review and merge criteria apply to changes written by humans,
+OpenCode, Codex, Claude Code, ChatGPT, Copilot, or other coding tools.
+No mandatory AI reviewer, Oracle design/post review, or tool-specific
+approval route exists. AI review outputs are **advisory**.
+
+1. Keep changes focused with tests and affected documentation; provide
+   accurate information about validations actually performed.
+2. **GitHub CI** required status checks on the final relevant PR head are
+   authoritative for automated validation. Local tests are recommended,
+   not a separate merge gate. Keep this repository's coverage, packaging,
+   security, documentation and Azure integration/release safeguards.
+   No runner-hosting model is assumed by this policy.
+3. Review correctness, compatibility, maintainability and security.
+   AI feedback is optional context, never human approval or proof of tests.
+4. Address or disposition findings, recheck required GitHub CI, and
+   let the responsible maintainer make the final merge decision.
+   Independently scrutinize changes to credentials, CI permissions,
+   release/publishing and other high-impact security-sensitive paths.
 
 ## PR Workflow
 
