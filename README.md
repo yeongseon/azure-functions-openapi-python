@@ -322,8 +322,12 @@ register_openapi_routes(
 
 The page key is not echoed into HTML or the spec URL; the browser removes `code`
 from its address bar and sends `x-functions-key` only on the same-origin spec
-download, never Try-it-out. The initial navigation URL can still reach access
-logs before replacement, and the key must authorize both functions. Prefer edge
+download, never Try-it-out. A redirect on this key-bearing spec request fails
+closed with Swagger UI's normal load error; the destination is not requested.
+The initial navigation URL can still reach access logs before replacement.
+Browser navigation timing (`performance.getEntriesByType("navigation")[0].name`)
+retains the original `?code=` URL after `history.replaceState` in page-lifetime
+memory. The key must authorize both functions. Prefer edge
 authentication in production. The default `None` retains legacy query forwarding
 with a `DeprecationWarning` for protected registrations; select `"header"`,
 `"none"` (no forwarding), or explicitly `"query"` (legacy exposure). The default
