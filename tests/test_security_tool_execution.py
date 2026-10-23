@@ -45,14 +45,24 @@ def test_audit_runner_uses_only_target_path(
 ) -> None:
     policy = tmp_path / "policy.json"
     policy.write_text('{"schema_version":1,"blocking":"all-known-runtime","exceptions":[]}')
+    from tools.candidate_inventory import Inventory, Package
+
+    monkeypatch.setattr(
+        dependency_audit_policy,
+        "verified_inventory",
+        lambda path, wheel: Inventory(Package("candidate", "1"), (Package("example", "1"),)),
+    )
 
     def complete(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert command[command.index("--path") + 1] == str(tmp_path)
+        assert Path(command[command.index("--requirement") + 1]).read_text() == "example==1\n"
         return scanner_result('{"dependencies":[{"name":"example","version":"1","vulns":[]}]}')
 
     monkeypatch.setattr(subprocess, "run", complete)
     monkeypatch.setattr(dependency_audit_policy, "version", lambda name: "2.10.1")
-    assert dependency_audit_policy.run_audit(tmp_path, policy).status == Status.PASS
+    assert (
+        dependency_audit_policy.run_audit(tmp_path, policy, tmp_path / "candidate.whl").status
+        == Status.PASS
+    )
 
 
 def test_browser_network_exit_is_not_a_hash_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,12 +88,22 @@ def test_browser_success_with_wrong_bytes_fails_integrity(monkeypatch: pytest.Mo
 def test_audit_cli_preserves_failure_codes_in_both_lanes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, development: bool, status: Status, code: int
 ) -> None:
-    args = ["audit", "--site-packages", str(tmp_path), "--output", str(tmp_path)]
+    args = [
+        "audit",
+        "--site-packages",
+        str(tmp_path),
+        "--output",
+        str(tmp_path),
+        "--candidate-wheel",
+        str(tmp_path / "candidate.whl"),
+    ]
     if development:
         args.append("--development")
     monkeypatch.setattr(sys, "argv", args)
     monkeypatch.setattr(
-        dependency_audit_policy, "run_audit", lambda path, policy: Check("pip-audit", (), status, 1)
+        dependency_audit_policy,
+        "run_audit",
+        lambda path, policy, wheel: Check("pip-audit", (), status, 1),
     )
     assert dependency_audit_policy.main() == code
     assert json.loads((tmp_path / "summary.json").read_text())["checks"][0]["status"] == status
@@ -162,7 +182,11 @@ def test_static_unmatched_finding_remains_blocking() -> None:
 
 @pytest.mark.parametrize(
     "outcome,status",
-    [("success", Status.PASS), ("failure", Status.TOOL_ERROR), ("skipped", Status.INCOMPLETE)],
+    [
+        ("success", Status.INCOMPLETE),
+        ("failure", Status.TOOL_ERROR),
+        ("skipped", Status.INCOMPLETE),
+    ],
 )
 def test_semgrep_records_action_outcome(outcome: str, status: Status) -> None:
     assert semgrep_evidence(outcome).status == status
@@ -183,7 +207,7 @@ def test_evidence_cli_executes_without_package_dependencies(tmp_path: Path) -> N
         capture_output=True,
         check=False,
     )
-    assert result.returncode == 0
+    assert result.returncode == 3
     assert json.loads((tmp_path / "summary.json").read_text())["checks"][0]["name"] == "semgrep"
 
 
@@ -196,7 +220,7 @@ def test_external_tool_failures_are_classified(
 
     monkeypatch.setattr(subprocess, "run", fail)
     assert security_evidence.run_bandit().status == Status.TOOL_ERROR
-    assert dependency_audit_policy.run_audit(tmp_path, tmp_path).status == Status.TOOL_ERROR
+    assert dependency_audit_policy.run_audit(tmp_path, tmp_path).status == Status.INCOMPLETE
     assert all(c.status == Status.TOOL_ERROR for c in browser_integrity.verify_assets())
 
 

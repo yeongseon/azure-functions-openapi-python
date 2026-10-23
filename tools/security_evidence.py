@@ -163,7 +163,7 @@ def semgrep_evidence(outcome: str) -> Check:
     code: int | None
     match outcome:
         case "success":
-            status, code = Status.PASS, 0
+            status, code = Status.INCOMPLETE, 0
         case "failure":
             status, code = Status.TOOL_ERROR, 1
         case _:
@@ -174,7 +174,10 @@ def semgrep_evidence(outcome: str) -> Check:
         status,
         code,
         tool_versions={"action": "713efdd345f3035192eaa63f56867b88e63e4e5d"},
-        message="Action outcome only; findings count unavailable. Failure may include findings.",
+        message=(
+            "action outcome only; findings and analysed inventory unavailable. "
+            "Failure may include findings."
+        ),
     )
 
 
