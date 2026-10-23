@@ -176,7 +176,9 @@ def test_make_contract_is_install_free_on_routine_runs(target: str) -> None:
 
 
 def test_check_runs_typechecking_once_without_test_execution() -> None:
-    result = subprocess.run(["make", "-n", "check"], cwd=ROOT, capture_output=True, text=True)
+    result = subprocess.run(
+        ["make", "-n", "check-commands"], cwd=ROOT, capture_output=True, text=True
+    )
     assert result.returncode == 0
     assert result.stdout.count("-m mypy") == 1
     assert "-m pytest" not in result.stdout

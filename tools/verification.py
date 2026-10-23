@@ -175,6 +175,7 @@ def main() -> int:
         "lane",
         choices=(
             "test",
+            "check",
             "integration",
             "verify",
             "azure-e2e",
@@ -189,6 +190,8 @@ def main() -> int:
     if tuple(sys.version_info[:2]) < (3, 11):
         parser.error("Python >=3.11 is required")
     match args.lane:
+        case "check":
+            return focused("check", ["make", "check-commands"])
         case "report":
             return report(Path("test-results"))
         case "doctor":

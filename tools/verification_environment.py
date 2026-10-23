@@ -20,6 +20,8 @@ def doctor(live: bool = False) -> int:
         print(f"{tool} REQUIRED for integration/verify: {path or 'MISSING'}")
         if live:
             healthy = healthy and path is not None
+    if not healthy:
+        print("development environment not created: run make install")
     return 0 if healthy else 1
 
 

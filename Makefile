@@ -7,6 +7,10 @@ RUN := $(HATCH) run python
 else
 RUN := $(PYTHON)
 endif
+MAINTENANCE_PYTHON = $$(for candidate in "$${VIRTUAL_ENV}/bin/python" ".venv/bin/python" "$$($(HATCH) env find 2>/dev/null)/bin/python" python3.11 python3 $(PYTHON); do \
+	if "$$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 11))' >/dev/null 2>&1; then \
+		printf '%s' "$$candidate"; break; \
+	fi; done)
 SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
 PLAYWRIGHT_VERSION := 1.54.1
 PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.cache/ms-playwright
@@ -74,7 +78,11 @@ security:
 	@$(RUN) -m bandit -r src
 
 .PHONY: check
-check: format-check typecheck security lint-workflows
+check:
+	@$(RUN) -m tools.verification check
+
+.PHONY: check-commands
+check-commands: format-check typecheck security lint-workflows
 	@$(RUN) -m ruff check src tests tools/verification*.py
 	@$(RUN) scripts/lint_mermaid.py
 	@$(RUN) scripts/check_screenshots.py --strict
@@ -89,8 +97,11 @@ lint-workflows:
 check-all: verify
 
 .PHONY: integration verify report wheel-smoke
-integration verify report:
+integration verify:
 	@$(RUN) -m tools.verification $@
+
+report:
+	@$(MAINTENANCE_PYTHON) -m tools.verification report
 
 wheel-smoke:
 	@$(RUN) -m tools.verification focused wheel-smoke -m tools.verification_wheel
@@ -241,11 +252,11 @@ demo-examples: ensure-hatch
 
 .PHONY: doctor
 doctor:
-	@$(RUN) -m tools.verification doctor
+	@$(MAINTENANCE_PYTHON) -m tools.verification doctor
 
 .PHONY: clean
 clean:
-	@$(RUN) -m tools.verification clean
+	@$(MAINTENANCE_PYTHON) -m tools.verification clean
 
 # Deep clean (maintenance, not part of the canonical contract): artifacts plus the
 # project-local virtual environment. `make clean` never touches `.venv`.

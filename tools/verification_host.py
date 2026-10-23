@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from contextlib import ExitStack
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -35,7 +36,7 @@ def wait_ready(process: subprocess.Popen[str], url: str) -> None:
             with urlopen(url, timeout=1) as response:
                 if response.status < 500:
                     return
-        except URLError:
+        except (OSError, URLError, HTTPException):
             time.sleep(0.25)
     raise TimeoutError("service readiness deadline exceeded")
 
