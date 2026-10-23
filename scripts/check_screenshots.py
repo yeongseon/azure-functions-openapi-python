@@ -29,8 +29,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import re
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
