@@ -53,12 +53,18 @@ flowchart TD
 
 Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It returns HTML that instructs the browser to fetch the spec from a configured URL.
 
-Protected docs can opt into browser-owned key forwarding: the server never reads
-the page key in header mode. A nonce-protected script removes `code` from the
+Protected docs can opt into browser-owned key forwarding: the library's header-mode
+handler does not read or echo the query value, while the Functions host necessarily
+receives the initial URL. A nonce-protected script removes `code` from the
 page URL before loading Swagger UI and adds `x-functions-key` only to the exact
 same-origin spec download (`loadSpec`), never API operations. Absolute HTTPS
 spec URLs are non-forwardable; protocol-relative URLs are rejected. Legacy query
 forwarding remains the default with a protected-registration deprecation warning.
+Key-bearing specification fetches use `redirect: 'error'`: a redirect fails closed
+with Swagger UI's normal load error and no request to its destination. Address-bar
+cleanup cannot erase earlier logs/history or page-lifetime browser memory:
+`performance.getEntriesByType("navigation")[0].name` retains the original `?code=`
+URL after `history.replaceState`.
 
 ## Integration Boundaries
 
