@@ -28,10 +28,11 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run Bandit on declared executable surfaces with fail-closed evidence
-        run: python -m tools.security_evidence bandit
+        if: always()
+        run: make security-bandit SECURITY_PYTHON=python
 
       - name: Type check security tooling
-        run: mypy --explicit-package-bases tools/security_report.py tools/security_exceptions.py tools/security_evidence.py tools/dependency_audit_policy.py tools/browser_integrity.py
+        run: make security-types SECURITY_PYTHON=python
 
       - name: Upload redacted security evidence
         if: always()
@@ -63,7 +64,7 @@ jobs:
         if: always()
         env:
           SCAN_OUTCOME: ${{ steps.scan.outcome }}
-        run: python -m tools.security_evidence semgrep --outcome "$SCAN_OUTCOME"
+        run: make security-semgrep SECURITY_PYTHON=python
 
       - name: Upload redacted security evidence
         if: always()

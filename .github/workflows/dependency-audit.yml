@@ -32,19 +32,23 @@ jobs:
         continue-on-error: true
         run: |
           site_packages=$("$RUNNER_TEMP/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-          python -m tools.dependency_audit_policy --site-packages "$site_packages" --output security-results/runtime
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          make security-runtime SECURITY_PYTHON=python SITE_PACKAGES="$site_packages" CANDIDATE_WHEEL="${wheels[0]}" SECURITY_OUTPUT=security-results/runtime
       - name: Report development dependencies with the same classifier
         if: always()
         continue-on-error: true
         run: |
           site_packages=$("$RUNNER_TEMP/development/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-          python -m tools.dependency_audit_policy --site-packages "$site_packages" --development --output security-results/development
+          wheels=(dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          make security-development SECURITY_PYTHON=python SITE_PACKAGES="$site_packages" CANDIDATE_WHEEL="${wheels[0]}" SECURITY_OUTPUT=security-results/development
       - name: Verify pinned CDN integrity
         if: always()
         continue-on-error: true
         run: |
           site_packages=$("$RUNNER_TEMP/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-          PYTHONPATH="$site_packages" "$RUNNER_TEMP/runtime/bin/python" -m tools.browser_integrity --output security-results/browser
+          PYTHONPATH="$site_packages" make security-browser SECURITY_PYTHON="$RUNNER_TEMP/runtime/bin/python" SECURITY_OUTPUT=security-results/browser
       - name: Upload redacted reporting evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

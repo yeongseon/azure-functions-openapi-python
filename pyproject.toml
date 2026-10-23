@@ -104,7 +104,7 @@ features = ["dev", "docs"]
 format = "ruff format src tests"
 format-check = "ruff format --check src tests"
 style = "ruff check src tests && ruff format --check src tests"
-typecheck = "mypy src tests && mypy --explicit-package-bases tools/security_report.py tools/security_exceptions.py tools/security_evidence.py tools/dependency_audit_policy.py tools/browser_integrity.py"
+typecheck = "mypy src tests && make security-types"
 lint = "hatch run style && hatch run typecheck"
 test = "pytest -v tests"
 cov = "pytest --cov-report=term-missing --cov-report=html --cov-report=xml tests/"
