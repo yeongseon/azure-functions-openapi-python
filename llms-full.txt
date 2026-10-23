@@ -154,11 +154,18 @@ registers nothing and returns a `DocsRoutes` whose fields are all `None`.
 For protected routes, explicitly choose `docs_key_forwarding="header"` to avoid
 server-side key echo: the browser removes `code` from its page URL and sends an
 `x-functions-key` header only on the exact same-origin spec download, never
-Try-it-out. `"none"` disables forwarding; `"query"` preserves legacy exposure.
+Try-it-out. A redirect on the key-bearing spec request fails closed with Swagger
+UI's normal load error (`redirect: 'error'`); the destination is not requested.
+`"none"` disables forwarding; `"query"` preserves legacy exposure.
 The default `None` retains query forwarding with a DeprecationWarning for
 protected registrations and will become `"header"` in a future minor before 1.0.
 Anonymous registrations never forward. Initial navigation URLs can still reach
-access logs; the key must authorize both functions. Prefer production edge auth.
+access logs. Browser navigation timing
+(`performance.getEntriesByType("navigation")[0].name`) retains the original
+`?code=` URL after `history.replaceState` in page-lifetime memory. The library's
+header-mode handler does not read or echo the query value, but the Functions
+host necessarily receives the initial URL. The key must authorize both
+functions. Prefer production edge auth.
 
 ### clear_openapi_registry
 
