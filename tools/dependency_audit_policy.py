@@ -9,7 +9,10 @@ from importlib.metadata import version
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+from zipfile import BadZipFile
 
+from tools.candidate_inventory import Inventory, package, verified_inventory
 from tools.security_exceptions import parse_exceptions
 from tools.security_report import (
     Check,
@@ -87,29 +90,62 @@ def classify_audit(raw: str, exit_status: int, *, policy_raw: str, today: date) 
         return replace(result, message="Audit/tool/policy incomplete or invalid; release blocked.")
 
 
-def run_audit(site_packages: Path, policy: Path) -> Check:
+def verify_audited_inventory(raw: str, inventory: Inventory) -> None:
+    audited = tuple(
+        package(text(item["name"]), text(item["version"]))
+        for value in sequence(load(raw)["dependencies"])
+        for item in (mapping(value),)
+    )
+    third_party = tuple(p for p in audited if p.name != inventory.candidate.name)
+    candidates = tuple(p for p in audited if p.name == inventory.candidate.name)
+    if candidates not in ((), (inventory.candidate,)) or (
+        len(third_party) != len(inventory.dependencies)
+        or set(third_party) != set(inventory.dependencies)
+    ):
+        raise EvidenceError("audit differs from verified inventory")
+
+
+def run_audit(site_packages: Path, policy: Path, candidate: Path | None = None) -> Check:
     try:
-        process = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pip_audit",
-                "--path",
-                str(site_packages),
-                "--format",
-                "json",
-                "--desc",
-                "off",
-                "--progress-spinner",
-                "off",
-                "--timeout",
-                "30",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=300,
+        if candidate is None:
+            raise EvidenceError("candidate wheel required")
+        inventory = verified_inventory(site_packages, candidate)
+    except (OSError, ValueError, KeyError, TypeError, BadZipFile):
+        return Check(
+            "pip-audit",
+            ("resolved-runtime-wheel",),
+            Status.INCOMPLETE,
+            None,
+            message="Candidate identity or third-party inventory incomplete; release blocked.",
         )
+    try:
+        with tempfile.TemporaryDirectory(prefix="openapi-audit-") as temporary:
+            requirements = Path(temporary) / "requirements.txt"
+            requirements.write_text(inventory.requirements(), encoding="utf-8")
+            process = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip_audit",
+                    "--requirement",
+                    str(requirements),
+                    "--no-deps",
+                    "--disable-pip",
+                    "--format",
+                    "json",
+                    "--desc",
+                    "off",
+                    "--progress-spinner",
+                    "off",
+                    "--timeout",
+                    "30",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=300,
+            )
+        verify_audited_inventory(process.stdout, inventory)
         result = classify_audit(
             process.stdout,
             process.returncode,
@@ -117,7 +153,7 @@ def run_audit(site_packages: Path, policy: Path) -> Check:
             today=date.today(),
         )
         return replace(result, tool_versions={"pip-audit": version("pip-audit")})
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError, TypeError):
         return Check(
             "pip-audit",
             ("resolved-runtime-wheel",),
@@ -130,13 +166,14 @@ def run_audit(site_packages: Path, policy: Path) -> Check:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-packages", type=Path, required=True)
+    parser.add_argument("--candidate-wheel", type=Path, required=True)
     parser.add_argument(
         "--policy", type=Path, default=Path("security/dependency-audit-policy.json")
     )
     parser.add_argument("--output", type=Path, default=Path("security-results"))
     parser.add_argument("--development", action="store_true")
     args = parser.parse_args()
-    check = run_audit(args.site_packages, args.policy)
+    check = run_audit(args.site_packages, args.policy, args.candidate_wheel)
     if args.development:
         check = replace(check, name="pip-audit-development", scope=("runtime-and-development",))
     return write_report([check], args.output)
