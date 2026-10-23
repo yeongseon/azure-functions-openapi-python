@@ -204,3 +204,17 @@ def test_structured_json_evidence_stays_valid_when_a_value_is_not_a_string(tmp_p
     (tmp_path / "extra.json").write_text('{"password": 12345, "name": "x"}')
     save(tmp_path, Summary(1, "test", ("pytest",), 1, 1, 0, 0, "PASS", 0))
     assert json.loads((tmp_path / "extra.json").read_text())["name"] == "x"
+
+
+def test_overlapping_escaped_environment_secrets_are_replaced_longest_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tools.verification_evidence import dump_json, redact
+
+    monkeypatch.setenv("SHORT_TOKEN", "CANARY_overlap")
+    secret = 'CANARY_overlap;password=alpha "quoted" beta&tail'
+    monkeypatch.setenv("LONG_TOKEN", secret)
+    assert redact(json.dumps(secret)) == '"[REDACTED]"'
+    payload = {"nested": ({"command": 'Authorization: "Bearer CANARY_nested"'}, secret)}
+    data = json.loads(dump_json(payload))
+    assert data == {"nested": [{"command": 'Authorization: "[REDACTED]"'}, "[REDACTED]"]}
