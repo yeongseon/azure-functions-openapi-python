@@ -271,6 +271,10 @@ Every tier runs inside `publish-pypi.yml` on the tag, and **all of them gate the
 
 ## Golden Commands
 
+Security entry points and candidate-inventory verification are documented in
+[SECURITY.md](SECURITY.md#automated-security-controls). `make security` includes the
+expanded executable-surface inventory scan used in CI.
+
 Use Makefile entry points only. Do not bypass the Makefile in CI or contributor guidance.
 
 | Purpose | Command |

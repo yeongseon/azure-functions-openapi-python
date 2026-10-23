@@ -54,7 +54,7 @@ existing `security-events: write`, Azure OIDC and PyPI OIDC are unchanged.
 
 ### Static scan coverage
 
-`python -m tools.security_evidence bandit` scans **all Python files** in `src/`,
+`make security-bandit` scans **all Python files** in `src/`,
 `examples/` (including `e2e_app`), `demo/`, `scripts/`, and `tools/`. There are no
 per-file exclusions within these surfaces. The helper compares Bandit's file
 inventory to the on-disk Python inventory, requires at least 40 files and positive
@@ -64,8 +64,8 @@ scan. Generated HTML/JSON/PNG previews, bytecode and other non-Python files are 
 Python scan inputs; their Python generators are scanned. Bicep and workflow review
 complement these checks; Bandit does not claim to analyze those languages.
 
-`make security` retains its existing local `src/` behavior. The CI evidence helper
-is the expanded-scope check. Low-severity reviewed tooling findings are retained
+`make security` and `make check-all` include this same expanded-scope check.
+Low-severity reviewed tooling findings are retained
 in evidence, not hidden with global Bandit skips. Exact ID/file/line exceptions in
 `security/bandit-policy.json` explain shell-free subprocess use and literal-marker
 false positives. No example/demo exception was required by the baseline scan.
@@ -78,8 +78,31 @@ by pip-audit; missing severity is `UNKNOWN` and still blocks. This deliberately
 avoids treating absent CVSS data as low risk. Each supported Python version is
 audited because environment markers change the Azure Functions dependency closure.
 The candidate environment contains only the wheel and its runtime dependencies:
-it is created without pip, and pip-audit 2.10.1 runs outside it with `--path`.
-Development tools cannot contaminate the release runtime audit.
+it is created without pip. The helper reads the candidate wheel METADATA and
+requires exactly one installed distribution with the same normalized name and
+exact version before excluding only that candidate. It freezes every installed
+third-party distribution to `name==version` and runs pip-audit 2.10.1 outside the
+environment with `--requirement`, `--no-deps`, and `--disable-pip`. The returned
+inventory must match those exact pins; a returned candidate must match its verified
+identity. An unpublished first-party version therefore needs no PyPI record, but
+missing/mismatched identity, an empty closure, third-party skips or omitted packages
+remain blocking. Development tools cannot contaminate the release runtime audit.
+
+Use the same Makefile entry points locally (after provisioning the audit tool):
+
+```bash
+make security-runtime SECURITY_PYTHON=/path/to/audit/bin/python \
+  SITE_PACKAGES=/path/to/candidate/lib/python3.11/site-packages \
+  CANDIDATE_WHEEL=/path/to/candidate.whl SECURITY_OUTPUT=security-results/runtime
+make security-development SECURITY_PYTHON=/path/to/audit/bin/python \
+  SITE_PACKAGES=/path/to/development/lib/python3.11/site-packages \
+  CANDIDATE_WHEEL=/path/to/candidate.whl SECURITY_OUTPUT=security-results/development
+make security-browser SECURITY_PYTHON=/path/to/candidate/bin/python
+make security-types
+```
+
+Runtime checking blocks releases; scheduled runtime/development reporting uses
+the same non-zero classifier exits with explicitly reporting-only workflow steps.
 
 Exceptions require maintainer review and `id`, `package`, `kind`, `reason`, `owner`,
 `added`, and `expires` (ISO dates), with a positive lifetime of at most 90 days.
@@ -99,10 +122,14 @@ policy exception), `2` for `TOOL_ERROR` (crash, invalid/missing JSON, audit coll
 or network failure), and `3` for `INCOMPLETE` (empty/undersized scan, missing coverage,
 unsafe suppressions or missing execution evidence). All non-PASS results block the
 release gate. A pip-audit skipped/unavailable package is not a clean audit. The
-Semgrep action exposes only its step outcome here: success is recorded as PASS,
+Semgrep action exposes only its step outcome here: success is recorded as INCOMPLETE
+with `action outcome only`,
 failure conservatively as TOOL_ERROR with unknown findings count (its original
 failing step remains blocking), and skipped/cancelled as INCOMPLETE. The summary
 does not pretend an action failure proves a vulnerability.
+`make security-semgrep SCAN_OUTCOME=success` retains exit-3 INCOMPLETE evidence
+without failing the collector; it tolerates no tool-error exit. The pinned action
+remains the blocking scan. Collectors and artifact uploads run with `if: always()`.
 
 Fail-closed network verification trades availability for evidence: advisory database
 or jsDelivr outages can delay publication. Bounded tool timeouts and curl retries
