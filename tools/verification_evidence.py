@@ -41,23 +41,70 @@ class Summary:
     reason: str = ""
 
 
+_REDACTED = "[REDACTED]"
+_QUOTED = r"\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'"
+_AUTHORIZATION = re.compile(
+    r"(?im)(?P<key>(?:proxy-)?authorization[\"']?\s*[:=]\s*)(?P<value>" + _QUOTED + r"|[^\r\n\"<]+)"
+)
+_URL_CREDENTIALS = re.compile(r"(https?://)[^/@\s\"']+:[^/@\s\"']+@")
+_SECRET_FIELD = re.compile(
+    r"(?i)(?<![\w-])(?P<key>(?:[\w.-]*(?:token|password|passwd|secret|api[_-]?key|"
+    r"connection[_-]?string)|AccountKey|SharedAccessKey|SharedAccessSignature|"
+    r"AzureWebJobsStorage|InstrumentationKey|x-functions-key|code|sig)"
+    r"[\"']?\s*[:=]\s*)(?P<value>" + _QUOTED + r"|[^\s;&<>\"',]+)"
+)
+_SECRET_ENV_NAME = re.compile(
+    r"(?i)secret|token|password|connection|string|accountkey|functions.key|api.?key|sas"
+)
+_TEXT_SUFFIXES = frozenset({".log", ".txt", ".xml", ".json", ".md"})
+
+
+def _mask(match: re.Match[str]) -> str:
+    value = match.group("value")
+    quote = value[0] if value[:1] in {'"', "'"} else ""
+    return f"{match.group('key')}{quote}{_REDACTED}{quote}"
+
+
+def _known_secrets() -> list[str]:
+    values = {
+        value
+        for key, value in os.environ.items()
+        if len(value) >= 6 and _SECRET_ENV_NAME.search(key)
+    }
+    # Longest first so a secret that contains another secret is replaced whole, and the JSON
+    # string-escaped spelling is covered because saved logs often embed serialized JSON.
+    escaped = {json.dumps(value)[1:-1] for value in values}
+    return sorted(values | escaped, key=len, reverse=True)
+
+
 def redact(text: str) -> str:
-    # Redact entire authorization values, including the scheme and whitespace.
-    text = re.sub(r"(?im)(authorization[\"']?\s*[:=]\s*)[^\r\n<\"]+", r"\1[REDACTED]", text)
-    text = re.sub(r"(https?://)[^/@\s]+:[^/@\s]+@", r"\1[REDACTED]@", text)
-    text = re.sub(
-        r"(?i)(?<![\w-])((?:[\w-]*(?:token|password|secret|connectionstring)|AccountKey|"
-        r"SharedAccessSignature|AzureWebJobsStorage|x-functions-key|code|sig)"
-        r"[\"']?\s*[:=]\s*[\"']?)[^\s;&<\"']+",
-        r"\1[REDACTED]",
-        text,
-    )
-    for key, value in os.environ.items():
-        if len(value) >= 6 and re.search(
-            r"(?i)secret|token|password|connection|string|accountkey|functions.key", key
-        ):
-            text = text.replace(value, "[REDACTED]")
-    return text
+    """Mask credentials in free text without changing its surrounding syntax.
+
+    Complete known secrets are replaced first so a partial pattern match cannot change a
+    value before the exact-match pass sees it. Quoted values are consumed whole (including
+    whitespace and escaped quotes) and keep their quotes, so JSON and XML stay well formed.
+    """
+    for value in _known_secrets():
+        text = text.replace(value, _REDACTED)
+    text = _AUTHORIZATION.sub(_mask, text)
+    text = _URL_CREDENTIALS.sub(r"\1" + _REDACTED + "@", text)
+    return _SECRET_FIELD.sub(_mask, text)
+
+
+def redact_json(value: object) -> object:
+    """Redact every string leaf of a JSON-compatible value, leaving its structure intact."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, (list, tuple)):
+        return [redact_json(item) for item in value]
+    if isinstance(value, dict):
+        return {redact(str(key)): redact_json(item) for key, item in value.items()}
+    return value
+
+
+def dump_json(value: object) -> str:
+    """Serialize redacted JSON so credentials never reach disk and the file always parses."""
+    return json.dumps(redact_json(value), indent=2) + "\n"
 
 
 def environment(live: bool = False) -> dict[str, str]:
@@ -134,14 +181,31 @@ def publish(summary: Summary) -> None:
             stream.write(f"\n- {text}\n")
 
 
+def _redact_file_text(suffix: str, text: str) -> str:
+    if suffix == ".json":
+        try:
+            return dump_json(json.loads(text))
+        except ValueError:
+            pass
+    return redact(text)
+
+
 def save(directory: Path, summary: Summary) -> Summary:
     directory.mkdir(parents=True, exist_ok=True)
     for path in directory.rglob("*"):
-        if path.is_file():
-            path.write_text(redact(path.read_text(encoding="utf-8")), encoding="utf-8")
+        # Only textual evidence is rewritten: binary assets stay byte-for-byte, and symlinks are
+        # never followed out of the evidence tree.
+        if path.is_symlink() or not path.is_file() or path.suffix not in _TEXT_SUFFIXES:
+            continue
+        try:
+            original = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        redacted = _redact_file_text(path.suffix, original)
+        if redacted != original:
+            path.write_text(redacted, encoding="utf-8")
     (directory / "environment.json").write_text(
-        redact(json.dumps(environment(live=directory.name == "integration"), indent=2)) + "\n",
-        encoding="utf-8",
+        dump_json(environment(live=directory.name == "integration")), encoding="utf-8"
     )
     summary = replace(
         summary,
@@ -152,7 +216,7 @@ def save(directory: Path, summary: Summary) -> Summary:
         ),
     )
     path = directory / "summary.json"
-    path.write_text(redact(json.dumps(asdict(summary), indent=2)) + "\n", encoding="utf-8")
+    path.write_text(dump_json(asdict(summary)), encoding="utf-8")
     return summary
 
 
