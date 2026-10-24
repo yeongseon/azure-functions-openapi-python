@@ -123,9 +123,9 @@ Describe what changed and why. Reference related issues with `Fixes #N` or `Clos
 | `make test` | Run pytest |
 | `make cov` | Run tests with coverage (gated at 95%) |
 | `make lint-workflows` | Lint release workflows, action pins, Hatch matrix |
-| `make check` | Run lint + typecheck |
+| `make check` | Run `make lint`, which includes the type check, once |
 | `make check-all` | Run lint-workflows + check + test + security (full gate) |
-| `make docs` | Build the MkDocs site |
+| `make docs` | Build the MkDocs site with `mkdocs build --strict`, like the CI docs gate |
 
 See [Development Guide](development.md#makefile-targets) for the complete list.
 
