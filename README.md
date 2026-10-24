@@ -460,6 +460,8 @@ This package is part of the **Azure Functions Python DX Toolkit**.
 
 ## For AI Coding Assistants
 
+Contributor verification: [Chromium key-forwarding lane and local prerequisites](BROWSER_TESTING.md).
+
 This repository includes `llms.txt` and `llms-full.txt` in the root directory.
 These files provide comprehensive package and API information optimized for LLM context windows.
 
