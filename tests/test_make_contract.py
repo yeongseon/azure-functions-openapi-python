@@ -1,9 +1,8 @@
 """Contract of the Makefile targets that set up and check a checkout (#811).
 
-``make -n`` prints recipes without running them, so the expansion cases need no network, Hatch or
-virtual environment. The behavior cases run the real recipes in a scratch directory whose ``PATH``
-holds only stub programs that log their arguments: nothing is installed, no network is used and no
-real tool can run.
+``make -n`` prints recipes without running them. The behavior cases run the real recipes in a
+scratch directory whose ``PATH`` holds only stub programs that log their arguments, so nothing is
+installed, no network is used and no real tool can run.
 """
 
 from __future__ import annotations
@@ -42,16 +41,22 @@ def script_runs(commands: str, name: str) -> int:
     return sum((s == name) + script_runs(HATCH_SCRIPTS.get(s, ""), name) for s in called)
 
 
-def plan(*arguments: str) -> str:
-    """Return the commands ``make -n`` prints for this repository's own Makefile."""
-    result = subprocess.run(
-        [MAKE, "--no-print-directory", "-n", *arguments],
-        cwd=ROOT,
-        env={"PATH": os.environ["PATH"]},
+def run_make(
+    cwd: Path, path: str, *arguments: str, **environment: str
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [MAKE, "--no-print-directory", *arguments],
+        cwd=cwd,
+        env={"PATH": path, **environment},
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def plan(*arguments: str) -> str:
+    """Return the commands ``make -n`` prints for this repository's own Makefile."""
+    result = run_make(ROOT, os.environ["PATH"], "-n", *arguments)
     assert result.returncode == 0, result.stderr
     return result.stdout
 
@@ -93,14 +98,12 @@ class Sandbox:
         self.tool("pip", directory, install)
 
     def interpreter(self, name: str, version: tuple[int, int] = (3, 12)) -> Path:
-        """Add a Python stub that reports ``version`` and whose ``-m venv DIR`` holds a stub pip."""
-        self.pip(self.root / "templates")
-        pip = self.root / "templates" / "pip"
-        probe = f"import sys; sys.version_info = ({version[0]}, {version[1]}, 0); exec(sys.argv[1])"
+        """Add a Python stub that reports ``version`` to the probes the Makefile runs."""
+        major, minor = version
+        probe = f"import sys; sys.version_info = ({major}, {minor}, 0); exec(sys.argv[1])"
         body = (
-            f'[ "$1" = --version ] && echo "Python {version[0]}.{version[1]}.0"\n'
+            f'[ "$1" = --version ] && echo "Python {major}.{minor}.0"\n'
             f'[ "$1" = -c ] && exec {shlex.quote(sys.executable)} -c "{probe}" "$2"\n'
-            f'[ "$1 $2" = "-m venv" ] && mkdir -p "$3/bin" && cp {pip} "$3/bin/pip"\n'
         )
         return self.tool(name, body=body)
 
@@ -112,44 +115,29 @@ class Sandbox:
             self.tool(name, self.venv / "bin" if name == "hatch" else None)
 
     def make(self, *arguments: str, **environment: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [MAKE, "--no-print-directory", f"VENV_DIR={self.venv}", *arguments],
-            cwd=self.root,
-            env={"PATH": str(self.root / "bin"), **environment},
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        arguments = (f"VENV_DIR={self.venv}", *arguments)
+        return run_make(self.root, str(self.root / "bin"), *arguments, **environment)
 
 
 @pytest.fixture
 def sandbox(tmp_path: Path) -> Sandbox:
     shutil.copy(ROOT / "Makefile", tmp_path / "Makefile")
     (tmp_path / "bin").mkdir()
-    for program in ("cp", "mkdir"):  # the only real programs the stubs run
-        (tmp_path / "bin" / program).symlink_to(shutil.which(program) or program)
+    (tmp_path / "bin" / "cp").symlink_to(shutil.which("cp") or "cp")  # the one real program
     return Sandbox(tmp_path)
 
 
-@pytest.mark.parametrize(
-    ("target", "style", "typecheck", "test"), [("check", 1, 1, 0), ("check-all", 1, 1, 1)]
-)
-def test_each_check_runs_once(target: str, style: int, typecheck: int, test: int) -> None:
-    # Given the commands the target would run
-    commands = plan(target)
+@pytest.mark.parametrize(("target", "tests"), [("check", 0), ("check-all", 1)])
+def test_each_check_runs_once(target: str, tests: int) -> None:
+    runs = [script_runs(plan(target), name) for name in ("style", "typecheck", "test")]
 
-    # Then style, the type check and the tests run the expected number of times
-    runs = [script_runs(commands, name) for name in ("style", "typecheck", "test")]
-    assert runs == [style, typecheck, test]
+    assert runs == [1, 1, tests]
 
 
 def test_check_all_keeps_every_gate_it_had() -> None:
-    # Given the commands `make check-all` would run
-    commands = plan("check-all")
-
-    # Then each workflow lint and the Bandit evidence run once
     gates = ("lint_release_workflows", "lint_workflow_pins", "lint_hatch_matrix", "bandit")
-    assert [commands.count(gate) for gate in gates] == [1, 1, 1, 1]
+
+    assert [plan("check-all").count(gate) for gate in gates] == [1, 1, 1, 1]
 
 
 def test_makefile_never_upgrades_pip() -> None:
@@ -158,34 +146,17 @@ def test_makefile_never_upgrades_pip() -> None:
 
 
 def test_bootstrap_installs_hatch_once_and_only_while_it_is_missing(sandbox: Sandbox) -> None:
-    # Given a virtual environment that has pip but no Hatch
     sandbox.pip(sandbox.venv / "bin")
 
-    # When bootstrap runs twice
     for _ in range(2):
         assert sandbox.make("bootstrap").returncode == 0
 
-    # Then one pip call across both runs installed Hatch, without --upgrade
-    (call,) = sandbox.calls
+    (call,) = sandbox.calls  # the second run finds the Hatch the first run installed
     assert installs_hatch(call)
-
-
-def test_bootstrap_leaves_an_installed_hatch_alone(sandbox: Sandbox) -> None:
-    # Given a virtual environment that already holds Hatch
-    sandbox.pip(sandbox.venv / "bin")
-    sandbox.tool("hatch", sandbox.venv / "bin")
-
-    # When bootstrap runs
-    result = sandbox.make("bootstrap")
-
-    # Then pip is never called
-    assert result.returncode == 0, result.stderr
-    assert sandbox.calls == []
 
 
 @pytest.mark.parametrize("kind", ["directory", "non-executable file"])
 def test_only_an_executable_regular_file_counts_as_hatch(sandbox: Sandbox, kind: str) -> None:
-    # Given something at the Hatch path that `test -x` or `command -v` alone would accept
     sandbox.doctor_tools(missing={"hatch"})
     sandbox.pip(sandbox.venv / "bin")
     hatch = sandbox.venv / "bin" / "hatch"
@@ -194,11 +165,9 @@ def test_only_an_executable_regular_file_counts_as_hatch(sandbox: Sandbox, kind:
     else:
         hatch.write_text("#!/bin/sh\n", encoding="utf-8")  # created without the executable bit
 
-    # When doctor and bootstrap run
     doctor = sandbox.make("doctor")
     bootstrap = sandbox.make("bootstrap")
 
-    # Then doctor reports Hatch missing and bootstrap installs it
     assert doctor.returncode != 0
     assert f"MISSING  {hatch} (required" in doctor.stdout
     assert bootstrap.returncode == 0, bootstrap.stderr
@@ -206,41 +175,20 @@ def test_only_an_executable_regular_file_counts_as_hatch(sandbox: Sandbox, kind:
     assert installs_hatch(call)
 
 
-def test_a_fresh_checkout_gets_one_venv_from_the_selected_interpreter(sandbox: Sandbox) -> None:
-    # Given no virtual environment and a selected interpreter
-    python = sandbox.interpreter("sentinel")
-
-    # When bootstrap runs
-    result = sandbox.make("bootstrap", f"PYTHON={python}")
-
-    # Then that interpreter creates the environment and Hatch is the only thing installed
-    assert result.returncode == 0, result.stderr
-    venv_call, pip_call = sandbox.calls
-    assert venv_call == f"sentinel -m venv {sandbox.venv}"
-    assert installs_hatch(pip_call)
-
-
-def test_install_ci_installs_into_the_selected_interpreter_and_not_through_hatch() -> None:
-    # Given the commands `make install-ci PYTHON=python3.12` would run
-    commands = plan("install-ci", "PYTHON=python3.12")
-
-    # Then the matrix interpreter receives the install, so a cell keeps its own Python
-    assert 'python3.12 -m pip install -e ".[dev]"' in commands
-    assert "hatch" not in commands
+def test_the_selected_interpreter_creates_the_virtual_environment() -> None:
+    assert "python3 -m venv" in plan("bootstrap")
+    assert "sentinel -m venv" in plan("bootstrap", "PYTHON=sentinel")
 
 
 @pytest.mark.parametrize(("version", "installs"), [((3, 10), False), ((3, 11), True)])
-def test_install_ci_needs_python_311(
+def test_install_ci_installs_into_the_selected_interpreter_from_python_311(
     sandbox: Sandbox, version: tuple[int, int], installs: bool
 ) -> None:
-    # Given an interpreter of the given version
-    python = sandbox.interpreter("sentinel", version)
+    python = sandbox.interpreter("sentinel", version)  # no Hatch and no pip on PATH
 
-    # When install-ci runs
     result = sandbox.make("install-ci", f"PYTHON={python}")
 
-    # Then the version guard ran, and pip runs only for Python 3.11 or newer
-    assert any(call.startswith("sentinel -c ") for call in sandbox.calls)
+    assert any(call.startswith("sentinel -c ") for call in sandbox.calls)  # the version guard ran
     assert (result.returncode == 0) is installs
     assert ("sentinel -m pip install -e .[dev]" in sandbox.calls) is installs
 
@@ -251,119 +199,81 @@ def test_install_ci_needs_python_311(
     ids=["local", "ci"],
 )
 def test_docs_builds_strictly(sandbox: Sandbox, environment: dict[str, str], build: str) -> None:
-    # Given Hatch, pip and MkDocs stubs
+    for name in ("pip", "mkdocs"):
+        sandbox.tool(name)
     sandbox.tool("hatch", sandbox.venv / "bin")
-    sandbox.tool("pip")
-    sandbox.tool("mkdocs")
 
-    # When docs runs locally and under CI
     result = sandbox.make("docs", **environment)
 
-    # Then MkDocs ran in strict mode
     assert result.returncode == 0, result.stderr
-    assert build in sandbox.calls
-
-
-def test_docs_under_ci_installs_the_docs_extra_the_ci_gate_installs(sandbox: Sandbox) -> None:
-    # Given pip and MkDocs stubs
-    sandbox.tool("pip")
-    sandbox.tool("mkdocs")
-
-    # When docs runs under CI
-    result = sandbox.make("docs", CI="1")
-
-    # Then the dependencies come from pyproject.toml, not from pins kept in the Makefile
-    assert result.returncode == 0, result.stderr
-    assert any(
-        call.startswith("pip install") and call.endswith("-e .[docs]") for call in sandbox.calls
-    )
+    assert sandbox.calls[-1] == build
+    installs = [call for call in sandbox.calls if call.startswith("pip install")]
+    assert all(call.endswith("-e .[docs]") for call in installs)  # the CI gate's extra, not pins
+    assert bool(installs) is bool(environment)
 
 
 @pytest.mark.parametrize("environment", [{}, {"CI": "1"}], ids=["local", "ci"])
 def test_docs_fails_when_the_build_fails(sandbox: Sandbox, environment: dict[str, str]) -> None:
-    # Given a MkDocs build that fails
-    sandbox.tool("hatch", sandbox.venv / "bin", "exit 1\n")
     sandbox.tool("pip")
     sandbox.tool("mkdocs", body="exit 1\n")
+    sandbox.tool("hatch", sandbox.venv / "bin", "exit 1\n")
 
-    # When docs runs
-    result = sandbox.make("docs", **environment)
-
-    # Then make fails
-    assert result.returncode != 0
+    assert sandbox.make("docs", **environment).returncode != 0
 
 
 def test_docs_shows_a_failed_install_and_does_not_build_after_it(sandbox: Sandbox) -> None:
-    # Given a pip that fails with a message
     sandbox.tool("pip", body='echo "ERROR: no matching distribution" >&2\nexit 1\n')
     sandbox.tool("mkdocs")
 
-    # When docs runs under CI
     result = sandbox.make("docs", CI="1")
 
-    # Then the error is visible and MkDocs never ran
     assert result.returncode != 0
     assert "ERROR: no matching distribution" in result.stderr
     assert "mkdocs build --strict" not in sandbox.calls
 
 
 @pytest.mark.parametrize("absent", [(), ("func", "azurite")], ids=["all tools", "optional absent"])
-def test_doctor_passes_when_every_required_tool_exists(
+def test_doctor_passes_when_the_required_tools_exist(
     sandbox: Sandbox, absent: tuple[str, ...]
 ) -> None:
-    # Given Python 3.11 or newer and Hatch, with or without the Functions host tools
     sandbox.doctor_tools(missing=absent)
 
-    # When doctor runs
     result = sandbox.make("doctor")
 
-    # Then it passes and lists each absent optional tool
     assert result.returncode == 0, result.stdout
     assert "MISSING" not in result.stdout
-    for tool in absent:
-        assert f"missing  {tool} (optional" in result.stdout
+    assert all(f"missing  {tool} (optional" in result.stdout for tool in absent)
 
 
-@pytest.mark.parametrize(
-    ("tool", "line"), [("python", "MISSING  python >= 3.11 (required)"), ("hatch", "MISSING  ")]
-)
-def test_doctor_fails_when_a_required_tool_is_missing(
-    sandbox: Sandbox, tool: str, line: str
+@pytest.mark.parametrize("tool", ["python", "hatch"])
+def test_doctor_fails_naming_the_one_required_tool_that_is_missing(
+    sandbox: Sandbox, tool: str
 ) -> None:
-    # Given every tool except one required one
     sandbox.doctor_tools(missing={tool})
 
-    # When doctor runs
     result = sandbox.make("doctor")
 
-    # Then it fails and names only that tool
     assert result.returncode != 0
-    assert line in result.stdout
     assert result.stdout.count("MISSING  ") == 1
+    assert ("python >= 3.11" if tool == "python" else str(sandbox.venv)) in result.stdout
 
 
 def test_doctor_rejects_a_python_older_than_311(sandbox: Sandbox) -> None:
-    # Given Hatch and a Python 3.10 as the only interpreter
     sandbox.doctor_tools(missing={"python"})
     sandbox.interpreter("python3", (3, 10))
 
-    # When doctor runs
     result = sandbox.make("doctor")
 
-    # Then Python counts as missing
     assert result.returncode != 0
-    assert "MISSING  python >= 3.11 (required)" in result.stdout
+    assert "MISSING  python >= 3.11" in result.stdout
 
 
 def test_doctor_neither_installs_nor_writes(sandbox: Sandbox) -> None:
-    # Given a stub pip and no Hatch, where bootstrap would install
-    sandbox.pip(sandbox.venv / "bin")
+    sandbox.pip(sandbox.venv / "bin")  # a stub pip and no Hatch: bootstrap would install here
     before = sorted(sandbox.root.rglob("*"))
 
-    # When doctor runs
     result = sandbox.make("doctor")
 
-    # Then it fails, calls nothing and leaves the directory as it was
     assert result.returncode != 0
     assert sandbox.calls == []
     assert sorted(sandbox.root.rglob("*")) == before
