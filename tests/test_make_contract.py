@@ -8,6 +8,7 @@ real tool can run.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -97,10 +98,18 @@ class Sandbox:
         pip = self.root / "templates" / "pip"
         probe = f"import sys; sys.version_info = ({version[0]}, {version[1]}, 0); exec(sys.argv[1])"
         body = (
+            f'[ "$1" = --version ] && echo "Python {version[0]}.{version[1]}.0"\n'
             f'[ "$1" = -c ] && exec {shlex.quote(sys.executable)} -c "{probe}" "$2"\n'
             f'[ "$1 $2" = "-m venv" ] && mkdir -p "$3/bin" && cp {pip} "$3/bin/pip"\n'
         )
         return self.tool(name, body=body)
+
+    def doctor_tools(self, missing: Iterable[str] = ()) -> None:
+        """Provide every tool ``make doctor`` looks for, except the ``missing`` ones."""
+        if "python" not in missing:
+            self.interpreter("python3.12")
+        for name in {"hatch", "func", "azurite"} - set(missing):
+            self.tool(name, self.venv / "bin" if name == "hatch" else None)
 
     def make(self, *arguments: str, **environment: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -177,6 +186,7 @@ def test_bootstrap_leaves_an_installed_hatch_alone(sandbox: Sandbox) -> None:
 @pytest.mark.parametrize("kind", ["directory", "non-executable file"])
 def test_only_an_executable_regular_file_counts_as_hatch(sandbox: Sandbox, kind: str) -> None:
     # Given something at the Hatch path that `test -x` or `command -v` alone would accept
+    sandbox.doctor_tools(missing={"hatch"})
     sandbox.pip(sandbox.venv / "bin")
     hatch = sandbox.venv / "bin" / "hatch"
     if kind == "directory":
@@ -184,12 +194,15 @@ def test_only_an_executable_regular_file_counts_as_hatch(sandbox: Sandbox, kind:
     else:
         hatch.write_text("#!/bin/sh\n", encoding="utf-8")  # created without the executable bit
 
-    # When bootstrap runs
-    result = sandbox.make("bootstrap")
+    # When doctor and bootstrap run
+    doctor = sandbox.make("doctor")
+    bootstrap = sandbox.make("bootstrap")
 
-    # Then it installs Hatch
-    assert result.returncode == 0, result.stderr
-    (call,) = sandbox.calls
+    # Then doctor reports Hatch missing and bootstrap installs it
+    assert doctor.returncode != 0
+    assert f"MISSING  {hatch} (required" in doctor.stdout
+    assert bootstrap.returncode == 0, bootstrap.stderr
+    (call,) = (call for call in sandbox.calls if call.startswith("pip "))
     assert installs_hatch(call)
 
 
@@ -292,3 +305,65 @@ def test_docs_shows_a_failed_install_and_does_not_build_after_it(sandbox: Sandbo
     assert result.returncode != 0
     assert "ERROR: no matching distribution" in result.stderr
     assert "mkdocs build --strict" not in sandbox.calls
+
+
+@pytest.mark.parametrize("absent", [(), ("func", "azurite")], ids=["all tools", "optional absent"])
+def test_doctor_passes_when_every_required_tool_exists(
+    sandbox: Sandbox, absent: tuple[str, ...]
+) -> None:
+    # Given Python 3.11 or newer and Hatch, with or without the Functions host tools
+    sandbox.doctor_tools(missing=absent)
+
+    # When doctor runs
+    result = sandbox.make("doctor")
+
+    # Then it passes and lists each absent optional tool
+    assert result.returncode == 0, result.stdout
+    assert "MISSING" not in result.stdout
+    for tool in absent:
+        assert f"missing  {tool} (optional" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("tool", "line"), [("python", "MISSING  python >= 3.11 (required)"), ("hatch", "MISSING  ")]
+)
+def test_doctor_fails_when_a_required_tool_is_missing(
+    sandbox: Sandbox, tool: str, line: str
+) -> None:
+    # Given every tool except one required one
+    sandbox.doctor_tools(missing={tool})
+
+    # When doctor runs
+    result = sandbox.make("doctor")
+
+    # Then it fails and names only that tool
+    assert result.returncode != 0
+    assert line in result.stdout
+    assert result.stdout.count("MISSING  ") == 1
+
+
+def test_doctor_rejects_a_python_older_than_311(sandbox: Sandbox) -> None:
+    # Given Hatch and a Python 3.10 as the only interpreter
+    sandbox.doctor_tools(missing={"python"})
+    sandbox.interpreter("python3", (3, 10))
+
+    # When doctor runs
+    result = sandbox.make("doctor")
+
+    # Then Python counts as missing
+    assert result.returncode != 0
+    assert "MISSING  python >= 3.11 (required)" in result.stdout
+
+
+def test_doctor_neither_installs_nor_writes(sandbox: Sandbox) -> None:
+    # Given a stub pip and no Hatch, where bootstrap would install
+    sandbox.pip(sandbox.venv / "bin")
+    before = sorted(sandbox.root.rglob("*"))
+
+    # When doctor runs
+    result = sandbox.make("doctor")
+
+    # Then it fails, calls nothing and leaves the directory as it was
+    assert result.returncode != 0
+    assert sandbox.calls == []
+    assert sorted(sandbox.root.rglob("*")) == before

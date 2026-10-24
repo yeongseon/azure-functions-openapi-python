@@ -289,13 +289,28 @@ demo-examples: ensure-hatch
 	kill $$SERVER_PID 2>/dev/null || true; \
 	wait $$SERVER_PID 2>/dev/null || true
 
+# Read-only prerequisite check: it installs and writes nothing, and fails when a required tool is
+# missing. A tool counts only if `command -v` resolves it to an executable regular file, because
+# `command -v` also reports a non-executable file and `-x` alone also accepts a directory. Python
+# 3.11 or newer is looked up on PATH, $(HATCH) is the Hatch this Makefile runs (`make install`
+# creates it), and func and azurite are needed only to run a local Functions host.
 .PHONY: doctor
 doctor:
-	@echo "Python version:" && $(PYTHON) --version
-	@echo "Installed packages:" && $(HATCH) env run pip list || echo "No hatch environment found"
-	@echo "Azure Function Core Tools version:" && func --version || echo "func not found"
-	@echo "Pre-commit hook installed:"
-	@if [ -f .git/hooks/pre-commit ]; then echo yes; else echo no; fi
+	@missing=0; \
+	have() { p="$$(command -v "$$1")"; [ -f "$$p" ] && [ -x "$$p" ]; }; \
+	py=; \
+	for tool in python3.14 python3.13 python3.12 python3.11 python3; do \
+		if have "$$tool" && "$$tool" -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then py=$$tool; break; fi; \
+	done; \
+	if [ -n "$$py" ]; then echo "ok       $$py ($$("$$py" --version))"; \
+	else echo "MISSING  python >= 3.11 (required)"; missing=1; fi; \
+	if have "$(HATCH)"; then echo "ok       $(HATCH)"; \
+	else echo "MISSING  $(HATCH) (required; make install creates it)"; missing=1; fi; \
+	for tool in func azurite; do \
+		if have "$$tool"; then echo "ok       $$tool"; \
+		else echo "missing  $$tool (optional: needed only to run a local Functions host)"; fi; \
+	done; \
+	exit $$missing
 
 .PHONY: clean
 clean:
