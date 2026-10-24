@@ -21,11 +21,13 @@ from __future__ import annotations
 from collections.abc import Iterator
 import importlib.util
 import json
+import os
 from pathlib import Path
 from types import ModuleType
 
 import azure.functions as func
 import pytest
+import requests
 
 from azure_functions_openapi import generate_openapi_spec
 from azure_functions_openapi.decorator import clear_openapi_registry
@@ -88,3 +90,39 @@ class TestHostSmokeFixtureDocumentsItsLiveRoute:
     ) -> None:
         response = fixture_module.python_handler_name(_get("http://127.0.0.1:7071/api/custom_name"))
         assert json.loads(response.get_body()) == {"function_name": "custom_name"}
+
+
+def test_protected_docs_fixture_never_echoes_key(fixture_module: ModuleType) -> None:
+    # Given
+    request = func.HttpRequest(
+        method="GET",
+        url="/api/protected/docs?code=CANARY_KEY_9f3a",
+        params={"code": "CANARY_KEY_9f3a"},
+        body=b"",
+    )
+    # When
+    response = fixture_module.protected_docs.docs(request)
+    # Then
+    assert b"CANARY_KEY_9f3a" not in response.get_body()
+    assert b'url: "/api/protected/openapi.json"' in response.get_body()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("HOST_SMOKE_BASE_URL"),
+    reason="Set HOST_SMOKE_BASE_URL to a running tests/host_smoke Functions host",
+)
+def test_real_host_protected_docs_never_echoes_key() -> None:
+    # Given: Core Tools does not enforce keys locally; this proves no-echo, NOT key enforcement.
+    base = os.environ["HOST_SMOKE_BASE_URL"]
+    # When
+    response = requests.get(
+        f"{base}/api/protected/docs",
+        params={"code": "CANARY_KEY_9f3a"},
+        timeout=10,
+        allow_redirects=False,
+    )
+    # Then
+    assert response.status_code == 200
+    assert "CANARY_KEY_9f3a" not in response.text + repr(dict(response.headers))
+    assert 'url: "/api/protected/openapi.json"' in response.text
+    assert "?code=" not in response.text

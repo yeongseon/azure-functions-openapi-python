@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 from typing import Protocol
 
@@ -102,6 +103,39 @@ def test_registered_handlers_return_json_yaml_and_prefixed_swagger_url() -> None
     assert 'url: "/v2/openapi.json"' in docs_response.get_body().decode()
 
 
+@pytest.mark.parametrize(
+    "auth_level", [func.AuthLevel.ANONYMOUS, func.AuthLevel.FUNCTION], ids=["anonymous", "function"]
+)
+def test_registered_handlers_declare_a_parameter_for_every_binding(
+    auth_level: func.AuthLevel,
+) -> None:
+    """Regression for #814.
+
+    The Python worker refuses to load a function whose declared parameters do not
+    match its bindings, and a single load failure leaves the whole Function App
+    without any job functions. Calling the handlers directly (as the other tests
+    do) cannot see that, so mirror the worker's check here.
+    """
+    app = _documented_app()
+    register_openapi_routes(
+        app,
+        title="Widget API",
+        version="2.0.0",
+        auth_level=auth_level,
+        docs_key_forwarding="header",
+    )
+
+    functions = iter_functions(app)[-3:]
+    assert len(functions) == 3
+    for function in functions:
+        handler = get_user_handler(function)
+        assert handler is not None
+        declared = set(inspect.signature(handler).parameters)
+        bound = {binding.name for binding in function.get_bindings() if binding.name != "$return"}
+        assert bound, get_function_name(function)
+        assert bound <= declared, (get_function_name(function), bound, declared)
+
+
 def test_register_openapi_routes_supports_custom_routes_names_auth_and_options() -> None:
     app = _documented_app()
 
@@ -114,6 +148,7 @@ def test_register_openapi_routes_supports_custom_routes_names_auth_and_options()
         docs_route="reference",
         route_prefix="gateway/",
         auth_level=func.AuthLevel.FUNCTION,
+        docs_key_forwarding="query",
         name_prefix="private",
         spec_options={"description": "Private contract", "strict": True},
     )

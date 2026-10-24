@@ -82,13 +82,29 @@ generated spec paths and the URL fetched by Swagger UI. Additional generation
 arguments such as `description`, `strict`, or `servers` can be supplied through
 `spec_options`.
 
-When `auth_level` is not `ANONYMOUS`, the docs handler forwards a `code` query
-parameter from the docs request to the JSON specification URL so Swagger UI can
-load it. The key must authorize the JSON route: a host/master key spans
-functions, while a function-scoped key authorizes only its own function. The
-key remains in the page URL and can appear in browser history and logs, so use
-this only in trusted/internal environments; prefer edge-managed session or
-cookie authentication for broader access.
+The keyword-only `docs_key_forwarding: Literal["header", "query", "none"] | None = None`
+controls protected documentation keys:
+
+| Value | Behavior |
+| --- | --- |
+| `"header"` | Recommended: no server-side key echo; the browser removes `code` from its page URL and sends `x-functions-key` only on the exact same-origin spec download, never Try-it-out |
+| `"query"` | Legacy: copies the page request's `code` into the served spec URL |
+| `"none"` | No forwarding; suitable for edge authentication or an anonymous spec |
+| `None` (default) | Legacy query behavior with a caller-facing `DeprecationWarning` for protected registrations |
+
+Anonymous routes never forward keys or warn. Explicit values suppress the warning;
+the default will become `"header"` in a future minor release before 1.0. The
+initial page navigation can still expose the key in access logs before browser
+URL replacement. A function-scoped key authorizes only its own function; the
+key must authorize both the docs and JSON functions. Prefer production edge auth.
+See [the protected-docs threat model](security.md#protecting-documentation-routes).
+
+The low-level `render_swagger_ui(..., *, forward_page_key_header=False)` preserves
+existing output by default. Opting in reads the page query in the browser, not
+on the server. Only root-relative spec URLs are eligible for header forwarding;
+absolute HTTPS URLs remain supported but never receive the key, and
+protocol-relative URLs are rejected. Custom CSP policies need `{nonce}` in
+`script-src` for the inline scripts.
 
 ## Decorator behavior model
 
