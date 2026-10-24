@@ -176,13 +176,17 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 ### Labels
 
 - Apply at least one type label: `bug`, `enhancement`, `documentation`, or `chore` (`ci`, `test`, `question` where they fit).
-- Every new issue gets `needs-triage` (issue forms and the `Triage new issues` workflow add it automatically; add it yourself with `gh issue create --label needs-triage` when creating issues from a workflow). Leave it for the maintainer, who removes it after confirming validity, scope, type, and priority.
+- Every new issue gets `needs-triage` (issue forms and the `Triage new issues` workflow add it automatically; add it yourself when creating issues programmatically). **Do not remove it until validity, duplicate checks, repository scope, type, priority, and size have all been confirmed and saved.**
 - Priority uses exactly one of `priority:critical` / `priority:high` / `priority:medium` / `priority:low`. Never write P0/P1/P2.
   - `critical` — fix now: security issue, data loss, broken released package, or blocked release pipeline.
   - `high` — address before the next planned release; serious impact or no reasonable workaround.
   - `medium` — normal planned work; a workaround exists or scope is limited.
   - `low` — opportunistic polish or non-urgent improvement.
 - Priority may be provisional while `needs-triage` is present. An external contributor without label permissions should describe urgency in the issue body.
+- Give each actionable issue exactly one effort label: `size:small` (about one working day or less), `size:medium` (about two to three days), or `size:large` (about four to five days), including tests, CI and docs. These are estimates, not deadlines. Split larger or multi-concern work into focused repository-specific issues before marking it triaged. For umbrella trackers, size the tracking work itself, not the sum of child issues, and size each child independently.
+- Completing triage is a deliberate maintainer/authorized-agent action: verify the issue is actionable, not a duplicate, has its appropriate type/area labels, **one `priority:*` and one `size:*` label**; then remove `needs-triage`. If any decision remains uncertain, leave `needs-triage` and record what is missing. Do not remove it merely because a priority label was assigned.
+- Each triage pass must re-evaluate the **entire open-issue backlog in this repository** (not just the newest issue) for relative urgency, impact, release blockers, dependencies, duplication, and effort. Keep priorities consistent, adjust stale priority/size labels when evidence or scope changes, and state which issues should be addressed first. Reapply `needs-triage` if a material scope change invalidates a prior assessment.
+- Use exactly one priority and size label per actionable open issue. Priority is based on impact/urgency, not size; a small security defect may outrank a large enhancement. Do not introduce a separate ranking, project board, or shared cross-repository tracker.
 - Add `area:*` labels when they exist in the repository.
 - Use `blocker` only when the issue blocks a release.
 - There is no work-in-progress label. Open unfinished pull requests as Draft PRs, and link the issue with `Fixes #N` so its in-progress state shows on the issue.
@@ -206,7 +210,7 @@ Keep issue creation **open/unrestricted** in this repository (issue tracker enab
 This repository is **issue-based, not milestone-based**. Track and group work using issues plus the existing label taxonomy — do **not** introduce parallel structures.
 
 - Plan and group multi-issue efforts with an **umbrella tracker issue** (see above) plus the existing `priority:*` labels. Do **not** create GitHub Milestones — none exist by design, and their absence is an intentional signal, not an oversight.
-- Do **not** invent new label taxonomies (e.g. `epic:*`, `vNext`, release-tag labels) to group work. Reuse `priority:*`, `area:*` (only where they already exist), and the umbrella issue. Propose any new label in discussion and wait for explicit approval before creating it.
+- Do **not** invent new label taxonomies (e.g. `epic:*`, `vNext`, release-tag labels) to group work. Reuse the approved `priority:*` and `size:*` labels, existing `area:*` labels, and umbrella issues. Propose other new labels in discussion and wait for explicit approval before creating them.
 - Treat optional or tentative suggestions ("we could…", "it might be nice to…", "it would be fine to…") as **discussion, not a directive**. Confirm intent before making any structural change to how work is tracked (milestones, labels, project boards, issue hierarchies).
 - Before adding any organizational structure, check whether the repository already has an established convention. A category being empty or unused (zero milestones, no `epic:*` labels) is evidence to follow the existing pattern, not to introduce a new one.
 
