@@ -117,7 +117,13 @@ def test_registered_handlers_declare_a_parameter_for_every_binding(
     do) cannot see that, so mirror the worker's check here.
     """
     app = _documented_app()
-    register_openapi_routes(app, title="Widget API", version="2.0.0", auth_level=auth_level)
+    register_openapi_routes(
+        app,
+        title="Widget API",
+        version="2.0.0",
+        auth_level=auth_level,
+        docs_key_forwarding="header",
+    )
 
     functions = iter_functions(app)[-3:]
     assert len(functions) == 3
@@ -142,6 +148,7 @@ def test_register_openapi_routes_supports_custom_routes_names_auth_and_options()
         docs_route="reference",
         route_prefix="gateway/",
         auth_level=func.AuthLevel.FUNCTION,
+        docs_key_forwarding="query",
         name_prefix="private",
         spec_options={"description": "Private contract", "strict": True},
     )
