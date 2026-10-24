@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.security_evidence import classify_bandit
+from tools.security_evidence import SCOPE, classify_bandit, run_bandit
 from tools.security_report import Check, Status, write_report
 
 
@@ -43,6 +43,37 @@ def test_bandit_passes_when_scan_is_complete() -> None:
     assert result.status == Status.PASS
     assert result.counts["files"] == 1
     assert result.counts["loc"] == 10
+
+
+def write_scan_surfaces(root: Path, file_count: int) -> None:
+    for index in range(file_count):
+        surface = root / SCOPE[index % len(SCOPE)]
+        surface.mkdir(exist_ok=True)
+        (surface / f"module_{index:03d}.py").write_text(f"VALUE = {index}\n", encoding="utf-8")
+    policy = root / "security" / "bandit-policy.json"
+    policy.parent.mkdir()
+    policy.write_text('{"exceptions": []}\n', encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    "file_count",
+    [
+        pytest.param(49, id="below-bandit-progress-threshold"),
+        pytest.param(51, id="above-bandit-progress-threshold"),
+    ],
+)
+def test_real_bandit_scan_passes_on_either_side_of_the_progress_threshold(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, file_count: int
+) -> None:
+    # Given harmless files on every declared surface, on either side of the 50-file
+    # threshold above which Bandit prints a "Working..." progress bar before its JSON;
+    # When the real scanner is run through the evidence collector;
+    # Then its JSON still parses and the scan passes instead of reporting TOOL_ERROR.
+    write_scan_surfaces(tmp_path, file_count)
+    monkeypatch.chdir(tmp_path)
+    result = run_bandit()
+    assert result.status == Status.PASS
+    assert result.counts["files"] == file_count
 
 
 @pytest.mark.parametrize("field", ["nosec", "skipped_tests"])

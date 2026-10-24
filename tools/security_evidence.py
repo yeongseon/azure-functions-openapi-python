@@ -130,7 +130,7 @@ def apply_bandit_policy(check: Check, policy_raw: str, today: date) -> Check:
 def run_bandit() -> Check:
     try:
         process = subprocess.run(
-            [sys.executable, "-m", "bandit", "-r", *SCOPE, "-f", "json"],
+            [sys.executable, "-m", "bandit", "-r", *SCOPE, "-f", "json", "-q"],
             capture_output=True,
             text=True,
             check=False,
