@@ -1,5 +1,8 @@
 VENV_DIR := .venv
-PYTHON := $(VENV_DIR)/bin/python
+# The interpreter that creates $(VENV_DIR), which only hosts Hatch, and that `make install-ci`
+# installs into: `make install PYTHON=python3.12`. Hatch still provisions its own default
+# environment (Python 3.11, see [tool.hatch.envs.default] in pyproject.toml).
+PYTHON ?= python3
 PIP := $(VENV_DIR)/bin/pip
 HATCH := $(VENV_DIR)/bin/hatch
 SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
@@ -11,16 +14,13 @@ SWAGGER_PREVIEW_PORT := 8123
 SPEC_PREVIEW_PORT := 8124
 EXAMPLES_PREVIEW_PORT := 8130
 
+# Idempotent: the virtual environment is created only while it is missing, Hatch is installed only
+# while it is not an executable regular file (`-x` alone also accepts a directory), and pip is
+# never upgraded.
 .PHONY: bootstrap
 bootstrap:
-	@if [ ! -d "$(VENV_DIR)" ]; then \
-		echo "Creating virtual environment..."; \
-		python3 -m venv $(VENV_DIR); \
-	fi
-	@echo "Ensuring Hatch is installed in virtual environment..."
-	@$(PIP) install --upgrade pip > /dev/null
-	@$(PIP) install hatch > /dev/null
-	@echo "Hatch installed at $(HATCH)"
+	@test -d "$(VENV_DIR)" || { echo "Creating virtual environment..."; $(PYTHON) -m venv "$(VENV_DIR)"; }
+	@{ [ -f "$(HATCH)" ] && [ -x "$(HATCH)" ]; } || { echo "Installing Hatch..."; "$(PIP)" install --disable-pip-version-check --quiet hatch; }
 
 .PHONY: ensure-hatch
 ensure-hatch: bootstrap
@@ -33,6 +33,13 @@ install: ensure-hatch
 	else \
 		$(MAKE) precommit-install; \
 	fi
+
+# Installs into the interpreter you select and never through Hatch, whose default environment is
+# pinned to Python 3.11, so a CI matrix cell keeps its own Python: `make install-ci PYTHON=python3.12`.
+.PHONY: install-ci
+install-ci:
+	@$(PYTHON) -c 'import sys; sys.exit(sys.version_info < (3, 11) and "install-ci needs Python 3.11 or newer, got " + sys.version.split()[0])'
+	@$(PYTHON) -m pip install -e ".[dev]"
 
 .PHONY: shell
 shell: ensure-hatch
@@ -96,10 +103,10 @@ security-development:
 security-browser:
 	@$(SECURITY_PYTHON) -m tools.browser_integrity --output "$(SECURITY_OUTPUT)"
 
+# `hatch run lint` is `style` followed by `typecheck`, so `check` is `lint`: a further
+# `make typecheck` would run the type check a second time.
 .PHONY: check
-check: ensure-hatch
-	@$(MAKE) lint
-	@$(MAKE) typecheck
+check: lint
 	@echo "Lint and type check passed."
 
 .PHONY: lint-workflows
@@ -171,16 +178,18 @@ version: ensure-hatch
 	@echo "Current version:"
 	@$(HATCH) version
 
+# The CI docs gate (`mkdocs build --strict` after `pip install -e ".[docs]"`): a broken link or nav
+# entry fails the build, the dependencies come from pyproject.toml, and a failed install stops the
+# build with pip's own error instead of building with whatever was already installed.
 .PHONY: docs
 docs:
 	@if [ -n "$$CI" ]; then \
 		echo "CI detected: running MkDocs directly"; \
-		python -m pip install --upgrade pip > /dev/null 2>&1 || true; \
-		pip install "mkdocs<2.0" "mkdocs-material<10.0" "mkdocstrings[python]<1.0" > /dev/null 2>&1; \
-		mkdocs build; \
+		pip install --disable-pip-version-check --quiet -e ".[docs]" && \
+		mkdocs build --strict; \
 	else \
-		$(MAKE) ensure-hatch > /dev/null; \
-		$(HATCH) run mkdocs build; \
+		$(MAKE) ensure-hatch > /dev/null && \
+		$(HATCH) run mkdocs build --strict; \
 	fi
 
 .PHONY: docs-serve
@@ -280,13 +289,28 @@ demo-examples: ensure-hatch
 	kill $$SERVER_PID 2>/dev/null || true; \
 	wait $$SERVER_PID 2>/dev/null || true
 
+# Read-only prerequisite check: it installs and writes nothing, and fails when a required tool is
+# missing. A tool counts only if `command -v` resolves it to an executable regular file, because
+# `command -v` also reports a non-executable file and `-x` alone also accepts a directory. Python
+# 3.11 or newer is looked up on PATH, $(HATCH) is the Hatch this Makefile runs (`make install`
+# creates it), and func and azurite are needed only to run a local Functions host.
 .PHONY: doctor
 doctor:
-	@echo "Python version:" && $(PYTHON) --version
-	@echo "Installed packages:" && $(HATCH) env run pip list || echo "No hatch environment found"
-	@echo "Azure Function Core Tools version:" && func --version || echo "func not found"
-	@echo "Pre-commit hook installed:"
-	@if [ -f .git/hooks/pre-commit ]; then echo yes; else echo no; fi
+	@missing=0; \
+	have() { p="$$(command -v "$$1")"; [ -f "$$p" ] && [ -x "$$p" ]; }; \
+	py=; \
+	for tool in python3.14 python3.13 python3.12 python3.11 python3; do \
+		if have "$$tool" && "$$tool" -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then py=$$tool; break; fi; \
+	done; \
+	if [ -n "$$py" ]; then echo "ok       $$py ($$("$$py" --version))"; \
+	else echo "MISSING  python >= 3.11 (required)"; missing=1; fi; \
+	if have "$(HATCH)"; then echo "ok       $(HATCH)"; \
+	else echo "MISSING  $(HATCH) (required; make install creates it)"; missing=1; fi; \
+	for tool in func azurite; do \
+		if have "$$tool"; then echo "ok       $$tool"; \
+		else echo "missing  $$tool (optional: needed only to run a local Functions host)"; fi; \
+	done; \
+	exit $$missing
 
 .PHONY: clean
 clean:

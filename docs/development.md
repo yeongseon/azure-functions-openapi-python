@@ -129,6 +129,7 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | Target | Description |
 |--------|-------------|
 | `make install` | Create Hatch env and install pre-commit hooks |
+| `make install-ci` | Install `.[dev]` into the interpreter you select (`PYTHON=python3.12`), never through Hatch |
 | `make shell` | Open a shell inside the Hatch env |
 | `make format` | Format code (ruff format) |
 | `make format-check` | Check formatting without writing (ruff format --check) |
@@ -141,9 +142,9 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make e2e-local` | Run e2e tests against local Azurite on `:7071` |
 | `make e2e-azure` | Run e2e tests against Azure (`E2E_BASE_URL` required) |
 | `make lint-workflows` | Lint release workflows, action pins, and the Hatch matrix |
-| `make check` | Run lint + typecheck |
+| `make check` | Run `make lint`, which includes the type check, once |
 | `make check-all` | Run lint-workflows + check + test + security |
-| `make docs` | Build the MkDocs site |
+| `make docs` | Build the MkDocs site with `mkdocs build --strict`, like the CI docs gate |
 | `make docs-serve` | Serve the docs locally with live reload |
 | `make demo` | Run the Swagger UI and example demos |
 | `make build` | Build package |
@@ -151,7 +152,7 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make publish-test` | Publish to TestPyPI |
 | `make precommit` | Run all pre-commit hooks |
 | `make precommit-install` | Install pre-commit hooks |
-| `make doctor` | Show environment diagnostic info |
+| `make doctor` | Check the prerequisites (read-only); fails when a required tool is missing |
 | `make reset` | Deep clean, then reinstall the env |
 | `make hatch-clean` | Remove the Hatch environment |
 | `make clean` | Remove build artifacts |
@@ -160,6 +161,19 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 
 Coverage is enforced at **95%** (`fail_under = 95` in `pyproject.toml`); a drop
 below that fails the build.
+
+`make install` creates `.venv` only while it is missing and installs Hatch only while `.venv/bin/hatch`
+is missing or not an executable file; no target upgrades pip. `PYTHON` selects the interpreter that
+creates `.venv` (default `python3`, for example `make install PYTHON=python3.12`); Hatch still
+provisions its own default environment on Python 3.11. `make install-ci PYTHON=<interpreter>` installs
+`.[dev]` into exactly that interpreter, which must be Python 3.11 or newer, and never goes through
+Hatch, so a CI matrix cell keeps its own Python.
+
+`make doctor` checks this repository's prerequisites and installs or writes nothing. A Python 3.11 or
+newer on `PATH` and `.venv/bin/hatch` (created by `make install`) are required: each prints `ok` or
+`MISSING ...`, and a missing one makes the target fail. `func` and `azurite` are optional, because
+only a local Functions host needs them. A Python 3.11 that only Hatch manages is not on `PATH`, so
+`doctor` reports it as missing.
 
 > For the full release workflow, see [Release Process](release_process.md).
 
