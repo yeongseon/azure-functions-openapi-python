@@ -14,6 +14,12 @@ normal test suite, without requiring the real Functions host, Azurite, or
 Core Tools that the `host-smoke` CI job spins up. Reverting the fix (dropping
 app=app from get_openapi_json() in function_app.py) makes
 test_fixture_handler_documents_the_route_it_actually_serves fail.
+
+The tests marked `host_smoke` are the opposite: they request the routes of an
+already running host (HOST_SMOKE_BASE_URL) and are deselected from the offline
+run by pyproject.toml's addopts. The `host-smoke` CI job selects them with
+`-m host_smoke`, and a missing HOST_SMOKE_BASE_URL fails them instead of
+skipping them (#824).
 """
 
 from __future__ import annotations
@@ -107,10 +113,29 @@ def test_protected_docs_fixture_never_echoes_key(fixture_module: ModuleType) -> 
     assert b'url: "/api/protected/openapi.json"' in response.get_body()
 
 
-@pytest.mark.skipif(
-    not os.environ.get("HOST_SMOKE_BASE_URL"),
-    reason="Set HOST_SMOKE_BASE_URL to a running tests/host_smoke Functions host",
+@pytest.mark.host_smoke
+@pytest.mark.parametrize(
+    ("route", "needle"),
+    [
+        ("registered/openapi.json", '"openapi"'),
+        ("registered/openapi.yaml", "openapi:"),
+        ("registered/docs", "SwaggerUIBundle"),
+        ("protected/openapi.json", '"openapi"'),
+        ("protected/openapi.yaml", "openapi:"),
+        ("protected/docs", "SwaggerUIBundle"),
+    ],
 )
+def test_real_host_serves_every_registered_route(route: str, needle: str) -> None:
+    # Given: the app indexed by the host (#814 acceptance: request each helper route)
+    base = os.environ["HOST_SMOKE_BASE_URL"]
+    # When
+    response = requests.get(f"{base}/api/{route}", timeout=10, allow_redirects=False)
+    # Then
+    assert response.status_code == 200
+    assert needle in response.text
+
+
+@pytest.mark.host_smoke
 def test_real_host_protected_docs_never_echoes_key() -> None:
     # Given: Core Tools does not enforce keys locally; this proves no-echo, NOT key enforcement.
     base = os.environ["HOST_SMOKE_BASE_URL"]

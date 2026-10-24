@@ -544,7 +544,7 @@ jobs:
           python -m venv tests/host_smoke/.venv
           tests/host_smoke/.venv/bin/python -m pip install --upgrade pip
           cd tests/host_smoke
-          .venv/bin/python -m pip install -r requirements.txt
+          .venv/bin/python -m pip install -r requirements.txt pytest pytest-cov requests
 
       - name: Exercise OpenAPI routes on a real Functions host
         run: |
@@ -613,6 +613,14 @@ jobs:
             --output "$RUNNER_TEMP/swagger.html"
           grep -q 'SwaggerUIBundle' "$RUNNER_TEMP/swagger.html"
 
+          # Request every route register_openapi_routes registered (JSON, YAML, docs;
+          # anonymous and protected): indexing alone never proved they respond (#824).
+          # The status is kept so the host log is still printed and scanned before failing.
+          pytest_status=0
+          (cd ../.. && HOST_SMOKE_BASE_URL=http://127.0.0.1:7071 \
+            tests/host_smoke/.venv/bin/python -m pytest tests/host_smoke -m host_smoke --no-cov -rs) \
+            || pytest_status=$?
+
           kill "$host_pid" 2>/dev/null || true
           wait "$host_pid" 2>/dev/null || true
           cat "$RUNNER_TEMP/host-smoke.log"
@@ -620,6 +628,11 @@ jobs:
           if grep -Eq "0 functions (loaded|found \(Worker\))|No job functions found|Executed 'Functions\..*' \(Failed" "$RUNNER_TEMP/host-smoke.log"; then
             echo "::error::The Functions host reported indexing or invocation errors"
             exit 1
+          fi
+
+          if [ "$pytest_status" -ne 0 ]; then
+            echo "::error::The real-host route tests failed (pytest exit $pytest_status)"
+            exit "$pytest_status"
           fi
 
   # azure-functions 2.x compatibility proof lane (issues #488 / #528),
