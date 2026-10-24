@@ -12,7 +12,9 @@ try:
     from examples.partner_import_bridge import function_app as bridge_function_app
 
     HAS_VALIDATION = True
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "azure_functions_validation":
+        raise
     HAS_VALIDATION = False
 
 pytestmark = pytest.mark.skipif(

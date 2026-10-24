@@ -38,17 +38,17 @@ def _clean_registry() -> Any:
 def _reload_example(module_path: str) -> None:
     """Clear registry and reload an example module to repopulate it.
 
-    Skips the test if an optional dependency required by the example is not
-    installed (e.g. ``azure-functions-validation`` for the notification_request
-    example).
+    Skips only when the optional ``azure-functions-validation`` companion is absent.
     """
     with decorator_module._registry_lock:
         decorator_module._openapi_registry.clear()
     try:
         mod = importlib.import_module(module_path)
         importlib.reload(mod)
-    except ImportError as exc:
-        pytest.skip(f"Skipping: optional dependency not installed ({exc})")
+    except ModuleNotFoundError as exc:
+        if exc.name != "azure_functions_validation":
+            raise
+        pytest.skip("azure-functions-validation not installed")
 
 
 def _assert_snapshot(spec: dict[str, Any], snapshot_name: str) -> None:
