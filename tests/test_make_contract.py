@@ -143,6 +143,11 @@ def test_check_all_keeps_every_gate_it_had() -> None:
     assert [commands.count(gate) for gate in gates] == [1, 1, 1, 1]
 
 
+def test_makefile_never_upgrades_pip() -> None:
+    # Also covers `docs`: its recipe line contains $(MAKE), so `make -n` would run it for real.
+    assert "--upgrade" not in (ROOT / "Makefile").read_text(encoding="utf-8")
+
+
 def test_bootstrap_installs_hatch_once_and_only_while_it_is_missing(sandbox: Sandbox) -> None:
     # Given a virtual environment that has pip but no Hatch
     sandbox.pip(sandbox.venv / "bin")
@@ -225,3 +230,65 @@ def test_install_ci_needs_python_311(
     assert any(call.startswith("sentinel -c ") for call in sandbox.calls)
     assert (result.returncode == 0) is installs
     assert ("sentinel -m pip install -e .[dev]" in sandbox.calls) is installs
+
+
+@pytest.mark.parametrize(
+    ("environment", "build"),
+    [({}, "hatch run mkdocs build --strict"), ({"CI": "1"}, "mkdocs build --strict")],
+    ids=["local", "ci"],
+)
+def test_docs_builds_strictly(sandbox: Sandbox, environment: dict[str, str], build: str) -> None:
+    # Given Hatch, pip and MkDocs stubs
+    sandbox.tool("hatch", sandbox.venv / "bin")
+    sandbox.tool("pip")
+    sandbox.tool("mkdocs")
+
+    # When docs runs locally and under CI
+    result = sandbox.make("docs", **environment)
+
+    # Then MkDocs ran in strict mode
+    assert result.returncode == 0, result.stderr
+    assert build in sandbox.calls
+
+
+def test_docs_under_ci_installs_the_docs_extra_the_ci_gate_installs(sandbox: Sandbox) -> None:
+    # Given pip and MkDocs stubs
+    sandbox.tool("pip")
+    sandbox.tool("mkdocs")
+
+    # When docs runs under CI
+    result = sandbox.make("docs", CI="1")
+
+    # Then the dependencies come from pyproject.toml, not from pins kept in the Makefile
+    assert result.returncode == 0, result.stderr
+    assert any(
+        call.startswith("pip install") and call.endswith("-e .[docs]") for call in sandbox.calls
+    )
+
+
+@pytest.mark.parametrize("environment", [{}, {"CI": "1"}], ids=["local", "ci"])
+def test_docs_fails_when_the_build_fails(sandbox: Sandbox, environment: dict[str, str]) -> None:
+    # Given a MkDocs build that fails
+    sandbox.tool("hatch", sandbox.venv / "bin", "exit 1\n")
+    sandbox.tool("pip")
+    sandbox.tool("mkdocs", body="exit 1\n")
+
+    # When docs runs
+    result = sandbox.make("docs", **environment)
+
+    # Then make fails
+    assert result.returncode != 0
+
+
+def test_docs_shows_a_failed_install_and_does_not_build_after_it(sandbox: Sandbox) -> None:
+    # Given a pip that fails with a message
+    sandbox.tool("pip", body='echo "ERROR: no matching distribution" >&2\nexit 1\n')
+    sandbox.tool("mkdocs")
+
+    # When docs runs under CI
+    result = sandbox.make("docs", CI="1")
+
+    # Then the error is visible and MkDocs never ran
+    assert result.returncode != 0
+    assert "ERROR: no matching distribution" in result.stderr
+    assert "mkdocs build --strict" not in sandbox.calls

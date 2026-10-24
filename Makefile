@@ -178,16 +178,18 @@ version: ensure-hatch
 	@echo "Current version:"
 	@$(HATCH) version
 
+# The CI docs gate (`mkdocs build --strict` after `pip install -e ".[docs]"`): a broken link or nav
+# entry fails the build, the dependencies come from pyproject.toml, and a failed install stops the
+# build with pip's own error instead of building with whatever was already installed.
 .PHONY: docs
 docs:
 	@if [ -n "$$CI" ]; then \
 		echo "CI detected: running MkDocs directly"; \
-		python -m pip install --upgrade pip > /dev/null 2>&1 || true; \
-		pip install "mkdocs<2.0" "mkdocs-material<10.0" "mkdocstrings[python]<1.0" > /dev/null 2>&1; \
-		mkdocs build; \
+		pip install --disable-pip-version-check --quiet -e ".[docs]" && \
+		mkdocs build --strict; \
 	else \
-		$(MAKE) ensure-hatch > /dev/null; \
-		$(HATCH) run mkdocs build; \
+		$(MAKE) ensure-hatch > /dev/null && \
+		$(HATCH) run mkdocs build --strict; \
 	fi
 
 .PHONY: docs-serve
