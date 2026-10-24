@@ -135,7 +135,7 @@ See [Development Guide](development.md#makefile-targets) for the complete list.
 | --- | --- |
 | Ruff | Formatter, linter, and import sorter |
 | mypy | Static type checker |
-| Bandit | Security scanner (`src/` only) |
+| Bandit | Local `make security` scans `src/`; CI additionally scans examples, demo, scripts and tools with fail-closed evidence (see root `SECURITY.md`) |
 
 Pinned versions live in `.pre-commit-config.yaml` (hook `rev`) and
 `pyproject.toml` (the `dev` dependency pins), so they are not duplicated here.

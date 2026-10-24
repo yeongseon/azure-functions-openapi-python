@@ -235,9 +235,58 @@ jobs:
       AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
 
+  runtime-dependency-audit:
+    name: Runtime dependency and browser integrity gate
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        interpreter: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout security policy and tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up audit interpreter
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.interpreter }}
+      - name: Download the same candidate wheel
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: candidate-dist
+      - name: Install only the candidate runtime closure in an isolated environment
+        run: |
+          python -m pip install 'pip-audit==2.10.1'
+          python -m venv --without-pip "$RUNNER_TEMP/candidate"
+          wheels=(candidate-dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m pip --python "$RUNNER_TEMP/candidate/bin/python" install "${wheels[0]}"
+      - name: Enforce runtime advisory policy
+        if: always()
+        run: |
+          site_packages=$("$RUNNER_TEMP/candidate/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          wheels=(candidate-dist/*.whl)
+          test "${#wheels[@]}" -eq 1
+          make security-runtime SECURITY_PYTHON=python SITE_PACKAGES="$site_packages" CANDIDATE_WHEEL="${wheels[0]}" SECURITY_OUTPUT=security-results/runtime
+      - name: Verify browser CDN integrity from the candidate wheel
+        if: always()
+        run: |
+          site_packages=$("$RUNNER_TEMP/candidate/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          PYTHONPATH="$site_packages" make security-browser SECURITY_PYTHON="$RUNNER_TEMP/candidate/bin/python" SECURITY_OUTPUT=security-results/browser
+      - name: Upload redacted release security evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-security-${{ matrix.interpreter }}
+          path: security-results/**
+          if-no-files-found: error
+
   publish:
     name: Publish to PyPI
-    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e]
+    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e, runtime-dependency-audit]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

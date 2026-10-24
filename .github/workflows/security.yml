@@ -7,6 +7,7 @@ on:
     branches: [main]
   schedule:
     - cron: "0 2 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,13 +24,23 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Hatch and dependencies via Makefile
-        run: |
-          pip install hatch
-          make install
+      - name: Install scanner dependencies
+        run: pip install -e ".[dev]"
 
-      - name: Run Bandit
-        run: make security
+      - name: Run Bandit on declared executable surfaces with fail-closed evidence
+        if: always()
+        run: make security-bandit SECURITY_PYTHON=python
+
+      - name: Type check security tooling
+        run: make security-types SECURITY_PYTHON=python
+
+      - name: Upload redacted security evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-bandit
+          path: security-results/**
+          if-no-files-found: error
 
   semgrep:
     runs-on: ubuntu-latest
@@ -38,6 +49,27 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Run Semgrep
+        id: scan
         uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d # v1
         with:
           config: p/python
+
+      - name: Set up evidence interpreter
+        if: always()
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Record Semgrep execution evidence
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+        run: make security-semgrep SECURITY_PYTHON=python
+
+      - name: Upload redacted security evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-semgrep
+          path: security-results/**
+          if-no-files-found: error

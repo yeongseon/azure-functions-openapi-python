@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "inline_suppressions_allowed": 0,
+  "exceptions": [
+    {"id": "B105", "file": "scripts/lint_mermaid.py", "line": 22, "kind": "reviewed-static", "reason": "BAD_TOKEN is the literal backslash-n marker used by the Mermaid linter, not a password.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B404", "file": "tools/check_pr_format.py", "line": 5, "kind": "reviewed-static", "reason": "Contributor formatter requires subprocess; both call sites are separately reviewed below.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B607", "file": "tools/check_pr_format.py", "line": 10, "kind": "reviewed-static", "reason": "git resolves from the contributor/CI toolchain PATH; no shell is invoked.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B603", "file": "tools/check_pr_format.py", "line": 10, "kind": "reviewed-static", "reason": "git diff receives a revision range as one argument and terminates options with --; shell=False.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B607", "file": "tools/check_pr_format.py", "line": 37, "kind": "reviewed-static", "reason": "ruff resolves from the contributor/CI toolchain PATH; no shell is invoked.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B603", "file": "tools/check_pr_format.py", "line": 37, "kind": "reviewed-static", "reason": "ruff receives filenames after -- as separate arguments; shell=False.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B404", "file": "tools/browser_integrity.py", "line": 10, "kind": "reviewed-static", "reason": "Invokes only bounded curl for pinned public CDN assets; no shell.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B603", "file": "tools/browser_integrity.py", "line": 37, "kind": "reviewed-static", "reason": "Absolute curl executable, fixed HTTPS URL from wheel constants, shell=False, bounded timeouts.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B404", "file": "tools/dependency_audit_policy.py", "line": 10, "kind": "reviewed-static", "reason": "Runs pip-audit via the current Python interpreter without a shell.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B603", "file": "tools/dependency_audit_policy.py", "line": 125, "kind": "reviewed-static", "reason": "Interpreter is sys.executable; verified frozen inventory is a separate --requirement file argument; shell=False.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B404", "file": "tools/security_evidence.py", "line": 10, "kind": "reviewed-static", "reason": "Runs Bandit via the current Python interpreter without a shell.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B603", "file": "tools/security_evidence.py", "line": 132, "kind": "reviewed-static", "reason": "sys.executable runs a fixed Bandit command and repository-controlled scope; shell=False.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"},
+    {"id": "B105", "file": "tools/security_report.py", "line": 59, "kind": "reviewed-static", "reason": "TOOL_ERROR is a public status enum value, not a hardcoded credential.", "owner": "yeongseon", "added": "2026-10-22", "expires": "2027-01-19"}
+  ]
+}

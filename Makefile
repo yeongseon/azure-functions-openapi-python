@@ -67,8 +67,34 @@ lint: ensure-hatch
 	@$(HATCH) run lint
 
 .PHONY: security
-security: ensure-hatch
-	@$(HATCH) run security
+security: security-bandit
+
+# Shared security entry points; SECURITY_PYTHON selects an already provisioned interpreter.
+SECURITY_PYTHON ?= hatch run python
+SECURITY_OUTPUT ?= security-results
+SITE_PACKAGES ?=
+CANDIDATE_WHEEL ?=
+SCAN_OUTCOME ?=
+SECURITY_TOOLS := tools/security_report.py tools/security_exceptions.py tools/security_evidence.py tools/dependency_audit_policy.py tools/candidate_inventory.py tools/browser_integrity.py
+
+.PHONY: security-bandit security-semgrep security-types security-runtime security-development security-browser
+security-bandit:
+	@$(SECURITY_PYTHON) -m tools.security_evidence bandit --output "$(SECURITY_OUTPUT)"
+
+security-semgrep:
+	@$(SECURITY_PYTHON) -m tools.security_evidence semgrep --outcome "$(SCAN_OUTCOME)" --output "$(SECURITY_OUTPUT)"; code=$$?; test $$code -eq 0 -o $$code -eq 3
+
+security-types:
+	@$(SECURITY_PYTHON) -m mypy --explicit-package-bases $(SECURITY_TOOLS)
+
+security-runtime:
+	@$(SECURITY_PYTHON) -m tools.dependency_audit_policy --site-packages "$(SITE_PACKAGES)" --candidate-wheel "$(CANDIDATE_WHEEL)" --output "$(SECURITY_OUTPUT)"
+
+security-development:
+	@$(SECURITY_PYTHON) -m tools.dependency_audit_policy --site-packages "$(SITE_PACKAGES)" --candidate-wheel "$(CANDIDATE_WHEEL)" --development --output "$(SECURITY_OUTPUT)"
+
+security-browser:
+	@$(SECURITY_PYTHON) -m tools.browser_integrity --output "$(SECURITY_OUTPUT)"
 
 .PHONY: check
 check: ensure-hatch

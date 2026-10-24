@@ -1,5 +1,18 @@
 # Examples
 
+## Local-only security defaults
+
+These runnable examples use anonymous routes for local demonstration. Their OpenAPI
+security declarations are documentation, not an authentication gateway. Do not deploy
+unchanged to production: configure real authentication, network restrictions and secrets
+through your deployment environment. In particular, webhook signature checking is optional
+when `WEBHOOK_SECRET` is unset, example bearer checks are not a production identity provider,
+and the partner purge example checks only that `X-API-Key` is present, not its identity.
+
+`e2e_app/` is the exception to local-only hosting: CI deploys it temporarily to Azure
+for certification with synthetic data, anonymous warmup/test/docs routes, and resource-group
+cleanup. Keep its public reachability for certification, not as a production default.
+
 `azure-functions-openapi` ships five smoke-tested examples:
 
 | Role | Path | Description |
