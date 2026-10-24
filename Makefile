@@ -1,5 +1,8 @@
 VENV_DIR := .venv
-PYTHON := $(VENV_DIR)/bin/python
+# The interpreter that creates $(VENV_DIR), which only hosts Hatch, and that `make install-ci`
+# installs into: `make install PYTHON=python3.12`. Hatch still provisions its own default
+# environment (Python 3.11, see [tool.hatch.envs.default] in pyproject.toml).
+PYTHON ?= python3
 PIP := $(VENV_DIR)/bin/pip
 HATCH := $(VENV_DIR)/bin/hatch
 SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
@@ -11,16 +14,13 @@ SWAGGER_PREVIEW_PORT := 8123
 SPEC_PREVIEW_PORT := 8124
 EXAMPLES_PREVIEW_PORT := 8130
 
+# Idempotent: the virtual environment is created only while it is missing, Hatch is installed only
+# while it is not an executable regular file (`-x` alone also accepts a directory), and pip is
+# never upgraded.
 .PHONY: bootstrap
 bootstrap:
-	@if [ ! -d "$(VENV_DIR)" ]; then \
-		echo "Creating virtual environment..."; \
-		python3 -m venv $(VENV_DIR); \
-	fi
-	@echo "Ensuring Hatch is installed in virtual environment..."
-	@$(PIP) install --upgrade pip > /dev/null
-	@$(PIP) install hatch > /dev/null
-	@echo "Hatch installed at $(HATCH)"
+	@test -d "$(VENV_DIR)" || { echo "Creating virtual environment..."; $(PYTHON) -m venv "$(VENV_DIR)"; }
+	@{ [ -f "$(HATCH)" ] && [ -x "$(HATCH)" ]; } || { echo "Installing Hatch..."; "$(PIP)" install --disable-pip-version-check --quiet hatch; }
 
 .PHONY: ensure-hatch
 ensure-hatch: bootstrap
@@ -33,6 +33,13 @@ install: ensure-hatch
 	else \
 		$(MAKE) precommit-install; \
 	fi
+
+# Installs into the interpreter you select and never through Hatch, whose default environment is
+# pinned to Python 3.11, so a CI matrix cell keeps its own Python: `make install-ci PYTHON=python3.12`.
+.PHONY: install-ci
+install-ci:
+	@$(PYTHON) -c 'import sys; sys.exit(sys.version_info < (3, 11) and "install-ci needs Python 3.11 or newer, got " + sys.version.split()[0])'
+	@$(PYTHON) -m pip install -e ".[dev]"
 
 .PHONY: shell
 shell: ensure-hatch
@@ -96,10 +103,10 @@ security-development:
 security-browser:
 	@$(SECURITY_PYTHON) -m tools.browser_integrity --output "$(SECURITY_OUTPUT)"
 
+# `hatch run lint` is `style` followed by `typecheck`, so `check` is `lint`: a further
+# `make typecheck` would run the type check a second time.
 .PHONY: check
-check: ensure-hatch
-	@$(MAKE) lint
-	@$(MAKE) typecheck
+check: lint
 	@echo "Lint and type check passed."
 
 .PHONY: lint-workflows
