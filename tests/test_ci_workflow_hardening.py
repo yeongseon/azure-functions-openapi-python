@@ -92,3 +92,12 @@ def test_gate_accepts_a_successful_unknown_dependency() -> None:
     jobs["future-job"] = {"result": "success", "outputs": {}}
 
     assert run_gate(jobs).returncode == 0
+
+
+def test_host_smoke_job_runs_the_real_host_tests() -> None:
+    steps = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]["host-smoke"]["steps"]
+    script = "\n".join(step.get("run", "") for step in steps)
+
+    assert "HOST_SMOKE_BASE_URL=" in script
+    assert "-m host_smoke" in script
+    assert 'exit "$pytest_status"' in script
