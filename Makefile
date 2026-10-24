@@ -8,6 +8,9 @@ HATCH := $(VENV_DIR)/bin/hatch
 SPEC_PREVIEW_PNG := docs/assets/webhook_receiver_openapi_spec_preview.png
 PLAYWRIGHT_VERSION := 1.54.1
 PLAYWRIGHT_BROWSERS_PATH := $(CURDIR)/.cache/ms-playwright
+PLAYWRIGHT_PACKAGE := $(CURDIR)/.cache/browser/node_modules/playwright
+BROWSER_PYTHON ?= $(HATCH) run python
+BROWSER_INSTALL_FLAGS ?=
 SWAGGER_PREVIEW_DIR := demo/.preview/swagger-ui
 SPEC_PREVIEW_DIR := demo/.preview/spec-preview
 SWAGGER_PREVIEW_PORT := 8123
@@ -141,6 +144,14 @@ cov: ensure-hatch
 	@$(HATCH) run cov
 	@echo "Open htmlcov/index.html in your browser to view the coverage report."
 	@echo "coverage.xml generated for Codecov upload."
+
+.PHONY: browser-install test-browser
+browser-install:
+	@npm install --cache .cache/npm --prefix .cache/browser --no-save --package-lock=false playwright@$(PLAYWRIGHT_VERSION)
+	@PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" node "$(PLAYWRIGHT_PACKAGE)/cli.js" install --only-shell $(BROWSER_INSTALL_FLAGS) chromium
+
+test-browser:
+	@PLAYWRIGHT_PACKAGE="$(PLAYWRIGHT_PACKAGE)" PLAYWRIGHT_BROWSERS_PATH="$(PLAYWRIGHT_BROWSERS_PATH)" $(BROWSER_PYTHON) -m pytest -p tools.browser_policy -m browser --no-cov tests/test_docs_key_browser.py
 
 .PHONY: perf
 perf: ensure-hatch
