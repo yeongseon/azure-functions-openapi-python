@@ -142,12 +142,13 @@ pretty = true
 module = "examples.*"
 follow_imports = "skip"
 [tool.pytest.ini_options]
-addopts = "--cov=src/azure_functions_openapi --cov-report=xml --cov-report=term-missing -ra -q -m 'not e2e and not perf and not browser'"
+addopts = "--cov=src/azure_functions_openapi --cov-report=xml --cov-report=term-missing -ra -q -m 'not e2e and not perf and not browser and not host_smoke'"
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 markers = [
     "e2e: real Azure end-to-end tests (require E2E_BASE_URL)",
     "perf: spec-generation regression budgets (run with make perf)",
+    "host_smoke: requests a running tests/host_smoke Functions host (set HOST_SMOKE_BASE_URL)",
     "browser: offline Chromium script checks (require cached Playwright 1.54.1 and Chromium)",
     "browser_cdn: real SRI-enforced Swagger UI CDN checks (skip when CDN network is unavailable)",
 ]
