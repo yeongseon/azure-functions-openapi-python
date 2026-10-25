@@ -8,6 +8,7 @@ import sys
 
 from azure_functions_openapi import _prepare_generation
 from azure_functions_openapi._atomic import write_text_atomic
+from azure_functions_openapi._generation_result import GenerationResult
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -18,8 +19,11 @@ from azure_functions_openapi.spec import (
     OPENAPI_VERSION_3_0,
     OPENAPI_VERSION_3_1,
     OPENAPI_VERSION_3_2,
+    _report_generation_result,
     collect_spec_warnings,
-    generate_openapi_spec,
+)
+from azure_functions_openapi.spec import (
+    _generate_openapi_result as generate_openapi_spec,
 )
 
 
@@ -313,7 +317,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             getattr(args, "route_prefix", "/api"),
             active_registry,
         )
-        spec = generate_openapi_spec(
+        result = generate_openapi_spec(
             args.title,
             args.version,
             openapi_version,
@@ -323,7 +327,14 @@ def handle_generate(args: argparse.Namespace) -> int:
             registry=active_registry,
             infer_auth_level=getattr(args, "infer_auth_level", False) is True,
         )
-        warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
+        if isinstance(result, GenerationResult):
+            report = _report_generation_result(result)
+            spec = report.spec
+            warnings = (*report.warnings, *unresolved)
+        else:
+            # Preserve the plain-document seam used by embedded/mocked callers.
+            spec = result
+            warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
         # Surface structured warnings (version skew / namespace fallback /
         # spec-validation) as JSON lines on stderr so CI can parse them, and
         # gate the exit code on them when --fail-on-warnings is set.

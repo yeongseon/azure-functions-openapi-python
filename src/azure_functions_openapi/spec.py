@@ -13,6 +13,7 @@ import warnings
 from pydantic import BaseModel
 import yaml
 
+from azure_functions_openapi._generation_result import GenerationResult
 from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -871,6 +872,45 @@ def generate_openapi_spec(
     Returns:
         OpenAPI specification dictionary
     """
+    return _generate_openapi_result(
+        title,
+        version,
+        openapi_version,
+        description,
+        security_schemes,
+        route_prefix,
+        strict,
+        registry,
+        hoist_flat_schemas,
+        infer_auth_level,
+        servers,
+        contact,
+        license,
+        external_docs,
+        tags,
+        collect_diagnostics=False,
+    ).spec
+
+
+def _generate_openapi_result(
+    title: str = "API",
+    version: str = "1.0.0",
+    openapi_version: str = OPENAPI_VERSION_3_1,
+    description: str = DEFAULT_OPENAPI_INFO_DESCRIPTION,
+    security_schemes: dict[str, dict[str, Any]] | None = None,
+    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    strict: bool = False,
+    registry: OpenAPIRegistry | None = None,
+    hoist_flat_schemas: bool = False,
+    infer_auth_level: bool = False,
+    servers: list[dict[str, Any]] | None = None,
+    contact: dict[str, Any] | None = None,
+    license: dict[str, Any] | None = None,
+    external_docs: dict[str, Any] | None = None,
+    tags: list[dict[str, Any]] | None = None,
+    *,
+    collect_diagnostics: bool = True,
+) -> GenerationResult:
     if openapi_version not in (OPENAPI_VERSION_3_0, OPENAPI_VERSION_3_1, OPENAPI_VERSION_3_2):
         raise OpenAPISpecConfigError(
             f"Unsupported OpenAPI version: {openapi_version}. Supported: "
@@ -891,6 +931,18 @@ def generate_openapi_spec(
         else:
             registry_entries = get_openapi_registry()
         diagnostics_ready = True
+        scan_warnings = (
+            (
+                *_collect_skew_warnings(registry),
+                *_collect_discovery_warnings(registry),
+                *_collect_empty_discovery_warnings(registry),
+            )
+            if collect_diagnostics
+            else ()
+        )
+        binding_warnings = (
+            tuple(_collect_binding_mismatch_warnings(registry)) if collect_diagnostics else ()
+        )
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
@@ -1000,7 +1052,7 @@ def generate_openapi_spec(
                                     warnings.warn(
                                         downgrade_message,
                                         RuntimeWarning,
-                                        stacklevel=2,
+                                        stacklevel=2 if collect_diagnostics else 3,
                                     )
                                 media_obj = new_media_obj
                             hoisted_content[media] = media_obj
@@ -1467,6 +1519,14 @@ def generate_openapi_spec(
         spec = _normalize_spec_output(spec)
 
         validation_warnings = _validate_spec(spec)
+        pre_transform_validation = tuple(validation_warnings)
+        traversal_changed = collect_diagnostics and any(
+            method not in STANDARD_OPENAPI_METHODS
+            and method not in _RESERVED_PATH_ITEM_FIELDS
+            or (method == "query" and openapi_version != OPENAPI_VERSION_3_2)
+            for path_item in spec["paths"].values()
+            for method in path_item
+        )
         # Custom (non-standard) HTTP methods are validated above as ordinary
         # operations, then relocated: under 3.2 into each path item's
         # ``additionalOperations`` map, and under 3.0/3.1 dropped (the format has
@@ -1497,7 +1557,19 @@ def generate_openapi_spec(
             f"Generated OpenAPI {openapi_version} spec with {len(paths)} paths "
             f"for {len(registry_entries)} functions"
         )
-        return spec
+        diagnostics = (
+            (
+                *scan_warnings,
+                *_collect_duplicate_operation_warnings(registry, duplicate_operations),
+                *_collect_downgrade_drop_warnings(registry, generation_drops),
+                *_collect_schema_substitution_warnings(registry, schema_substitutions),
+                *_collect_skipped_operation_warnings(registry, skipped_operations),
+                *binding_warnings,
+            )
+            if collect_diagnostics
+            else ()
+        )
+        return GenerationResult(spec, diagnostics, pre_transform_validation, traversal_changed)
 
     except OpenAPISpecConfigError:
         raise
@@ -2058,6 +2130,7 @@ def _collect_empty_discovery_warnings(
 
 def _collect_duplicate_operation_warnings(
     registry: OpenAPIRegistry | None = None,
+    events: list[tuple[str, str]] | None = None,
 ) -> list[SpecWarning]:
     """Derive duplicate-operation warnings from the registry's recorded collisions.
 
@@ -2077,12 +2150,17 @@ def _collect_duplicate_operation_warnings(
             message=f"{_DUPLICATE_OPERATION_MESSAGE}: {operation}",
             function_name=None,
         )
-        for operation in reg.duplicate_operations
+        for operation in (
+            reg.duplicate_operations
+            if events is None
+            else sorted({f"{method.upper()} {path}" for method, path in events})
+        )
     ]
 
 
 def _collect_downgrade_drop_warnings(
     registry: OpenAPIRegistry | None = None,
+    events: list[str] | None = None,
 ) -> list[SpecWarning]:
     """Derive version-downgrade-drop warnings from the registry's recorded drops.
 
@@ -2102,12 +2180,13 @@ def _collect_downgrade_drop_warnings(
             message=message,
             function_name=None,
         )
-        for message in reg.downgrade_drops
+        for message in (reg.downgrade_drops if events is None else sorted(set(events)))
     ]
 
 
 def _collect_schema_substitution_warnings(
     registry: OpenAPIRegistry | None = None,
+    events: list[SpecWarning] | None = None,
 ) -> list[SpecWarning]:
     """Derive schema-substitution warnings from the registry's recorded failures.
 
@@ -2120,11 +2199,23 @@ def _collect_schema_substitution_warnings(
     channel is empty there.
     """
     reg = registry if registry is not None else _default_registry
-    return reg.schema_substitutions
+    if events is None:
+        return reg.schema_substitutions
+    return sorted(
+        set(events),
+        key=lambda warning: (
+            warning.path or "",
+            warning.method or "",
+            warning.location or "",
+            warning.function_name or "",
+            warning.message,
+        ),
+    )
 
 
 def _collect_skipped_operation_warnings(
     registry: OpenAPIRegistry | None = None,
+    events: list[str] | None = None,
 ) -> list[SpecWarning]:
     """Derive skipped-operation warnings from the registry's recorded omissions.
 
@@ -2141,7 +2232,7 @@ def _collect_skipped_operation_warnings(
             message=message,
             function_name=message.split(":", 1)[0] or None,
         )
-        for message in reg.skipped_operations
+        for message in (reg.skipped_operations if events is None else sorted(set(events)))
     ]
 
 
@@ -2214,7 +2305,7 @@ def generate_openapi_report(
     Returns:
         A :class:`SpecReport` with ``spec`` and a deterministic ``warnings`` tuple.
     """
-    spec = generate_openapi_spec(
+    result = _generate_openapi_result(
         title,
         version,
         openapi_version,
@@ -2231,8 +2322,23 @@ def generate_openapi_report(
         tags=tags,
         registry=registry,
     )
-    warnings_list = collect_spec_warnings(spec, registry=registry)
-    return SpecReport(spec=spec, warnings=warnings_list)
+    return _report_generation_result(result)
+
+
+def _report_generation_result(result: GenerationResult) -> SpecReport:
+    messages = (
+        _validate_spec(result.spec) if result.traversal_changed else result.validation_messages
+    )
+    return SpecReport(
+        spec=result.spec,
+        warnings=(
+            *result.diagnostics,
+            *(
+                SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message)
+                for message in messages
+            ),
+        ),
+    )
 
 
 def collect_spec_warnings(

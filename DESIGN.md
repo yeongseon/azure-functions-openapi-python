@@ -68,6 +68,25 @@ Invalid configuration or an entry-snapshot failure before compilation starts lea
 the previous diagnostics unchanged. Discovery warnings and empty discoveries retain
 their scan lifetime and are never cleared by this publication.
 
+Reports and the CLI consume an internal generation result containing the document,
+invocation-local diagnostic tuple, pre-transform validation messages and an
+operation-traversal change flag. They do not reconstruct generation events from the
+registry's mutable compatibility snapshot. Scan-lifetime warnings are captured at
+the start of that invocation; unresolved-route warnings still come from facade/CLI
+preparation and remain advisory.
+
+Before: compile -> validate -> relocate/drop -> publish -> report/CLI reads registry
+channels -> validate final document again.
+
+After: compile -> validate -> relocate/drop -> publish -> report/CLI consumes local
+result -> reuse validation only when operation traversal is unchanged. Custom-method
+relocation (including 3.2) and pre-3.2 QUERY removal require final-document validation:
+relocation can change duplicate-operation-id encounter order. Generation logs and
+strict-mode failures retain pre-transform messages plus downgrade findings. Plain
+runtime JSON/YAML generation never performs this final report-only validation walk.
+Standalone `collect_spec_warnings(spec, registry)` always validates its supplied
+document, including one modified after generation or supplied by a mock.
+
 Protected docs can opt into browser-owned key forwarding: the library's header-mode
 handler does not read or echo the query value, while the Functions host necessarily
 receives the initial URL. A nonce-protected script removes `code` from the
