@@ -36,11 +36,10 @@
 ## Review Evidence
 
 <!-- See docs/review-evidence-policy.md (advisory, not a required check).
-     Record review source/SHA so evidence can be checked against the
-     commit it actually evaluated, not just the PR as a whole. -->
+     Normal changes: list the checks you ran, any meaningful findings, and the maintainer decision.
+     High-risk changes (workflows, publishing, Swagger UI credentials, CLI import, policy files):
+     also record the reviewed commit SHA and who accepted the risk. Delete lines that do not apply. -->
 
-- Review source and reviewed commit SHA:
-- Material findings and disposition (fixed / acknowledged-wont-fix / deferred-with-issue), or "none":
-- Unresolved blockers, or "none":
-- R3 (workflow permissions, release/publishing, Swagger UI credential/CSP handling, CLI import trust, review-policy files): yes/no — if yes, human authorization record:
-
+- Checks run:
+- Meaningful findings and disposition, or "none":
+- High-risk change? If yes: reviewed commit SHA, and who accepted the risk:

@@ -93,7 +93,7 @@ approval route exists. AI review outputs are **advisory**.
 **Review is still expected, just not enforced.** Read the diff before merging, including your own.
 
 - **Split the work** when a change is genuinely reviewable by a contributor, so a second person authors it. That is the only path that produces a real second pair of eyes, and it is worth reaching for more often than it currently is.
-- **An AI review is not an approval.** Codex submits `COMMENTED`, never `APPROVED`. GitHub now documents an opt-in public-preview mode where Copilot can submit `APPROVED` rather than `COMMENTED`; that mode change still does not establish human authorization on its own — see [docs/review-evidence-policy.md](docs/review-evidence-policy.md). Treat "the AI reviewed it" and "a person accepted it" as separate facts regardless of the raw review state.
+- **An AI review is not an approval.** Treat "the AI reviewed it" and "a person accepted it" as separate facts regardless of the raw review state. What to record, and when more is needed, is defined once in [docs/review-evidence-policy.md](docs/review-evidence-policy.md).
 - **Externally authored PRs** are reviewed by a maintainer before merging. Contributors have no push access, so they cannot merge their own PRs.
 
 If a second maintainer ever gets push access, raise the approval count back to 1.
