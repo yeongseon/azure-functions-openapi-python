@@ -23,7 +23,7 @@ This also applies when using the API or CLI.
 2. Update examples when they are used as public contract material.
 3. Keep tests and docs in lockstep for public behavior changes.
 4. Do not broaden supported Python versions or dependency ranges casually.
-5. Fill in the PR's "Review Evidence" section as described in [review-evidence-policy.md](review-evidence-policy.md) (advisory, not a required check).
+5. Write a concise PR summary, changes, actual validation and related issue; follow the [PR writing rules](../AGENTS.md#pull-request-writing). Record additional review details only when needed by [review-evidence-policy.md](review-evidence-policy.md).
 
 ## Validation
 - `make test`
