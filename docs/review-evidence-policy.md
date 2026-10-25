@@ -21,7 +21,8 @@ pull request template link here instead of restating it.
 - Required CI and human ownership are unchanged. An AI review is never an approval, and its
   state (`COMMENTED`, or `APPROVED` in Copilot's opt-in preview) does not prove a person accepted
   the change.
-- Do not request a re-review when a push adds no new material risk (rebase, typo, formatting).
+- For normal changes, do not request a re-review when a push adds no new material risk (rebase,
+  typo, formatting). High-risk changes are different: see below.
 
 ## Normal changes (docs, tests, low-risk fixes)
 
@@ -39,7 +40,10 @@ Review: Removed an unused import identified during review.
 
 ## High-risk changes
 
-These need a review of the **current head commit** and an explicit maintainer review decision:
+These need a review of the **current head commit** by a source other than the implementer (the
+"review unavailable" exception below still applies), and an explicit maintainer review decision.
+If a push, including a rebase, changes the head after that review, the review must be refreshed
+on the new head:
 
 - Workflow permissions (`permissions:` blocks, `GITHUB_TOKEN` scope, secrets use).
 - Release and publishing configuration (`publish-pypi.yml`, `release-please.yml`, PyPI Trusted
@@ -48,7 +52,8 @@ These need a review of the **current head commit** and an explicit maintainer re
   (`docs/security.md`), and CLI import trust (`docs/cli.md`; `--app` executes arbitrary module
   code without a sandbox).
 - Policy-bearing files: `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, this document, the pull
-  request template, `docs/release_process.md`, `DESIGN.md`.
+  request template, `docs/agent-playbook.md`, `docs/release_process.md`, `DESIGN.md`, and the
+  safety policy in `docs/security.md`.
 
 Record: the review source, the commit SHA it evaluated, remaining substantive findings, and the maintainer who approved the change and on which commit. A token, an automatic comment, the merge actor, or a green
 CI run does not by itself identify that person.
