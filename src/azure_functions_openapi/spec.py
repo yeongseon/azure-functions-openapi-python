@@ -879,19 +879,18 @@ def generate_openapi_spec(
 
     normalized_prefix = normalize_route_prefix(route_prefix)
 
+    duplicate_operations: list[tuple[str, str]] = []
+    generation_drops: list[str] = []
+    schema_substitutions: list[SpecWarning] = []
+    skipped_operations: list[str] = []
+    diagnostics_ready = False
+    _diag_registry = registry if registry is not None else _default_registry
     try:
         if registry is not None:
             registry_entries = registry.snapshot()
         else:
             registry_entries = get_openapi_registry()
-        # Duplicate operations are fully recomputed by the loop below, so clear
-        # the channel first: a collision resolved since a prior generation must
-        # not linger on the (process-wide or injected) registry and resurface
-        # here (#393).
-        _diag_registry = registry if registry is not None else _default_registry
-        _diag_registry.clear_duplicate_operations()
-        _diag_registry.clear_downgrade_drops()
-        _diag_registry.clear_generation_degradations()
+        diagnostics_ready = True
         paths: dict[str, dict[str, Any]] = {}
         components: dict[str, Any] = {"schemas": {}}
 
@@ -997,7 +996,7 @@ def generate_openapi_spec(
                                         f"openapi_version='3.2.0' for streaming "
                                         f"responses."
                                     )
-                                    _diag_registry.add_downgrade_drop(downgrade_message)
+                                    generation_drops.append(downgrade_message)
                                     warnings.warn(
                                         downgrade_message,
                                         RuntimeWarning,
@@ -1049,7 +1048,7 @@ def generate_openapi_spec(
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
                         for affected_method in affected_methods:
-                            _diag_registry.add_schema_substitution(
+                            schema_substitutions.append(
                                 SpecWarning(
                                     code=WarningCode.SCHEMA_SUBSTITUTION,
                                     message=(
@@ -1282,7 +1281,7 @@ def generate_openapi_spec(
                             raise OpenAPISpecConfigError(_schema_msg) from e
                         logger.warning(_schema_msg)
                         for affected_method in affected_methods:
-                            _diag_registry.add_schema_substitution(
+                            schema_substitutions.append(
                                 SpecWarning(
                                     code=WarningCode.SCHEMA_SUBSTITUTION,
                                     message=(
@@ -1313,7 +1312,7 @@ def generate_openapi_spec(
                         )
                         if strict:
                             raise OpenAPISpecConfigError(_bodyless_message)
-                        _diag_registry.add_schema_substitution(
+                        schema_substitutions.append(
                             SpecWarning(
                                 code=WarningCode.SCHEMA_SUBSTITUTION,
                                 message=_bodyless_message,
@@ -1359,8 +1358,7 @@ def generate_openapi_spec(
                         if strict:
                             raise OpenAPISpecConfigError(_dup_msg)
                         logger.warning("OpenAPI spec: %s", _dup_msg)
-                        _dup_registry = registry if registry is not None else _default_registry
-                        _dup_registry.add_duplicate_operation(method, path)
+                        duplicate_operations.append((method, path))
                     path_item[method] = op
 
             except OpenAPISpecConfigError:
@@ -1372,7 +1370,7 @@ def generate_openapi_spec(
                     logger.error("Failed to process function %s (strict mode)", func_name)
                     raise
                 logger.exception("Failed to process function %s", func_name)
-                _diag_registry.add_skipped_operation(
+                skipped_operations.append(
                     f"{logical_name}: operation omitted from the spec ({exc!r})"
                 )
                 continue
@@ -1486,8 +1484,7 @@ def generate_openapi_spec(
         # the identical downgrade-drop channel and strict/non-strict gate.
         downgrade_drops.extend(lossy_conversion_warnings)
         validation_warnings.extend(downgrade_drops)
-        for drop in downgrade_drops:
-            _diag_registry.add_downgrade_drop(drop)
+        generation_drops.extend(downgrade_drops)
         for warning in validation_warnings:
             logger.warning("OpenAPI spec validation: %s", warning)
 
@@ -1510,6 +1507,22 @@ def generate_openapi_spec(
             raise
         logger.error(f"Failed to generate OpenAPI specification: {str(e)}")
         raise RuntimeError("Failed to generate OpenAPI specification") from e
+    finally:
+        # Publish even on failure: callers historically observed the events
+        # recorded before an exception, but snapshot failures never reset them.
+        if diagnostics_ready:
+            with _diag_registry.lock:
+                _diag_registry.clear_duplicate_operations()
+                _diag_registry.clear_downgrade_drops()
+                _diag_registry.clear_generation_degradations()
+                for method, path in duplicate_operations:
+                    _diag_registry.add_duplicate_operation(method, path)
+                for drop in generation_drops:
+                    _diag_registry.add_downgrade_drop(drop)
+                for substitution in schema_substitutions:
+                    _diag_registry.add_schema_substitution(substitution)
+                for skipped in skipped_operations:
+                    _diag_registry.add_skipped_operation(skipped)
 
 
 _PATH_PARAM_RE = re.compile(r"\{([^}]+)\}")
