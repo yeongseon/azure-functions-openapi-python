@@ -82,7 +82,7 @@ approval route exists. AI review outputs are **advisory**.
 
 **Non-negotiable:** a PR without a linked issue will be rejected at review.
 
-**No merge before the review checklist is complete.** Do not merge a PR until every item on its review checklist is checked off; an incomplete checklist blocks merge regardless of CI status.
+**Before merging:** confirm required CI checks pass, review open findings, and make the maintainer merge decision. Report validation truthfully in the PR; do not require repetitive checklist entries when the same information is already clear in `Validation`.
 
 ### Who approves what
 
