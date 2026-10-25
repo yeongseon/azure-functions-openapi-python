@@ -105,9 +105,33 @@ it cannot read or forward a header from the initial page request.
 and emits a `DeprecationWarning` once per protected registration. Silence it by
 choosing `"header"` explicitly (recommended), or `"none"` for edge-authenticated
 or intentionally anonymous specifications. Explicit `"query"` retains the old
-key-in-HTML/spec-URL exposure and is only a compatibility escape hatch. The
-default will change to `"header"` in a future minor release before 1.0.
+key-in-HTML/spec-URL exposure and is only a compatibility escape hatch.
 Anonymous registrations never forward a page key, in any mode.
+
+**Who is affected.** Only protected registrations (`auth_level` other than
+`ANONYMOUS`) that leave `docs_key_forwarding` unset. Anonymous docs never forward
+a key and never change.
+
+| Your setup | What to do |
+| --- | --- |
+| Opens `/api/docs?code=<key>` in a browser and relies on Swagger UI loading the spec | Set `"header"`. The page behaves the same; the key moves from the spec URL to an `x-functions-key` header on the spec download only. |
+| Edge authentication (API Management, Easy Auth) already protects the routes | Set `"none"`. No key is needed in the page. |
+| Scripts or tools that read the spec URL out of the served HTML and expect `?code=` in it | Set `"query"` to keep the old output for now, or switch them to send `x-functions-key` to `/api/openapi.json` directly. |
+| Anonymous docs | Nothing. No warning, no change. |
+
+**Compatibility boundary.** This package is pre-1.0, so the default is changed in a
+minor release, not a patch:
+
+1. The release that first ships the `DeprecationWarning` keeps the default at legacy
+   `"query"` behavior. No output changes for existing callers.
+2. The default changes to `"header"` no earlier than the next minor release after
+   that, and always before 1.0. That release is announced with a breaking-change
+   marker so it appears in the release notes (see the Title Convention in
+   `CONTRIBUTING.md`).
+3. Explicit `"query"` keeps working through that change. Removing it would be a
+   separate, later decision and would be announced the same way.
+
+The switch only affects protected registrations that left the argument unset.
 
 ### 3. Enforce access at the platform edge
 
