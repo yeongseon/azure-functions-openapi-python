@@ -240,6 +240,15 @@ Pull requests are squash-merged and the pull request title becomes the final com
 
 Issue titles are not enforced. Anyone can open an issue without knowing this convention; maintainers adjust the title during triage.
 
+### Breaking-change classification
+
+Use `!` in a Conventional Commit/PR title, or a `BREAKING CHANGE:` footer in the **final squash commit**, only when a change makes an existing supported consumer usage incompatible or changes a supported observable contract incompatibly. Base the decision on verified behavior before and after the change, not on size, risk, security motivation, or which tool authored it. Public APIs, required configuration, authentication defaults, supported runtimes, published output formats, and generated application behavior may all be contracts. A security fix can be breaking if it changes a supported calling pattern; a refactor, dependency bump, CI scan, test change, or performance fix is not automatically breaking. When unsure, verify the affected contract before applying the marker. The existing PR-title check validates **syntax**, not compatibility. A squash commit marker influences Release Please; a Markdown `## BREAKING CHANGE` heading in a PR body alone does **not** guarantee that the final commit is marked breaking.
+
+Examples specific to this repository (illustrative; verify the actual contract before classifying):
+
+- **Breaking:** removing an explicitly supported API parameter, or changing a previously guaranteed emitted OpenAPI document format in a way that breaks consumers.
+- **Non-breaking:** refactoring internal schema construction, or adding optional examples while preserving existing valid spec output.
+
 ## Releases
 
 Merging to `main` does not publish a release.
