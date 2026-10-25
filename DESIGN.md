@@ -53,6 +53,54 @@ flowchart TD
 
 Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It returns HTML that instructs the browser to fetch the spec from a configured URL.
 
+### Schema Version Conversion
+
+Before #819: `spec.py` assembled operations, recursively translated schemas,
+audited 3.0 compatibility, and maintained generation diagnostics in the registry;
+reports and the CLI reconstructed those events from mutable registry channels.
+
+After #819: `spec.py` owns document compilation and diagnostic policy;
+`_schema_version_conversion.py` owns the intact schema conversion family behind
+a schema-only seam. Its inputs are schema data, the original complete component
+map, recursion guards, and optional loss accumulators. It has no registry,
+discovery, logging, or CLI dependency. Private imports from `spec` remain available
+as compatibility re-exports. No plugin or pipeline abstraction is introduced.
+
+The final call-flow is:
+
+1. Snapshot metadata and scan-lifetime warnings; assemble operations and hoist
+   definitions into the complete component map. Compilation events accumulate
+   locally rather than updating the registry during the walk.
+2. Convert inline request, response (including `itemSchema`), and parameter schemas:
+   3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy nullable/example
+   syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable unions, refs,
+   and other downgrade forms, recording losses in encounter order. Inline nullable
+   refs resolve against the **original complete component map**, before replacement.
+3. Convert named components separately with `_convert_schemas_to_3_1` or
+   `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
+   not duplicate passes. The 3.0 component conversion also resolves refs against
+   the original map, replacing it only after all converted components are returned.
+4. For 3.0, retain `_check_schemas_3_0_compatible` after conversion. It rejects or
+   warns about residual constructs such as non-null type arrays that conversion
+   does not normalize. Faithfully converted nullable schemas must not trigger it.
+5. Normalize and validate the document before custom-method relocation and QUERY
+   removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
+   before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
+6. Publish the compatibility diagnostic snapshot, including on compilation failure.
+   Runtime serialization stops here; reports and the CLI consume invocation-local
+   results and only repeat validation when operation traversal changed. Standalone
+   warning collection always validates its supplied document.
+
+The boundary removes recursive conversion details from the compiler's policy
+surface and prevents conversion from acquiring registry/CLI state dependencies.
+It does not claim fewer schema walks: referenced subtrees and pattern-property
+approximations can still be revisited. Exact output and loss-message-order
+equivalence has not been established for removing those visits, so they remain.
+Both nullable-combinator collapse calls also remain: the pre-recursion call sees
+null sentinel types that recursive conversion removes, while the post-recursion
+call processes the resulting structure. The family is deliberately kept in one
+module rather than split again merely to reduce line count.
+
 ### Generation Diagnostics
 
 Compilation accumulates duplicate operations, downgrade drops, schema substitutions,
