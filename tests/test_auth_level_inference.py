@@ -44,6 +44,7 @@ def _scan(app: func.FunctionApp) -> OpenAPIRegistry:
 
 @pytest.mark.parametrize("level", ["function", "admin"])
 def test_infer_auth_security_maps_keyed_levels(level: str) -> None:
+    """Function and admin levels both map to the ``x-functions-key`` API key scheme."""
     inferred = _infer_auth_security(level)
     assert inferred is not None
     security, schemes = inferred
@@ -171,6 +172,7 @@ def test_user_declared_security_wins_over_inference() -> None:
 
 
 def test_explicit_empty_security_disables_inference() -> None:
+    """An explicit ``security=[]`` counts as declared (public), so no security is inferred."""
     app = func.FunctionApp()
 
     @openapi(summary="public", security=[])
