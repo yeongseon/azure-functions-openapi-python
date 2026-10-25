@@ -333,6 +333,30 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 
 Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
 
+## Pull Request Writing
+
+Write PR titles and descriptions for contributors, not for an internal agent or review system.
+Follow the title format in `CONTRIBUTING.md`; use a short, change-focused description.
+Use `Summary`, `Changes`, `Validation`, and `Related Issues` in the body. Add a
+compatibility note, merge dependency, or security review only when it matters.
+
+- Explain **what changed and why** in plain English. Keep details needed to review
+  behavior, compatibility, and security; link to detailed design or test evidence
+  rather than copying long process logs into the PR.
+- State checks actually run and their results. Clearly distinguish local checks
+  from pending GitHub CI. Never mark an unrun check as passed.
+- Avoid review-agent transcripts, canceled or inconclusive agent attempts, tool
+  availability, audit jargon, invented risk tiers, or detailed implementation
+  provenance in routine PR summaries. Record significant open findings or blockers
+  plainly when they affect the merge decision.
+- For stacked PRs, keep the base PR and merge order visible; preserve relevant
+  technical caveats and measured results when simplifying existing descriptions.
+- Before creating or updating a PR, read its title and body as a human reviewer
+  would, remove template placeholders and redundant checklists, and verify the
+  final saved text. Apply the same rules in Codex, Claude, OpenCode and Copilot.
+- Follow [review guidance](docs/review-evidence-policy.md) for security-sensitive
+  and release changes. AI reviews are advisory and not human approvals.
+
 ## Agent Rules
 
 When using AI-assisted development:
