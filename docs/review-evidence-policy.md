@@ -25,25 +25,21 @@ pull request template link here instead of restating it.
 
 ## Normal changes (docs, tests, low-risk fixes)
 
-Record in the PR body, omitting any field that has nothing to say:
-
-- The checks and tests actually run.
-- Meaningful review findings and what was done about them (fixed / won't fix / deferred to an
-  issue), if there are any.
-- The maintainer's merge decision.
+Use the ordinary PR sections: `Summary`, `Changes`, `Validation`, and `Related Issues`.
+Report the tests actually run, substantive review findings (if any), and the
+maintainer decision when it matters. Do not add empty review-evidence fields,
+agent transcripts, or unverifiable claims of approval.
 
 Example:
 
 ```text
-Checks: make check-all (pass), CI green on 1a2b3c4.
-Review: Copilot flagged an unused import; fixed in 1a2b3c4.
-Decision: merging (maintainer).
+Validation: make check-all (passed locally); GitHub CI pending.
+Review: Removed an unused import identified during review.
 ```
 
 ## High-risk changes
 
-These need a review of the **current head commit** and an explicit record of the human who
-accepted the risk:
+These need a review of the **current head commit** and an explicit maintainer review decision:
 
 - Workflow permissions (`permissions:` blocks, `GITHUB_TOKEN` scope, secrets use).
 - Release and publishing configuration (`publish-pypi.yml`, `release-please.yml`, PyPI Trusted
@@ -54,8 +50,7 @@ accepted the risk:
 - Policy-bearing files: `AGENTS.md`, `CONTRIBUTING.md`, `SECURITY.md`, this document, the pull
   request template, `docs/release_process.md`, `DESIGN.md`.
 
-Record: the review source, the commit SHA it evaluated, remaining substantive findings, and who
-accepted the risk and on which commit. A token, an automatic comment, the merge actor, or a green
+Record: the review source, the commit SHA it evaluated, remaining substantive findings, and the maintainer who approved the change and on which commit. A token, an automatic comment, the merge actor, or a green
 CI run does not by itself identify that person.
 
 ## Which commit was reviewed
