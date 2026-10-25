@@ -18,7 +18,7 @@
 
 ## Type of Change
 
-<!-- Check the relevant option -->
+<!-- Optional: select the relevant category. Remove the section if redundant. -->
 
 - [ ] Bug fix (non-breaking change that fixes an issue)
 - [ ] New feature (non-breaking change that adds functionality)
@@ -26,14 +26,6 @@
 - [ ] Documentation update
 - [ ] Refactoring (no functional changes)
 - [ ] Chore (maintenance, dependencies, CI, etc.)
-
-## Checklist
-
-- [ ] My code follows the project's code style
-- [ ] I have reported the checks run and their actual results (required CI must pass before merge)
-- [ ] Tests are added or updated where needed (or not applicable)
-- [ ] Relevant documentation is updated (or not applicable)
-- [ ] My changes do not introduce new warnings
 
 ## Related Issues
 
