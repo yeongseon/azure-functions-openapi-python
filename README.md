@@ -471,6 +471,26 @@ These files provide comprehensive package and API information optimized for LLM 
 
 Use these files to get better context when working with this package in AI-assisted coding environments.
 
+## Contributing
+
+We welcome contributions! This package is maintained as open source and improves through community involvement.
+
+**Getting started:** See the [Contributing Guide](CONTRIBUTING.md) for setup, testing, and pull request workflows.
+
+**Find an issue to work on:**
+
+- **[Good first issue](https://github.com/yeongseon/azure-functions-openapi-python/labels/good%20first%20issue)** — scoped for first-time contributors. These are bounded, independently verifiable, and include clear acceptance criteria.
+- **[Help wanted](https://github.com/yeongseon/azure-functions-openapi-python/labels/help%20wanted)** — community contributions welcomed. These may require more familiarity with the codebase or Azure Functions.
+
+**Before you start:** Please comment on the issue to discuss it first. This helps clarify ownership, expectations, and scope before you begin work.
+
+**Contributions we welcome:**
+- Bug fixes and feature implementations (when labeled with `good first issue` or `help wanted`)
+- Documentation improvements and examples (even when no label exists)
+- Test coverage and diagnostic improvements
+
+**No pull request without an issue:** Open or reference an issue first — this keeps work coordinated and prevents duplicate effort.
+
 ## Disclaimer
 
 This project is an independent community project and is not affiliated with,
