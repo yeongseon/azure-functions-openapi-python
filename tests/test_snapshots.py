@@ -15,6 +15,8 @@ from typing import Any
 import pytest
 
 import azure_functions_openapi.decorator as decorator_module
+from azure_functions_openapi.decorator import register_openapi_metadata
+from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import generate_openapi_spec
 
 SNAPSHOTS_DIR = Path(__file__).parent / "snapshots"
@@ -230,3 +232,46 @@ class TestPartnerImportBridgeSnapshot31:
         _reload_example("examples.partner_import_bridge.function_app")
         spec = generate_openapi_spec("Partner Import API", "1.0.0", openapi_version="3.1.0")
         assert spec["openapi"] == "3.1.0"
+
+
+def test_openapi_3_2_operations_snapshot() -> None:
+    # Given
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/cache/{id}", "PURGE", summary="Purge cache", registry=registry)
+    register_openapi_metadata(
+        "/search",
+        "QUERY",
+        summary="Search with a body",
+        request_body={"type": "object", "properties": {"q": {"type": "string"}}},
+        registry=registry,
+    )
+    register_openapi_metadata(
+        "/events",
+        "GET",
+        summary="Stream events",
+        querystring={
+            "type": "object",
+            "properties": {
+                "cursor": {
+                    "type": "string",
+                    "nullable": True,
+                    "example": "start",
+                }
+            },
+        },
+        response={
+            200: {
+                "description": "Event stream",
+                "content": {
+                    "text/event-stream": {"itemSchema": {"type": "string", "nullable": True}},
+                },
+            }
+        },
+        registry=registry,
+    )
+    # When
+    spec = generate_openapi_spec(
+        "OpenAPI 3.2 contracts", openapi_version="3.2.0", registry=registry, strict=True
+    )
+    # Then
+    _assert_snapshot(spec, "version_features_openapi_32.json")

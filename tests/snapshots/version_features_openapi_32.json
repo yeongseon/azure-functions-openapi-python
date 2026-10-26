@@ -1,0 +1,131 @@
+{
+  "openapi": "3.2.0",
+  "info": {
+    "title": "OpenAPI 3.2 contracts",
+    "version": "1.0.0",
+    "description": "Auto-generated OpenAPI documentation. Markdown supported in descriptions (CommonMark).",
+    "summary": "OpenAPI 3.2 contracts"
+  },
+  "paths": {
+    "/api/cache/{id}": {
+      "additionalOperations": {
+        "PURGE": {
+          "summary": "Purge cache",
+          "description": "",
+          "operationId": "purge_cache_id",
+          "tags": [
+            "default"
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "summary": "Stream events",
+        "description": "",
+        "operationId": "get_events",
+        "tags": [
+          "default"
+        ],
+        "responses": {
+          "200": {
+            "description": "Event stream",
+            "content": {
+              "text/event-stream": {
+                "itemSchema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "querystring",
+            "in": "querystring",
+            "content": {
+              "application/x-www-form-urlencoded": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "examples": [
+                        "start"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "/api/search": {
+      "query": {
+        "summary": "Search with a body",
+        "description": "",
+        "operationId": "query_search",
+        "tags": [
+          "default"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
