@@ -15,7 +15,8 @@ import azure.functions as func
 import pytest
 
 from azure_functions_openapi.decorator import clear_openapi_registry, openapi
-from azure_functions_openapi.spec import generate_openapi_spec
+from azure_functions_openapi.registry import OpenAPIRegistry
+from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
 
 
 @pytest.fixture(autouse=True)
@@ -113,3 +114,29 @@ def test_registry_metadata_survives_operation_mutation() -> None:
 
     assert second["paths"]["/api/multi"]["get"]["tags"] == ["alpha"]
     assert second["paths"]["/api/multi"]["get"]["security"] == [{"apiKeyAuth": []}]
+
+
+def test_interleaved_registries_preserve_their_own_diagnostics() -> None:
+    # Given
+    from azure_functions_openapi.registry import registry as singleton
+
+    left = OpenAPIRegistry()
+    left.set("left", {"route": "left", "method": "purge"})
+    right = OpenAPIRegistry()
+    right.set("right", {"route": "right", "parameters": 123})
+    singleton.set("global", {"route": "global", "method": "get"})
+    global_spec = generate_openapi_spec()
+    left_spec = generate_openapi_spec(registry=left)
+    left_warnings = collect_spec_warnings(left_spec, left)
+    right_spec = generate_openapi_spec(registry=right)
+    right_warnings = collect_spec_warnings(right_spec, right)
+    # When
+    generate_openapi_spec(registry=left, openapi_version="3.2.0")
+    # Then: regenerating left neither resets right nor contaminates the singleton.
+    assert collect_spec_warnings(right_spec, right) == right_warnings
+    assert [w.code.value for w in right_warnings] == ["operation-skipped"]
+    assert [w.code.value for w in left_warnings] == ["version-downgrade-drop"]
+    assert collect_spec_warnings(global_spec) == ()
+    assert generate_openapi_spec() == global_spec
+    assert collect_spec_warnings(generate_openapi_spec(registry=left), left) == left_warnings
+    assert collect_spec_warnings(right_spec, right) == right_warnings
