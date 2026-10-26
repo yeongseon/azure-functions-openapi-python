@@ -144,8 +144,8 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make e2e-local` | Run e2e tests against local Azurite on `:7071` |
 | `make e2e-azure` | Run e2e tests against Azure (`E2E_BASE_URL` required) |
 | `make lint-workflows` | Lint release workflows, action pins, and the Hatch matrix |
-| `make check` | Run `make lint`, which includes the type check, once |
-| `make check-all` | Offline gate: lint-workflows + check + test + security |
+| `make check` | Static gate: lint (format and mypy once), Bandit scope, and workflow lints |
+| `make check-all` | Offline gate: check + test, each gate exactly once |
 | `make verify` | Full local gate: check + test + integration + strict docs + wheel-smoke, in order, failing fast |
 | `make docs` | Build the MkDocs site with `mkdocs build --strict`, like the CI docs gate |
 | `make docs-serve` | Serve the docs locally with live reload |
@@ -208,8 +208,9 @@ locally (`PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels`). Neither smoke uses Az
 
 `make verify` runs check, test, integration, strict docs, then wheel-smoke
 sequentially, stopping at the first failing lane even under `make -j`.
-`make check-all` remains the offline gate (lint-workflows + check + test +
-security), with dependencies already installed; it does not invoke host smoke,
+`make check-all` remains the offline gate (`check` + `test`), with dependencies
+already installed. `check` includes lint, Bandit and workflow lints exactly once;
+the aggregate does not invoke host smoke,
 docs, or wheel installation.
 
 > For the full release workflow, see [Release Process](release_process.md).

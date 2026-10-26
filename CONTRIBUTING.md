@@ -87,7 +87,8 @@ make typecheck   # Type check with mypy
 make test        # Run tests
 make cov         # Run tests with coverage
 make perf        # Check spec-generation performance budgets
-make check-all   # Offline gate: lint-workflows + check + test + security
+make check       # Static gate: lint (format + mypy once) + Bandit + workflow lints
+make check-all   # Offline gate: check + test, each gate exactly once
 make integration # Real Functions host + Azurite smoke, using free ports
 make docs        # Strict documentation build, matching CI
 make wheel-smoke # Build and test an installed wheel outside the checkout
