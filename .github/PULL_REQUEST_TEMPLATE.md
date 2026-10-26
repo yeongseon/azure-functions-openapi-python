@@ -2,17 +2,23 @@
 
 ## Summary
 
-<!-- Brief description of changes -->
+<!-- In one or two sentences, say what changed and why. Use natural, reviewer-friendly English. -->
 
 ## Changes
 
-<!-- List the specific changes made -->
+<!-- Only the important behavior, API, compatibility, or documentation changes. Avoid agent-process logs. -->
+
+-
+
+## Validation
+
+<!-- List checks actually run and their results. State important checks not run; do not imply CI passed until it has. -->
 
 -
 
 ## Type of Change
 
-<!-- Check the relevant option -->
+<!-- Optional: select the relevant category. Remove the section if redundant. -->
 
 - [ ] Bug fix (non-breaking change that fixes an issue)
 - [ ] New feature (non-breaking change that adds functionality)
@@ -29,26 +35,10 @@
 - Affected consumers and scope (existing deployments, new/regenerated projects, versions, etc.):
 - Migration or mitigation (or "none", with explanation):
 
-## Checklist
-
-- [ ] My code follows the project's code style
-- [ ] I have run `make check-all` and all checks pass (including tests and at least 95% coverage)
-- [ ] I have added tests for new functionality (if applicable)
-- [ ] I have updated documentation (if applicable)
-- [ ] My changes do not introduce new warnings
-
 ## Related Issues
 
 <!-- Required: Closes #123 (include every issue this PR resolves). -->
 
-## Review Evidence
-
-<!-- See docs/review-evidence-policy.md (advisory, not a required check).
-     Record review source/SHA so evidence can be checked against the
-     commit it actually evaluated, not just the PR as a whole. -->
-
-- Review source and reviewed commit SHA:
-- Material findings and disposition (fixed / acknowledged-wont-fix / deferred-with-issue), or "none":
-- Unresolved blockers, or "none":
-- R3 (workflow permissions, release/publishing, Swagger UI credential/CSP handling, CLI import trust, review-policy files): yes/no — if yes, human authorization record:
-
+<!-- For security-sensitive, publishing, or permission changes, include significant
+     review findings and maintainer approval as described in docs/review-evidence-policy.md.
+     For stacked PRs, name the dependency. Delete instructions and unused fields. -->
