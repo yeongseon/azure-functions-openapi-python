@@ -102,11 +102,16 @@ parsing, status codes, or response bodies match unless a validation layer such a
 
 ```mermaid
 flowchart LR
-    DEC["@openapi decorator"] --> REG["_openapi_registry"]
+    DEC["@openapi decorator"] --> REG["OpenAPIRegistry"]
     REG --> GEN["spec.generate_openapi_spec()"]
     GEN --> EP["GET /api/openapi.json | .yaml"]
     UI["render_swagger_ui()<br/>GET /api/docs"] -.->|browser fetches spec| EP
 ```
+
+`registry.py` owns `OpenAPIRegistry` and its process-wide `registry` instance.
+Decorators register metadata there; selected-app generation seeds a separate
+registry with only that app's handlers. Swagger UI fetches the generated document
+and does not read registry state directly.
 
 ## FastAPI comparison
 
