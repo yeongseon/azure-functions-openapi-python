@@ -138,12 +138,15 @@ Use these as the **golden commands** for local validation and CI parity. Prefer 
 | `make typecheck` | Run mypy type checking |
 | `make security` | Run Bandit security scan |
 | `make test` | Run pytest |
+| `make integration` | Run real Functions host + Azurite smoke on runtime-selected free ports |
+| `make wheel-smoke` | Build a wheel, install into a throwaway venv outside the checkout, and generate a spec |
 | `make cov` | Run tests with coverage (gate: `fail_under = 95`) |
 | `make e2e-local` | Run e2e tests against local Azurite on `:7071` |
 | `make e2e-azure` | Run e2e tests against Azure (`E2E_BASE_URL` required) |
 | `make lint-workflows` | Lint release workflows, action pins, and the Hatch matrix |
 | `make check` | Run `make lint`, which includes the type check, once |
-| `make check-all` | Run lint-workflows + check + test + security |
+| `make check-all` | Offline gate: lint-workflows + check + test + security |
+| `make verify` | Full local gate: check + test + integration + strict docs + wheel-smoke, in order, failing fast |
 | `make docs` | Build the MkDocs site with `mkdocs build --strict`, like the CI docs gate |
 | `make docs-serve` | Serve the docs locally with live reload |
 | `make demo` | Run the Swagger UI and example demos |
@@ -174,6 +177,40 @@ newer on `PATH` and `.venv/bin/hatch` (created by `make install`) are required: 
 `MISSING ...`, and a missing one makes the target fail. `func` and `azurite` are optional, because
 only a local Functions host needs them. A Python 3.11 that only Hatch manages is not on `PATH`, so
 `doctor` reports it as missing.
+
+### Local smoke prerequisites
+
+`make integration` requires Python 3.11+, Bash, curl, Functions Core Tools v4
+(`func`), Azurite (`azurite`, or an already installed/cached `npx --no-install azurite`),
+and the existing host-smoke app's venv. It fails instead of skipping when a
+prerequisite is missing. Prepare that venv once from the repository root:
+
+```bash
+python3.11 -m venv tests/host_smoke/.venv
+(cd tests/host_smoke && .venv/bin/python -m pip install -r requirements.txt pytest pytest-cov requests)
+make integration PYTHON=python3.11
+```
+
+Use `PYTHON=<interpreter>` if your default `python3` is older than 3.11.
+Integration starts its own host and Azurite with four distinct free ports and
+temporary storage, overrides `AzureWebJobsStorage` without modifying settings,
+then checks the custom-name route, the route taken from the generated spec,
+Swagger UI, and all `host_smoke` route tests via `HOST_SMOKE_BASE_URL`.
+Service process groups and temporary data are cleaned on success, failure,
+Ctrl-C, or termination. Existing hosts and storage emulators are not touched.
+
+`make wheel-smoke PYTHON=python3.11` builds only the candidate wheel and installs
+it with runtime dependencies in a temporary venv outside the repository. It checks
+dependencies, imports outside the checkout, and generates the same minimal spec
+as CI's artifact smoke. The wheel, venv, and scratch directory are removed on exit.
+Dependency installation may need package-index access unless wheels are available
+locally (`PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels`). Neither smoke uses Azure.
+
+`make verify` runs check, test, integration, strict docs, then wheel-smoke
+sequentially, stopping at the first failing lane even under `make -j`.
+`make check-all` remains the offline gate (lint-workflows + check + test +
+security), with dependencies already installed; it does not invoke host smoke,
+docs, or wheel installation.
 
 > For the full release workflow, see [Release Process](release_process.md).
 
