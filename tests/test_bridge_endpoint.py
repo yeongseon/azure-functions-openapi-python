@@ -139,6 +139,7 @@ def test_read_endpoint_hints_unsupported_version_rejected(
 
 
 def test_read_endpoint_hints_boolean_version_rejected() -> None:
+    """A boolean version is rejected even though ``True == 1`` and version 1 is supported."""
     handler = _make_handler({"endpoint": {"version": True}})
     assert _read_endpoint_hints(handler) is None
 
@@ -155,6 +156,7 @@ def test_read_endpoint_hints_walks_wrapped_chain() -> None:
 
 
 def test_read_endpoint_hints_invalid_outer_valid_inner() -> None:
+    """An outer wrapper with an unsupported version does not hide a valid inner namespace."""
     inner: Any = lambda req: req  # noqa: E731
     setattr(inner, _HANDLER_METADATA_ATTR, {"endpoint": FLAT_ENDPOINT})
     outer: Any = lambda req: inner(req)  # noqa: E731
@@ -167,6 +169,7 @@ def test_read_endpoint_hints_invalid_outer_valid_inner() -> None:
 
 
 def test_read_endpoint_hints_self_referencing_stops() -> None:
+    """A handler whose ``__wrapped__`` points at itself ends the walk with no hints."""
     handler: Any = lambda req: req  # noqa: E731
     setattr(handler, _HANDLER_METADATA_ATTR, {"endpoint": {"version": 999}})
     handler.__wrapped__ = handler
@@ -208,6 +211,7 @@ def test_discovered_operation_from_endpoint_shape() -> None:
 
 
 def test_discovered_operation_from_endpoint_defaults_and_filters() -> None:
+    """Malformed payload fields are dropped or defaulted, never copied into the operation."""
     payload: dict[str, Any] = {
         "version": 1,
         "request_body": "not-a-dict",
@@ -352,7 +356,7 @@ class _OtherResp(BaseModel):
     message: str
 
 
-def test_scan_registers_from_endpoint_and_ignores_validation_sibling() -> None:
+def test_scan_endpoint_payload_fills_raw_response_not_response_model() -> None:
     app = _make_app({"endpoint": FLAT_ENDPOINT})
     scan_endpoint_metadata(app)
 
@@ -418,6 +422,7 @@ def test_scan_endpoint_merges_into_existing_openapi_entry() -> None:
 
 @pytest.mark.parametrize("strict", [False, True])
 def test_scan_accepts_same_response_model_from_both_decorators(strict: bool) -> None:
+    """The same response model in ``@openapi`` and endpoint metadata is not a conflict."""
     from azure_functions_openapi.decorator import openapi
 
     @openapi(summary="Explicit summary", responses={200: _Resp})
@@ -555,6 +560,7 @@ def test_scan_rejects_different_response_models_with_endpoint_context() -> None:
 
 @pytest.mark.parametrize("matches", [True, False])
 def test_scan_reports_request_body_conflict_with_endpoint_context(matches: bool) -> None:
+    """Equal request bodies merge quietly; differing ones raise an error naming the endpoint."""
     explicit_schema = {"type": "object", "properties": {"name": {"type": "string"}}}
     discovered_schema = (
         explicit_schema

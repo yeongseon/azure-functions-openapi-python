@@ -82,7 +82,7 @@ approval route exists. AI review outputs are **advisory**.
 
 **Non-negotiable:** a PR without a linked issue will be rejected at review.
 
-**No merge before the review checklist is complete.** Do not merge a PR until every item on its review checklist is checked off; an incomplete checklist blocks merge regardless of CI status.
+**Before merging:** confirm required CI checks pass, review open findings, and make the maintainer merge decision. Report validation truthfully in the PR; do not require repetitive checklist entries when the same information is already clear in `Validation`.
 
 ### Who approves what
 
@@ -93,7 +93,7 @@ approval route exists. AI review outputs are **advisory**.
 **Review is still expected, just not enforced.** Read the diff before merging, including your own.
 
 - **Split the work** when a change is genuinely reviewable by a contributor, so a second person authors it. That is the only path that produces a real second pair of eyes, and it is worth reaching for more often than it currently is.
-- **An AI review is not an approval.** Codex submits `COMMENTED`, never `APPROVED`. GitHub now documents an opt-in public-preview mode where Copilot can submit `APPROVED` rather than `COMMENTED`; that mode change still does not establish human authorization on its own — see [docs/review-evidence-policy.md](docs/review-evidence-policy.md). Treat "the AI reviewed it" and "a person accepted it" as separate facts regardless of the raw review state.
+- **An AI review is not an approval.** Treat "the AI reviewed it" and "a person accepted it" as separate facts regardless of the raw review state. What to record, and when more is needed, is defined once in [docs/review-evidence-policy.md](docs/review-evidence-policy.md).
 - **Externally authored PRs** are reviewed by a maintainer before merging. Contributors have no push access, so they cannot merge their own PRs.
 
 If a second maintainer ever gets push access, raise the approval count back to 1.
@@ -332,6 +332,30 @@ Use Makefile entry points only. Do not bypass the Makefile in CI or contributor 
 ## Commit Rules
 
 Titles for issues, pull requests, and commits follow the **Title Convention** in [`CONTRIBUTING.md`](CONTRIBUTING.md#title-convention), the single source of truth for the format and the allowed types.
+
+## Pull Request Writing
+
+Write PR titles and descriptions for contributors, not for an internal agent or review system.
+Follow the title format in `CONTRIBUTING.md`; use a short, change-focused description.
+Use `Summary`, `Changes`, `Validation`, and `Related Issues` in the body. Add a
+compatibility note, merge dependency, or security review only when it matters.
+
+- Explain **what changed and why** in plain English. Keep details needed to review
+  behavior, compatibility, and security; link to detailed design or test evidence
+  rather than copying long process logs into the PR.
+- State checks actually run and their results. Clearly distinguish local checks
+  from pending GitHub CI. Never mark an unrun check as passed.
+- Avoid review-agent transcripts, canceled or inconclusive agent attempts, tool
+  availability, audit jargon, invented risk tiers, or detailed implementation
+  provenance in routine PR summaries. Record significant open findings or blockers
+  plainly when they affect the merge decision.
+- For stacked PRs, keep the base PR and merge order visible; preserve relevant
+  technical caveats and measured results when simplifying existing descriptions.
+- Before creating or updating a PR, read its title and body as a human reviewer
+  would, remove template placeholders and redundant checklists, and verify the
+  final saved text. Apply the same rules in Codex, Claude, OpenCode and Copilot.
+- Follow [review guidance](docs/review-evidence-policy.md) for security-sensitive
+  and release changes. AI reviews are advisory and not human approvals.
 
 ## Agent Rules
 
