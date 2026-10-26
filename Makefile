@@ -106,11 +106,10 @@ security-development:
 security-browser:
 	@$(SECURITY_PYTHON) -m tools.browser_integrity --output "$(SECURITY_OUTPUT)"
 
-# `hatch run lint` is `style` followed by `typecheck`, so `check` is `lint`: a further
-# `make typecheck` would run the type check a second time.
+# `lint` already includes formatting and mypy; keep each static gate once.
 .PHONY: check
-check: lint
-	@echo "Lint and type check passed."
+check: lint security-bandit lint-workflows
+	@echo "Static checks passed including security and workflow lints."
 
 .PHONY: lint-workflows
 lint-workflows: ensure-hatch
@@ -120,10 +119,8 @@ lint-workflows: ensure-hatch
 
 .PHONY: check-all
 check-all: ensure-hatch
-	@$(MAKE) lint-workflows
 	@$(MAKE) check
 	@$(MAKE) test
-	@$(MAKE) security
 	@echo "All checks passed including tests and security scan."
 
 .PHONY: precommit

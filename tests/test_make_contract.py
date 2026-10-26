@@ -134,10 +134,11 @@ def test_each_check_runs_once(target: str, tests: int) -> None:
     assert runs == [1, 1, tests]
 
 
-def test_check_all_keeps_every_gate_it_had() -> None:
+@pytest.mark.parametrize("target", ["check", "check-all"])
+def test_checks_include_workflow_and_bandit_gates_once(target: str) -> None:
     gates = ("lint_release_workflows", "lint_workflow_pins", "lint_hatch_matrix", "bandit")
 
-    assert [plan("check-all").count(gate) for gate in gates] == [1, 1, 1, 1]
+    assert [plan(target).count(gate) for gate in gates] == [1, 1, 1, 1]
 
 
 def test_makefile_never_upgrades_pip() -> None:
