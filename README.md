@@ -331,7 +331,8 @@ memory. The key must authorize both functions. Prefer edge
 authentication in production. The default `None` retains legacy query forwarding
 with a `DeprecationWarning` for protected registrations; select `"header"`,
 `"none"` (no forwarding), or explicitly `"query"` (legacy exposure). The default
-will become `"header"` in a future minor release before 1.0.
+will become `"header"` in a later minor release before 1.0, not in the release that
+first warns; see [Protecting documentation routes](docs/security.md#protecting-documentation-routes).
 
 <details>
 <summary>Advanced: describe the schema with raw JSON Schema instead of Pydantic</summary>
