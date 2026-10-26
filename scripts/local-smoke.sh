@@ -33,6 +33,23 @@ trap 'exit 143' TERM
 # Job control gives each service its own process group, including npm/worker descendants.
 set -m
 
+# Run a blocking command as a tracked background job and wait for it with the builtin `wait`.
+# Under job control a foreground command would sit in its own process group, so Bash would defer
+# the INT/TERM trap until it finished; waiting on a job lets the trap fire at once and cleanup
+# then terminates the command's process group together with the services.
+run() {
+    "$@" &
+    local job=$!
+    pids+=("$job")
+    local status=0
+    wait "$job" || status=$?
+    # Finished: drop it so cleanup never signals a recycled PID.
+    local kept=() pid
+    for pid in "${pids[@]}"; do [[ "$pid" == "$job" ]] || kept+=("$pid"); done
+    pids=("${kept[@]}")
+    return "$status"
+}
+
 case "${1:-}" in
 integration)
     for tool in func curl; do command -v "$tool" >/dev/null || fail "$tool is required for integration"; done
@@ -64,7 +81,8 @@ PY
     "${azurite[@]}" --silent --location "$tmp/azurite" \
         --blobHost 127.0.0.1 --queueHost 127.0.0.1 --tableHost 127.0.0.1 \
         --blobPort "$blob_port" --queuePort "$queue_port" --tablePort "$table_port" >"$tmp/azurite.log" 2>&1 &
-    pids+=("$!")
+    azurite_pid=$!
+    pids+=("$azurite_pid")
     (cd tests/host_smoke; export PATH="$PWD/.venv/bin:$PATH"; exec func start --port "$host_port" --verbose) >"$tmp/host.log" 2>&1 &
     host_pid=$!
     pids+=("$host_pid")
@@ -73,10 +91,13 @@ PY
     for ((attempt=0; attempt<60; attempt++)); do
         if curl --noproxy '*' --fail --silent --max-time 2 "$base/api/custom_name" --output "$tmp/custom.json"; then ready=true; break; fi
         kill -0 "$host_pid" 2>/dev/null || break
-        kill -0 "${pids[0]}" 2>/dev/null || break
+        kill -0 "$azurite_pid" 2>/dev/null || break
         sleep 2
     done
     [[ "$ready" == true ]] || fail "The custom-name route did not become ready"
+    # The routes below are HTTP-only and never touch storage, so a dead Azurite would not fail
+    # them. Check it explicitly before and after the route tests.
+    kill -0 "$azurite_pid" 2>/dev/null || fail "Azurite is not running; check $tmp/azurite.log"
     "$smoke" -c 'import json, sys; assert json.load(open(sys.argv[1])) == {"function_name": "custom_name"}' "$tmp/custom.json"
     curl --noproxy '*' --fail --silent --max-time 10 "$base/api/openapi.json" --output "$tmp/openapi.json"
     documented_path=$("$smoke" - "$tmp/openapi.json" <<'PY'
@@ -95,17 +116,18 @@ PY
     "$smoke" -c 'import json, sys; assert json.load(open(sys.argv[1])) == {"function_name": "custom_name"}' "$tmp/documented.json"
     curl --noproxy '*' --fail --silent --max-time 10 "$base/api/docs" --output "$tmp/swagger.html"
     grep -q 'SwaggerUIBundle' "$tmp/swagger.html"
-    "$smoke" -m pytest tests/host_smoke -m host_smoke --no-cov -rs
+    run "$smoke" -m pytest tests/host_smoke -m host_smoke --no-cov -rs
+    kill -0 "$azurite_pid" 2>/dev/null || fail "Azurite stopped while the route tests ran; check $tmp/azurite.log"
     if grep -Eq "0 functions (loaded|found \(Worker\))|No job functions found|Executed 'Functions\..*' \(Failed" "$tmp/host.log"; then
         fail "The Functions host reported indexing or invocation errors"
     fi
     ;;
 wheel-smoke)
     : "${HATCH:?HATCH must name the Hatch executable}"
-    "$HATCH" build -t wheel "$tmp/dist"
+    run "$HATCH" build -t wheel "$tmp/dist"
     "$python" -m venv "$tmp/venv"
-    "$tmp/venv/bin/python" -m pip install --disable-pip-version-check "$tmp"/dist/*.whl
-    "$tmp/venv/bin/python" -m pip check
+    run "$tmp/venv/bin/python" -m pip install --disable-pip-version-check "$tmp"/dist/*.whl
+    run "$tmp/venv/bin/python" -m pip check
     (cd "$tmp"; CHECKOUT="$root" "$tmp/venv/bin/python" -I - <<'PY'
 import os
 from pathlib import Path

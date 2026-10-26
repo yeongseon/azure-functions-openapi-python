@@ -75,3 +75,60 @@ def test_verify_stops_at_the_first_failed_lane(tmp_path: Path, failed_lane: str)
     # Then
     assert result.returncode != 0
     assert result.stdout.splitlines() == list(LANES[: LANES.index(failed_lane) + 1]), result.stderr
+
+
+SMOKE_SCRIPT = ROOT / "scripts" / "local-smoke.sh"
+
+
+def test_smoke_script_checks_azurite_before_and_after_the_route_tests() -> None:
+    # The routes are HTTP-only, so a dead Azurite would not fail them. The script must check its
+    # liveness itself, both before running them and after (#811 review).
+    # Given
+    lines = SMOKE_SCRIPT.read_text(encoding="utf-8").splitlines()
+    checks = [
+        i for i, line in enumerate(lines) if 'kill -0 "$azurite_pid"' in line and "fail" in line
+    ]
+    pytest_run = next(i for i, line in enumerate(lines) if "-m pytest tests/host_smoke" in line)
+    # Then
+    assert any(i < pytest_run for i in checks), "no Azurite liveness check before the route tests"
+    assert any(i > pytest_run for i in checks), "no Azurite liveness check after the route tests"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups")
+def test_term_during_a_blocking_command_cleans_up_promptly(tmp_path: Path) -> None:
+    # Under job control a foreground command sits in its own process group, so Bash would defer
+    # the TERM trap until it finished. A hung Hatch must not block cancellation or leak its
+    # scratch directory.
+    # Given: a `hatch` that hangs, and a private TMPDIR so only this run's scratch dir is seen.
+    import signal
+    import sys
+    import time
+
+    hatch = tmp_path / "hatch"
+    hatch.write_text("#!/bin/sh\nexec sleep 300\n", encoding="utf-8")
+    hatch.chmod(0o755)
+    scratch = tmp_path / "tmp"
+    scratch.mkdir()
+    env = {**os.environ, "PYTHON": sys.executable, "HATCH": str(hatch), "TMPDIR": str(scratch)}
+    # When
+    proc = subprocess.Popen(  # noqa: S603
+        ["bash", str(SMOKE_SCRIPT), "wheel-smoke"],  # noqa: S607
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and not any(scratch.glob("openapi-smoke.*")):
+            time.sleep(0.1)
+        time.sleep(0.5)  # let the blocking command start
+        proc.send_signal(signal.SIGTERM)
+        # Then
+        assert proc.wait(timeout=10) == 143
+        assert not list(scratch.glob("openapi-smoke.*")), "scratch directory was not removed"
+    finally:
+        if proc.poll() is None:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
