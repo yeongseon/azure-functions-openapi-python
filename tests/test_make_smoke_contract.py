@@ -16,21 +16,17 @@ LANES = ("check", "test", "integration", "docs", "wheel-smoke")
 pytestmark = pytest.mark.skipif(shutil.which("make") is None, reason="requires make")
 
 
-def test_verify_dry_run_lists_lanes_in_order() -> None:
-    # Given: the repository Makefile, without executing tools or installing anything.
+def test_verify_recipe_lists_lanes_in_order() -> None:
+    # Read the recipe instead of running `make -n verify`: make executes any recipe line that
+    # contains $(MAKE) even under -n, and `docs` would then really run `pip install -e` in CI.
+    # Given
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     # When
-    result = subprocess.run(
-        [MAKE, "--no-print-directory", "-n", "verify", "MAKE=make"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={key: value for key, value in os.environ.items() if not key.startswith("MAKE")},
-    )
+    match = re.search(r"^verify:[^\n]*\n((?:\t[^\n]*\n)+)", makefile, flags=re.MULTILINE)
     # Then
-    assert result.returncode == 0, result.stderr
-    commands = [line for line in result.stdout.splitlines() if line.startswith("make ")]
-    assert commands == [f"make {lane}" for lane in LANES]
+    assert match is not None, "verify target not found"
+    recipe = [line.strip() for line in match.group(1).splitlines()]
+    assert recipe == [f"@$(MAKE) {lane}" for lane in LANES]
 
 
 def test_smoke_targets_are_phony_and_visible_in_help() -> None:
