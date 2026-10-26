@@ -297,6 +297,7 @@ def test_all_method_schema_failures_warn_once_per_affected_method(
     model_field: str,
     expected_methods: set[str],
 ) -> None:
+    """A failing request model warns for POST, PUT and PATCH; a response model for every method."""
     # Given
     registry = _registry_with(
         {

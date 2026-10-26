@@ -92,8 +92,10 @@ controls protected documentation keys:
 | `"none"` | No forwarding; suitable for edge authentication or an anonymous spec |
 | `None` (default) | Legacy query behavior with a caller-facing `DeprecationWarning` for protected registrations |
 
-Anonymous routes never forward keys or warn. Explicit values suppress the warning;
-the default will become `"header"` in a future minor release before 1.0. The
+Anonymous routes never forward keys or warn. Explicit values suppress the warning.
+The default will become `"header"` no earlier than the minor release after the one
+that first warns, and before 1.0; see the
+[migration boundary](security.md#protecting-documentation-routes). The
 initial page navigation can still expose the key in access logs before browser
 URL replacement. A function-scoped key authorizes only its own function; the
 key must authorize both the docs and JSON functions. Prefer production edge auth.
