@@ -234,6 +234,7 @@ class TestGenerateReport:
         assert operation["security"] == [{"AzureFunctionKey": []}]
 
     def test_report_warning_parity_uses_injected_registry(self) -> None:
+        """Report warnings come from the injected registry, matching ``collect_spec_warnings``."""
         isolated = OpenAPIRegistry()
         isolated.set(
             "get::/api/isolated",
@@ -451,10 +452,7 @@ class TestCliFailOnWarnings:
     def test_empty_paths_hint_survives_and_priority_preserved(
         self, tmp_path: Any, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # #353: when warnings AND empty paths coincide, the --fail-on-warnings
-        # gate must not pre-empt the empty-paths diagnostic. The hint must still
-        # print, --fail-on-empty-paths must remain reachable (exit 1), and no
-        # artifact may be written.
+        """``--fail-on-empty-paths`` exits 1 with its hint before the warnings gate can exit 2."""
         app = MockApp([_UnbuildableBuilder("orphan")])
         scan_endpoint_metadata(app)
         out = tmp_path / "openapi.json"
@@ -555,10 +553,7 @@ class TestDuplicateOperationWarnings:
         assert handle_generate(_args(fail_on_warnings=True)) == 2
 
     def test_resolved_collision_not_carried_to_next_generation(self) -> None:
-        # #393: diagnostics are run-scoped. A DUPLICATE_OPERATION observed in one
-        # generation must not linger on the registry and resurface after the
-        # collision is resolved, even when the same (long-lived) registry is
-        # reused for a second generation.
+        """Duplicate warnings are run-scoped: a collision fixed between runs is not reported."""
         reg = self._colliding_registry()
         first = collect_spec_warnings(generate_openapi_spec(registry=reg), registry=reg)
         assert any(w.code == WarningCode.DUPLICATE_OPERATION for w in first)
@@ -570,6 +565,7 @@ class TestDuplicateOperationWarnings:
         assert not any(w.code == WarningCode.DUPLICATE_OPERATION for w in second)
 
     def test_programmatic_reregistration_is_last_writer_wins(self) -> None:
+        """Re-registering a method and path replaces the earlier entry, with no error or warning."""
         # #397 (by design): a method+path pair is a single OpenAPI operation, so
         # re-registering it replaces the prior entry rather than raising. This
         # powers the scan-then-enrich pattern where the bridge seeds a minimal
@@ -723,6 +719,7 @@ class TestIsolatedRegistry:
         assert "/api/prog" not in spec["paths"]
 
     def test_isolated_rescan_is_idempotent(self) -> None:
+        """A second scan of an app into one isolated registry adds no phantom endpoint."""
         # #388 regression: scanning the SAME app twice into one isolated registry
         # must not fabricate a phantom endpoint. Reconciliation explodes the
         # seeded method=None canonical into a method::path entry and deletes the
@@ -743,6 +740,8 @@ class TestIsolatedRegistry:
         assert "/api/handler_one" not in second["paths"]
 
     def test_isolated_shared_handler_scan_no_phantom(self) -> None:
+        """A handler shared by a Blueprint and its app yields one operation, no phantom endpoint."""
+
         # #388 regression, single-call form: a Blueprint and the app that
         # registers it expose the SAME handler, so a single isolated generate
         # scans that handler twice (once per builder). Sharing one _function_id
@@ -770,9 +769,7 @@ class TestCliIsolateApp:
     def test_isolate_app_fails_closed_without_variable(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # #391: --isolate-app requires 'module:variable'. With a bare module it
-        # cannot be honored, so the CLI fails closed (rc==1) rather than
-        # silently falling back to the shared global registry.
+        """``--isolate-app`` with no ``:variable`` exits 1 instead of using the global registry."""
         rc = handle_generate(_args(app="os", isolate_app=True))
         assert rc == 1
         assert "--isolate-app cannot be honored" in capsys.readouterr().err
@@ -884,9 +881,7 @@ class TestDowngradeDropWarnings:
         assert drops == sorted(drops)
 
     def test_resolved_drop_not_carried_to_next_generation(self) -> None:
-        # Run-scoped like DUPLICATE_OPERATION (#393): a drop observed while
-        # targeting 3.1 must not linger on the reused registry and resurface
-        # when the same registry is regenerated at 3.2.
+        """Downgrade-drop warnings are run-scoped: a drop seen at 3.1 is not reported at 3.2."""
         reg = self._custom_method_registry()
         first = collect_spec_warnings(
             generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_1, registry=reg),
@@ -947,6 +942,7 @@ class TestItemSchemaDowngradeDrop:
         assert OPENAPI_VERSION_3_1 in drops[0].message
 
     def test_item_schema_still_emitted_on_pre_3_2(self) -> None:
+        """``itemSchema`` is still emitted on pre-3.2 targets; the downgrade is only reported."""
         # Out of scope for #492: itemSchema emission is unchanged; the field is
         # retained as-is so existing consumers are not silently broken. Only the
         # structured observability is added.
