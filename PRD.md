@@ -8,6 +8,12 @@ Azure Functions Python v2 programming model.
 It is intended for decorator-based `func.FunctionApp()` applications that want lightweight API
 documentation without adopting a full web framework.
 
+FastAPI hosted through Azure Functions `AsgiFunctionApp` is a supported alternative
+architecture, not a missing platform feature. Existing FastAPI applications should
+normally retain their own routing, dependency injection, validation and OpenAPI
+generation. This package targets native FunctionApp handlers and does not generate
+documentation by traversing an ASGI application's internal router.
+
 ## Problem Statement
 
 Azure Functions Python applications often expose HTTP APIs without a consistent way to:
