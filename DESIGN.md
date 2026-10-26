@@ -53,6 +53,13 @@ flowchart TD
 
 Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It returns HTML that instructs the browser to fetch the spec from a configured URL.
 
+An explicit Python `app=` or CLI `module:variable` selects an app-scoped registry.
+Discovery reuses the existing seed-on-scan mechanism, copying decorator metadata
+by canonical handler identity and reconciling only the selected app's bindings.
+The default global registry is not mutated. Module-only CLI generation and Python
+generation without `app` retain global aggregation. An explicitly injected Python
+registry retains caller-owned additive behavior, including programmatic entries.
+
 ### Schema Version Conversion
 
 Before #819: `spec.py` assembled operations, recursively translated schemas,

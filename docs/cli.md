@@ -168,7 +168,7 @@ Discovery semantics:
 | `--strict` | - | flag | `false` | Fail on any malformed registry entry instead of skipping it. Recommended for CI where a missing path should break the build |
 | `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, or spec-validation issues; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
 | `--infer-auth-level` | - | flag | `false` | Infer operation security from scanned Azure Functions `auth_level` bindings. Requires `--app module:variable`; explicit operation security wins |
-| `--isolate-app` | - | flag | `false` | Scan the `--app` `FunctionApp` into a fresh, app-scoped registry instead of the shared global one. Requires `--app module:variable`. Use when several apps are imported in one process to avoid cross-app route leakage |
+| `--isolate-app` | - | flag | `false` | Compatibility flag requiring `--app module:variable`; selecting a variable now always uses a fresh, app-scoped registry, even without this flag |
 
 ## Exit codes
 

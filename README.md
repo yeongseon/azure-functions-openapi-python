@@ -164,6 +164,13 @@ correct default route:
 azure-functions-openapi generate --app function_app:app --title "My API"
 ```
 
+Selecting `module:variable` scopes generation to that app's reachable handlers.
+Likewise, the Python facades' `app=app` uses a fresh `OpenAPIRegistry` by default,
+without changing the process-wide registry. Unrelated decorated handlers and
+unbound programmatic metadata are excluded. For deliberate aggregation, omit
+`app` (CLI: use a module without `:variable`), or supply an explicit `registry=`
+to the Python facade; that registry remains caller-owned and additive.
+
 See the [CLI Guide](docs/cli.md) for all options, CI integration examples, and
 the warning that `--app` imports execute module-level code.
 
