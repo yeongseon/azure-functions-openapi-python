@@ -7,6 +7,17 @@
 
 ## Why teams use it
 
+This package targets native `func.FunctionApp()` handlers. For an existing FastAPI
+application, Azure Functions also supports
+[`AsgiFunctionApp`](https://learn.microsoft.com/en-us/python/api/azure-functions/azure.functions.asgifunctionapp):
+keep FastAPI's own routing, middleware, dependency injection and OpenAPI generator.
+Choose the native model when Azure handler bindings are central; FastAPI endpoints
+do not automatically receive native binding arguments. See the
+[official ASGI sample](https://github.com/Azure-Samples/fastapi-on-azure-functions)
+(archived reference) and the [README comparison](https://github.com/yeongseon/azure-functions-openapi-python#fastapi-comparison).
+This library documents contracts; it does not perform runtime validation or claim
+a measured cold-start advantage over ASGI hosting.
+
 - Keep API docs close to function code with `@openapi`
 - Generate OpenAPI 3.0.0, 3.1.0, or 3.2.0 from runtime metadata
 - Serve JSON, YAML, and Swagger UI from the same Function App
@@ -46,7 +57,7 @@ class HelloResponse(BaseModel):
         }
     ],
     responses=HelloResponse,
-    )
+)
 @app.route(route="http_trigger", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     name = req.params.get("name", "world")

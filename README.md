@@ -19,7 +19,8 @@ OpenAPI (Swagger) documentation and Swagger UI for the **Azure Functions Python 
 
 ## Why this exists
 
-Azure Functions Python v2 has no built-in API documentation story:
+Native `func.FunctionApp()` HTTP handlers do not automatically get OpenAPI
+documentation from the Azure Functions SDK alone:
 
 - **No auto-generated docs** — you maintain OpenAPI specs by hand or not at all
 - **No Swagger UI** — no browser-based API explorer for testing endpoints
@@ -109,13 +110,32 @@ flowchart LR
 
 ## FastAPI comparison
 
-| Feature | FastAPI | azure-functions-openapi |
-|---------|---------|------------------------|
-| API docs generation | Built-in from type hints | `@openapi` decorator on handlers |
-| Swagger UI | `/docs` auto-served | `render_swagger_ui()` endpoint |
-| OpenAPI spec | Auto-generated `/openapi.json` | `get_openapi_json()` endpoint |
-| CLI spec export | N/A | `azure-functions-openapi generate` |
-| Pydantic integration | Native | `requests=` / `responses=` |
+**FastAPI also runs on Azure Functions.** The choice is the HTTP programming
+model, not whether Azure Functions supports a web framework. See the official
+[FastAPI on Azure Functions sample](https://github.com/Azure-Samples/fastapi-on-azure-functions)
+(archived reference) and the current
+[`AsgiFunctionApp` API](https://learn.microsoft.com/en-us/python/api/azure-functions/azure.functions.asgifunctionapp).
+
+| Concern | Native `FunctionApp` + this package | FastAPI on `AsgiFunctionApp` |
+|---------|------------------------------------|-----------------------------|
+| HTTP routing | Azure `@app.route` handlers | FastAPI path operations behind the ASGI adapter |
+| Documentation | `@openapi` metadata; explicitly register spec/UI routes | FastAPI generates its own OpenAPI and docs routes |
+| Bindings | Keep Azure input/output bindings on native handlers | FastAPI endpoints do not automatically receive native binding arguments; use SDK clients or explicit integration code |
+| Middleware and DI | This package supplies neither ASGI middleware nor dependency injection | Keep FastAPI/Starlette middleware and FastAPI dependencies |
+| Validation | Documentation only; optionally pair with `azure-functions-validation` | FastAPI owns request parsing, validation and response-model serialization |
+| Spec export | `azure-functions-openapi generate` | Export the document returned by the FastAPI app's `openapi()` method |
+
+**When to use:** choose this package when your handlers already use native
+FunctionApp decorators and bindings and you want documentation without replacing
+that model. **When not to use:** keep FastAPI on `AsgiFunctionApp` for an existing
+FastAPI app, or when its middleware, dependency injection and integrated validation
+are the desired application model. This package does not inspect FastAPI's nested
+router or replace its OpenAPI generator. ASGI hosting does not preclude separate
+native functions, but bridging their bindings into FastAPI endpoints is not automatic.
+
+This is the same documentation-versus-runtime-validation boundary described for
+the optional Validation companion below. Neither approach is claimed to have
+lower cold-start or import time; no comparable benchmark is provided here.
 
 ## Scope
 
