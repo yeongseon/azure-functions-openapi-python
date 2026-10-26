@@ -18,6 +18,7 @@ env/
 .coverage
 coverage.xml
 htmlcov/
+test-results/
 
 # Build artifacts
 build/
