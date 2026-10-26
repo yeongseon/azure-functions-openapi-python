@@ -119,13 +119,14 @@ def _make_app(
     methods: list[str] | None = None,
     metadata: Any = None,
 ) -> MockApp:
+    """``metadata`` only toggles the fixed endpoint payload; its contents are never read."""
     handler = _make_endpoint_handler() if metadata is not None else (lambda req: req)
     binding = MockBinding(route=route, methods=methods or ["POST"])
     fn = MockFunction(_name=name, _func=handler, _bindings=[binding])
     return MockApp(_function_builders=[MockBuilder(_function=fn)])
 
 
-def test_scan_discovers_validation_metadata() -> None:
+def test_scan_discovers_endpoint_metadata() -> None:
     app = _make_app(metadata={"body": CreateBody, "response_model": ResponseModel})
 
     scan_endpoint_metadata(app)
@@ -137,6 +138,7 @@ def test_scan_discovers_validation_metadata() -> None:
 
 
 def test_scan_rejects_conflicting_public_parameter_contracts() -> None:
+    """Registered and endpoint metadata that disagree on a parameter schema abort the scan."""
     register_openapi_metadata(
         path="/api/users",
         method="post",
@@ -179,6 +181,7 @@ def test_scan_skips_non_validated_functions() -> None:
 
 
 def test_explicit_openapi_wins() -> None:
+    """Merging endpoint metadata into an existing explicit registration keeps its summary."""
     register_openapi_metadata(path="/api/users", method="post", summary="explicit")
     app = _make_app(metadata={"body": CreateBody, "response_model": ResponseModel})
 
@@ -227,8 +230,8 @@ def test_scan_skips_non_http_bindings() -> None:
 
 
 def test_scan_expands_unspecified_methods_to_all_http_methods() -> None:
-    # Azure runtime responds to *all* HTTP methods when methods= is omitted, so
-    # the scan must register every HttpMethod rather than defaulting to GET.
+    """An omitted methods list means every supported HTTP method, not GET-only."""
+    # Azure runtime responds to *all* HTTP methods when methods= is omitted.
     handler = _make_endpoint_handler()
     binding = MockBinding(route="users", methods=None, type="httpTrigger")
     fn = MockFunction(_name="get_users", _func=handler, _bindings=[binding])
@@ -264,13 +267,7 @@ def test_scan_omits_request_body_from_expanded_bodyless_methods() -> None:
 
 
 def test_scan_reconciles_plain_openapi_recommended_order_expansion() -> None:
-    # #354: whichever decorator order is used, @openapi decorates the function
-    # before the HTTP-trigger binding is observable, so the entry is registered
-    # with method=None and emits GET only. This is easiest to hit in the
-    # README-recommended order (@openapi above @app.route). The scan sees the
-    # wrapped builder with an httptrigger binding that omits methods=, and must
-    # reconcile the entry to expand to every HTTP method — even though the
-    # handler carries no endpoint/validation metadata.
+    """A plain ``@openapi`` with no method expands to all methods when ``methods=`` is omitted."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -318,11 +315,7 @@ def test_scan_does_not_expand_plain_openapi_with_explicit_method() -> None:
 
 
 def test_scan_reconciles_route_for_plain_openapi_explicit_method_no_route() -> None:
-    # #364 review C2: a plain @openapi(method=...) with no route= (decorated
-    # ABOVE @app.route, so the decorator cannot see the binding) registers with
-    # route=None. Without reconciliation spec.py falls back to the function name.
-    # The scan must fill the missing route from the HTTP binding WITHOUT
-    # exploding or overriding the explicit method.
+    """A route-less ``@openapi(method=...)`` takes the binding's route and keeps its method."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -367,10 +360,7 @@ def test_scan_preserves_explicit_route_for_plain_openapi_explicit_method() -> No
 
 
 def test_scan_reconciles_method_for_openapi_below_route_post() -> None:
-    # #358: when @openapi sits BELOW @app.route, it decorates the raw function
-    # and registers with method=None (no binding visible). The scan sees the
-    # POST binding and must explode the method=None entry into a per-method
-    # entry — otherwise every method collapses into a lone GET.
+    """Below ``@app.route``, a method-less ``@openapi`` takes the bound POST, not a lone GET."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -400,8 +390,7 @@ def test_scan_reconciles_method_for_openapi_below_route_post() -> None:
 
 
 def test_scan_reconciles_method_for_openapi_below_route_unspecified_expands() -> None:
-    # #358: an unspecified-methods binding below @openapi expands to every HTTP
-    # method, with GET/HEAD/DELETE stripped of the request body.
+    """Omitted binding methods expand to every HTTP method, with no body on GET, HEAD or DELETE."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -436,8 +425,7 @@ def test_scan_reconciles_method_for_openapi_below_route_unspecified_expands() ->
 
 
 def test_scan_reconciles_method_for_openapi_below_route_multi_method() -> None:
-    # #358: an explicit multi-method binding below @openapi produces one entry
-    # per method (not a single collapsed GET).
+    """A multi-method binding yields one operation per bound method, not a single collapsed GET."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -478,6 +466,7 @@ def test_scan_below_route_is_idempotent_across_repeated_scans() -> None:
 
 
 def test_rescan_expanded_handler_preserves_per_method_bodies() -> None:
+    """A rescan keeps request bodies off GET, HEAD and DELETE and on POST, PUT and PATCH."""
     # #363: after #359 made _function_id one-to-many (one entry per exploded
     # method), resolving by function id alone would let every method iteration
     # merge into whichever sibling comes first. On a re-scan of an unspecified-
@@ -506,9 +495,7 @@ def test_rescan_expanded_handler_preserves_per_method_bodies() -> None:
 
 
 def test_rescan_multi_method_resolves_each_method_to_own_entry() -> None:
-    # #363: an explicit multi-method handler explodes into distinct entries that
-    # share one _function_id. A re-scan must resolve each method iteration to
-    # its own method::path entry, not the first id match.
+    """After a rescan, a function-id lookup per method still returns that method's own entry."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.registry import canonical_function_id, registry
 
@@ -603,10 +590,7 @@ def test_scan_below_route_preserves_explicit_openapi_route_override() -> None:
 
 
 def test_scan_reconciles_plain_openapi_below_route_explicit_method() -> None:
-    # #361: a plain @openapi (no validation/endpoint metadata) below @app.route
-    # must infer BOTH the binding method and route. The decorator registered
-    # method=None, route=None; the scan sees a POST binding at a route that can
-    # never equal the function name (real-world case).
+    """A plain ``@openapi`` with no method or route takes both from the POST binding."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -630,8 +614,7 @@ def test_scan_reconciles_plain_openapi_below_route_explicit_method() -> None:
 
 
 def test_scan_reconciles_plain_openapi_below_route_multi_method() -> None:
-    # #361: a plain @openapi with an explicit multi-method binding produces one
-    # operation per method at the binding route (not a collapsed lone GET).
+    """A plain ``@openapi`` gets one operation per bound method at the binding's route."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -651,8 +634,7 @@ def test_scan_reconciles_plain_openapi_below_route_multi_method() -> None:
 
 
 def test_scan_reconciles_plain_openapi_below_route_unspecified_preserves_route() -> None:
-    # #361: an unspecified-methods binding expands to every HTTP method AND keeps
-    # the binding route (previously the route fell back to the function name).
+    """Omitted ``methods=`` expands a plain ``@openapi`` to all methods at the binding route."""
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import generate_openapi_spec
 
@@ -790,8 +772,7 @@ def test_collect_spec_warnings_no_mismatch_for_unspecified_binding() -> None:
 
 
 def test_collect_spec_warnings_no_mismatch_for_inferred_method() -> None:
-    # #362: a method inferred from the binding (plain @openapi, method=None) is
-    # never a mismatch, even though the resulting entry carries a method.
+    """A method inferred from the binding is never reported as a method/binding mismatch."""
     from azure_functions_openapi._warnings import WarningCode
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -811,10 +792,7 @@ def test_collect_spec_warnings_no_mismatch_for_inferred_method() -> None:
 
 
 def test_mismatch_flagged_for_validation_carrying_handler() -> None:
-    # #368: METHOD_BINDING_MISMATCH must also fire when the explicit
-    # @openapi(method=...) handler carries validation/endpoint metadata. Such a
-    # handler takes the metadata-merge path (not _reconcile_openapi_binding), so
-    # the binding method set has to be stamped there too.
+    """A method/binding mismatch is also flagged for handlers carrying endpoint metadata."""
     from azure_functions_openapi._warnings import WarningCode
     from azure_functions_openapi.decorator import openapi
     from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -883,6 +861,7 @@ def test_no_mismatch_for_validation_handler_with_unspecified_binding() -> None:
 
 
 def test_scan_merges_explicit_function_name_entry() -> None:
+    """Endpoint metadata falls back to merging into the entry keyed by the short function name."""
     with _registry_lock:
         _openapi_registry["create_user"] = {
             "summary": "explicit",
@@ -900,6 +879,7 @@ def test_scan_merges_explicit_function_name_entry() -> None:
             "response_model": None,
             "response": {},
             "function_name": "create_user",
+            # Not the scanned handler's canonical id, so only the short-name fallback matches.
             "_function_id": "tests.create_user",
         }
 
@@ -1016,6 +996,7 @@ def test_scan_route_exactly_equal_to_prefix_generates_both_segments() -> None:
 
 
 def test_bridge_helpers_cover_default_normalization_paths() -> None:
+    """A missing method defaults to get and an empty route falls back to the function name."""
     assert _normalize_method(None) == "get"
     assert _normalize_path("", "users", "/api") == "/api/users"
 

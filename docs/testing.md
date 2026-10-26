@@ -96,6 +96,7 @@ Ensure invalid inputs raise `ValueError` with descriptive messages:
 ```python
 def test_invalid_route_raises():
     with pytest.raises(ValueError, match="Invalid route path"):
+
         @openapi(summary="Bad", route="../../etc/passwd")
         def bad_route(req):
             pass
@@ -138,6 +139,7 @@ class ItemResponse(BaseModel):
     id: int
     name: str
 
+
 def test_response_model_schema():
     @openapi(
         summary="Get item",
@@ -164,9 +166,7 @@ def test_security_scheme_in_components():
         summary="Protected",
         route="/api/protected",
         security=[{"BearerAuth": []}],
-        security_scheme={
-            "BearerAuth": {"type": "http", "scheme": "bearer"}
-        },
+        security_scheme={"BearerAuth": {"type": "http", "scheme": "bearer"}},
     )
     def protected(req):
         pass
@@ -207,6 +207,7 @@ exists and the OpenAPI registry is populated:
 ```python
 def test_webhook_receiver_example_registers_metadata():
     import importlib
+
     mod = importlib.import_module("examples.webhook_receiver.function_app")
     registry = get_openapi_registry()
     assert len(registry) > 0
@@ -234,6 +235,33 @@ Examples:
 - `test_decorator_stores_tags`
 - `test_openapi_invalid_version_raises`
 - `test_swagger_ui_custom_csp_applied`
+
+### Explaining non-obvious tests
+
+A descriptive name and its assertions are usually enough, so leave short, self-explanatory
+tests without extra prose. Add a **single-line docstring** only when the name and assertions
+do not make the protected behavior clear, such as ordering or precedence rules, idempotency
+across repeated scans, malformed or unsupported SDK metadata, security inference, or a past
+regression. State the invariant rather than the setup:
+
+```python
+def test_scan_expands_unspecified_methods_to_all_http_methods() -> None:
+    """An omitted methods list means every supported HTTP method, not GET-only."""
+    ...
+
+
+def test_read_endpoint_hints_boolean_version_rejected() -> None:
+    """A boolean version is rejected even though ``True == 1`` and version 1 is supported."""
+    ...
+```
+
+- Write the docstring in English, keep it to one line, and check it against the code the test
+  exercises.
+- Use an inline comment only for a genuinely surprising setup or assertion, such as a mock
+  that models non-obvious Azure Functions behavior.
+- Prefer a clearer test name when that removes the need for a comment.
+- Do not use issue numbers or phase names as the explanation, add Given/When/Then headings,
+  or put a docstring on every test.
 
 ## Performance Considerations
 

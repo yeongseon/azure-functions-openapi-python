@@ -1061,7 +1061,6 @@ def generate_openapi_spec(
                                     location=location,
                                 )
                             )
-                        _ensure_default_response(responses)
 
                 _ensure_default_response(responses)
 
@@ -1975,17 +1974,28 @@ class SpecReport:
     warnings: tuple[SpecWarning, ...] = field(default_factory=tuple)
 
 
-def _collect_skew_warnings(registry: OpenAPIRegistry | None = None) -> list[SpecWarning]:
+def _entry_snapshot(registry: OpenAPIRegistry | None) -> dict[str, dict[str, Any]]:
+    """Return a detached copy of the entries for ``registry`` or the global registry."""
+    return registry.snapshot() if registry is not None else get_openapi_registry()
+
+
+def _collect_skew_warnings(
+    registry: OpenAPIRegistry | None = None,
+    *,
+    entries: dict[str, dict[str, Any]] | None = None,
+) -> list[SpecWarning]:
     """Derive skew warnings from ``_skew_flags`` recorded on registry entries.
 
     The bridge scanner tags entries at scan time; this re-derives structured
     warnings from a registry snapshot deterministically (entries sorted by key,
     codes already stored in sorted order) with no global accumulator. When
     ``registry`` is provided its snapshot is used instead of the global one, so
-    warnings stay isolated to the same registry the spec was built from.
+    warnings stay isolated to the same registry the spec was built from. A caller
+    that already holds a detached ``entries`` snapshot may pass it to avoid
+    copying the registry again.
     """
     collected: list[SpecWarning] = []
-    snapshot = registry.snapshot() if registry is not None else get_openapi_registry()
+    snapshot = entries if entries is not None else _entry_snapshot(registry)
     for key, entry in sorted(snapshot.items()):
         flags = entry.get("_skew_flags") or []
         function_name = entry.get("function_name") or key
@@ -2137,6 +2147,8 @@ def _collect_skipped_operation_warnings(
 
 def _collect_binding_mismatch_warnings(
     registry: OpenAPIRegistry | None = None,
+    *,
+    entries: dict[str, dict[str, Any]] | None = None,
 ) -> list[SpecWarning]:
     """Derive method/binding mismatch warnings from stamped registry entries.
 
@@ -2147,10 +2159,12 @@ def _collect_binding_mismatch_warnings(
     a :class:`WarningCode.METHOD_BINDING_MISMATCH` is surfaced. Entries with an
     unspecified binding (no ``_binding_methods`` stamp) are never flagged: the
     runtime answers every verb, so nothing can contradict the authored method.
-    Ordering is deterministic (entries sorted by registry key).
+    Ordering is deterministic (entries sorted by registry key). A caller that
+    already holds a detached ``entries`` snapshot may pass it to avoid copying the
+    registry again.
     """
     collected: list[SpecWarning] = []
-    snapshot = registry.snapshot() if registry is not None else get_openapi_registry()
+    snapshot = entries if entries is not None else _entry_snapshot(registry)
     for key, entry in sorted(snapshot.items()):
         binding_methods = entry.get("_binding_methods")
         if not binding_methods:
@@ -2240,14 +2254,15 @@ def collect_spec_warnings(
     Returns:
         A deterministic tuple of :class:`SpecWarning`.
     """
-    warnings_list: list[SpecWarning] = _collect_skew_warnings(registry)
+    entries = _entry_snapshot(registry)
+    warnings_list: list[SpecWarning] = _collect_skew_warnings(entries=entries)
     warnings_list.extend(_collect_discovery_warnings(registry))
     warnings_list.extend(_collect_empty_discovery_warnings(registry))
     warnings_list.extend(_collect_duplicate_operation_warnings(registry))
     warnings_list.extend(_collect_downgrade_drop_warnings(registry))
     warnings_list.extend(_collect_schema_substitution_warnings(registry))
     warnings_list.extend(_collect_skipped_operation_warnings(registry))
-    warnings_list.extend(_collect_binding_mismatch_warnings(registry))
+    warnings_list.extend(_collect_binding_mismatch_warnings(entries=entries))
     for message in _validate_spec(spec):
         warnings_list.append(SpecWarning(code=WarningCode.SPEC_VALIDATION, message=message))
     return tuple(warnings_list)

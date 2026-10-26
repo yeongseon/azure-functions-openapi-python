@@ -204,11 +204,31 @@ jobs:
         # version-variant cell cannot fail the build on a spurious coverage dip.
         env:
           IS_COVERAGE_CELL: ${{ matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' }}
+          JUNIT_XML: test-results/junit/py${{ matrix.python-version }}-af${{ matrix.azure-functions-version }}.xml
         run: |
           if [ "$IS_COVERAGE_CELL" = "true" ]; then
-            pytest tests/
+            pytest tests/ --junitxml="$JUNIT_XML"
           else
-            pytest tests/ --no-cov
+            pytest tests/ --no-cov --junitxml="$JUNIT_XML"
+          fi
+
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-evidence-py${{ matrix.python-version }}-af${{ matrix.azure-functions-version }}
+          path: |
+            test-results/junit/py${{ matrix.python-version }}-af${{ matrix.azure-functions-version }}.xml
+            ${{ matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest' && 'coverage.xml' || '' }}
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Summarize coverage
+        if: always() && matrix.python-version == '3.11' && matrix.azure-functions-version == 'latest'
+        continue-on-error: true
+        run: |
+          if [ -f .coverage ]; then
+            python -m coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Verify coverage output
