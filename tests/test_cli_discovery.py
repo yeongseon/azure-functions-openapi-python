@@ -165,21 +165,17 @@ def test_endpoint_only_app_is_discovered_via_module_variable(tmp_path: Path) -> 
     assert "post" in spec["paths"]["/api/users"]
 
 
-def test_decorator_only_app_is_included_via_module_variable(tmp_path: Path) -> None:
-    """Decorator-registered routes (populated on import) appear in the spec."""
-    # Simulate an @openapi decorator firing during module import.
+def test_unbound_metadata_is_excluded_via_module_variable(tmp_path: Path) -> None:
     register_openapi_metadata(path="/api/items", method="get", summary="List items")
     spec = _run_generate("function_app:app", _empty_app(), True, tmp_path / "openapi.json")
-    assert "/api/items" in spec["paths"]
-    assert "get" in spec["paths"]["/api/items"]
+    assert spec["paths"] == {}
 
 
-def test_mixed_decorator_and_endpoint_routes_both_present(tmp_path: Path) -> None:
-    """Decorator-only and endpoint-metadata routes converge into one spec."""
+def test_endpoint_routes_exclude_unbound_metadata(tmp_path: Path) -> None:
     register_openapi_metadata(path="/api/items", method="get", summary="List items")
     app = _endpoint_app(route="users", methods=["POST"])
     spec = _run_generate("function_app:app", app, True, tmp_path / "openapi.json")
-    assert "/api/items" in spec["paths"]
+    assert "/api/items" not in spec["paths"]
     assert "/api/users" in spec["paths"]
 
 

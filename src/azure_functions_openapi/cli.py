@@ -241,9 +241,6 @@ Examples:
 def handle_generate(args: argparse.Namespace) -> int:
     """Handle generate command."""
     try:
-        # An app-scoped registry keeps a --isolate-app run limited to the routes
-        # of the given FunctionApp, avoiding cross-app leakage when several apps
-        # are imported in one process. Left None for the default shared-global flow.
         active_registry: OpenAPIRegistry | None = None
         isolate = getattr(args, "isolate_app", False) is True
         # Fail closed: an explicit --isolate-app that cannot be honored must not
@@ -270,8 +267,7 @@ def handle_generate(args: argparse.Namespace) -> int:
                 return 1
 
             if variable_given and resolved_app is not None:
-                if isolate:
-                    active_registry = OpenAPIRegistry()
+                active_registry = OpenAPIRegistry()
                 # One-shot discovery through the #325 adapter. `build()` is
                 # idempotent; we never call the non-idempotent `get_functions()`.
                 scan_endpoint_metadata(
