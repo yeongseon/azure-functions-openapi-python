@@ -145,6 +145,22 @@ cov: ensure-hatch
 	@echo "Open htmlcov/index.html in your browser to view the coverage report."
 	@echo "coverage.xml generated for Codecov upload."
 
+.PHONY: integration
+integration:
+	@PYTHON="$(PYTHON)" bash scripts/local-smoke.sh integration
+
+.PHONY: wheel-smoke
+wheel-smoke: ensure-hatch
+	@PYTHON="$(PYTHON)" HATCH="$(abspath $(HATCH))" bash scripts/local-smoke.sh wheel-smoke
+
+.PHONY: verify
+verify:
+	@$(MAKE) check
+	@$(MAKE) test
+	@$(MAKE) integration
+	@$(MAKE) docs
+	@$(MAKE) wheel-smoke
+
 .PHONY: browser-install test-browser
 browser-install:
 	@npm install --cache .cache/npm --prefix .cache/browser --no-save --package-lock=false playwright@$(PLAYWRIGHT_VERSION)

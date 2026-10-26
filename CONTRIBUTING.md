@@ -82,13 +82,23 @@ an `E2E_BASE_URL`; use `make e2e-azure` only when that environment is available.
 
 ```bash
 make format      # Format code with ruff
-make lint        # Lint with ruff
+make lint        # Lint and type check (ruff + mypy)
 make typecheck   # Type check with mypy
 make test        # Run tests
 make cov         # Run tests with coverage
 make perf        # Check spec-generation performance budgets
-make check-all   # Run the full local gate
+make check-all   # Offline gate: lint-workflows + check + test + security
+make integration # Real Functions host + Azurite smoke, using free ports
+make docs        # Strict documentation build, matching CI
+make wheel-smoke # Build and test an installed wheel outside the checkout
+make verify      # Full local gate: check + test + integration + docs + wheel-smoke
 ```
+
+`make verify` runs these lanes in order and stops on the first failure, even with
+parallel make enabled. `make check-all` retains its offline scope; it does not
+start services or build docs. Install dependencies before running offline checks.
+For integration prerequisites and the one-time smoke venv setup, see the
+[Development Guide](docs/development.md#local-smoke-prerequisites).
 
 Before opening a PR, run `ruff format --check <changed-python-files>` (or
 `ruff format <changed-python-files>` to fix them). `make format-check` checks
