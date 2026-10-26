@@ -53,6 +53,21 @@ flowchart TD
 
 Note: `render_swagger_ui()` does not embed or generate the OpenAPI spec. It returns HTML that instructs the browser to fetch the spec from a configured URL.
 
+### Generation Diagnostics
+
+Compilation accumulates duplicate operations, downgrade drops, schema substitutions,
+and skipped operations in invocation-local lists. On exit, a single registry-locked
+publication replaces all four compatibility channels using the existing clear/add
+methods. This keeps `generate_openapi_spec(registry=reg)` followed by
+`collect_spec_warnings(spec, registry=reg)` compatible, including registry-owned
+deduplication and sorting, without using the registry as a live compiler accumulator.
+
+Publication also runs after compilation raises: the snapshot contains only events
+recorded before the failure, preserving the previous exception-state contract.
+Invalid configuration or an entry-snapshot failure before compilation starts leaves
+the previous diagnostics unchanged. Discovery warnings and empty discoveries retain
+their scan lifetime and are never cleared by this publication.
+
 Protected docs can opt into browser-owned key forwarding: the library's header-mode
 handler does not read or echo the query value, while the Functions host necessarily
 receives the initial URL. A nonce-protected script removes `code` from the
