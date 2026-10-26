@@ -39,7 +39,7 @@ The architecture separates metadata capture (import-time) from document generati
 ```mermaid
 flowchart TD
     subgraph Registration ["Import-Time Registration"]
-        DEC["@openapi(...) decorator"] --> REG["Thread-safe Registry<br/>_openapi_registry"]
+        DEC["@openapi(...) decorator"] --> REG["Thread-safe OpenAPIRegistry<br/>registry.py"]
     end
 
     subgraph Consumers ["On-Demand Consumers"]
