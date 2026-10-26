@@ -78,7 +78,9 @@ def generate_openapi_spec(
     tags: list[dict[str, Any]] | None = None,
     app: object | None = None,
 ) -> dict[str, Any]:
-    """Compile a spec, optionally reconciling routes from a FunctionApp first."""
+    """Compile a spec scoped to app, unless an explicit registry is supplied."""
+    if app is not None and registry is None:
+        registry = OpenAPIRegistry()
     _prepare_generation(app, route_prefix, registry)
     return _generate_openapi_spec(
         title=title,
@@ -207,7 +209,9 @@ def generate_openapi_report(
     tags: list[dict[str, Any]] | None = None,
     app: object | None = None,
 ) -> SpecReport:
-    """Return a spec report after optionally reconciling a completed FunctionApp."""
+    """Return a report scoped to app, unless an explicit registry is supplied."""
+    if app is not None and registry is None:
+        registry = OpenAPIRegistry()
     unresolved = _prepare_generation(app, route_prefix, registry)
     report = _generate_openapi_report(
         title,
