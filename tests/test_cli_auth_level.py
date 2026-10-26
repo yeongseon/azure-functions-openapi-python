@@ -217,7 +217,7 @@ def test_cli_inference_fails_closed_when_discovery_is_empty_or_skipped(
     assert "auth-level inference" in capsys.readouterr().err
 
 
-def test_cli_inference_fails_when_any_operation_lacks_auth_and_explicit_security(
+def test_cli_inference_excludes_unrelated_operation_without_auth(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -250,6 +250,6 @@ def test_cli_inference_fails_when_any_operation_lacks_auth_and_explicit_security
         result = main()
 
     # Then
-    assert result != 0
-    assert not output.exists()
-    assert "unresolved" in capsys.readouterr().err
+    assert result == 0
+    assert "/api/unresolved" not in json.loads(output.read_text(encoding="utf-8"))["paths"]
+    assert "unresolved" not in capsys.readouterr().err

@@ -24,8 +24,10 @@ def test_installed_console_script_imports_app_from_invocation_directory(
     # Given: a project outside the installed console script's directory.
     (tmp_path / "function_app.py").write_text(
         "from azure_functions_openapi import openapi\n"
-        "app = object()\n"
+        "import azure.functions as func\n"
+        "app = func.FunctionApp()\n"
         "@openapi(route='items', method='get', summary='Items')\n"
+        "@app.route(route='items', methods=['GET'])\n"
         "def items(): pass\n",
         encoding="utf-8",
     )
