@@ -488,7 +488,7 @@ def _convert_prepared_schema_to_3_0(
     are rewritten to the 3.0 ``nullable: true`` form so the emitted schema is
     valid under OpenAPI 3.0 (#562) and -- for a nullable ``$ref``, when
     *schemas* is supplied -- actually accepts a ``null`` instance (#782).
-    Non-nullable schemas pass through unchanged.
+    Schemas that need none of the 3.0 rewrites pass through unchanged.
 
     *schemas* (the complete ``components.schemas`` registry) and *resolving*
     (the set of component names currently being inlined higher up this same
@@ -497,9 +497,10 @@ def _convert_prepared_schema_to_3_0(
     ``$ref`` can be resolved no matter how deeply nested it is.
 
     *normalize_items* is cleared for a referenced schema that is about to be merged with the
-    keys around its nullable union: an ``items`` filled in beforehand would displace an
-    ``items`` that the surrounding schema declares, so the merged result is normalized by the
-    caller's own conversion instead.
+    keys around its nullable union: an ``items`` synthesized beforehand (the fill for a missing
+    ``items``, boolean normalization, an open tuple tail) would displace an ``items`` that the
+    surrounding schema declares, so the merged result is normalized by the caller's own
+    conversion instead.
 
     *lossy* is an optional accumulator for conversions that are not merely
     re-expressed but demonstrably weakened -- currently, a heterogeneous
@@ -635,15 +636,22 @@ def _convert_prepared_schema_to_3_0(
                 converted_items.append({})
             elif isinstance(additional_items, dict):
                 converted_items.append(additional_items)
+        # An ``items`` this block would synthesize for an open tail is left out when the schema
+        # is about to be merged with the keys around a nullable reference (``normalize_items``
+        # is cleared): the merged result is normalized afterwards, and an ``items`` that the
+        # surrounding schema declares must not lose to a synthesized one.
+        synthesize = normalize_items or not reachable_open_tail
         if converted_items and all(
             _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
         ):
             # Every position shares the identical schema: a plain ``items``
             # array faithfully represents it, with nothing position-specific
             # to lose.
-            result["items"] = converted_items[0]
+            if synthesize or converted_items[0]:
+                result["items"] = converted_items[0]
         elif reachable_open_tail and all(_constrains_nothing(item) for item in converted_items):
-            result["items"] = {}
+            if synthesize:
+                result["items"] = {}
         elif converted_items:
             # A heterogeneous tuple has no OpenAPI-3.0-native representation:
             # ``oneOf`` looks closest to the original intent, but JSON
@@ -656,7 +664,10 @@ def _convert_prepared_schema_to_3_0(
             # tuple's positional constraints, so it is reported rather than
             # silently emitted as if it were faithful (#782).
             approximation = "items: {}" if reachable_open_tail else "items.anyOf"
-            result["items"] = {} if reachable_open_tail else {"anyOf": converted_items}
+            if not reachable_open_tail:
+                result["items"] = {"anyOf": converted_items}
+            elif synthesize:
+                result["items"] = {}
             if lossy is not None:
                 item_types = ", ".join(
                     ("any" if not item else str(item.get("type", "object")))

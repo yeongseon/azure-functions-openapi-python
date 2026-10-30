@@ -293,7 +293,9 @@ non-strict generation emits the best-effort schema plus a structured
 `version-downgrade-drop` warning (visible via `generate_openapi_report()` or
 the CLI's `--fail-on-warnings`). A tuple whose positions all share the
 identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
-schema already describes it faithfully.
+schema already describes it faithfully. A tuple with a reachable open tail is
+the exception described below: its tail is unconstrained, so a constrained
+prefix is approximated as `items: {}` and reported.
 
 For `prefixItems` with `items: false`, conversion caps `maxItems` at the prefix
 length, retaining a tighter existing cap. When `items` is a schema, it also
@@ -317,8 +319,9 @@ no restriction and no warning; dropping `contains` still reports its own loss.
 These rules apply recursively to inline operation schemas and components.
 Non-array schemas do not gain `items`, and an `items` schema that is already
 present is kept, apart from the tuple conversions above (a typed tail still joins
-`items.anyOf`). When a nullable union refers to an item-less array, the filled
-`items` never displaces an `items` that the surrounding schema declares.
+`items.anyOf`). When a nullable union refers to an array, an `items` that this
+conversion would synthesize for it (the fill, boolean normalization or an open
+tuple tail) never displaces an `items` that the surrounding schema declares.
 OpenAPI 3.1 and 3.2 output is unchanged.
 
 Legacy array-valued `items` is normalized to `prefixItems` before this same tuple

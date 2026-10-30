@@ -119,8 +119,8 @@ The final call-flow is:
    recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
    to `{}`, standalone `false` to `{not: {}}`) and fills missing `items` only on
    converted `type: array` nodes, including nullable arrays; a schema inlined for a
-   nullable reference is normalized only after it has been merged with its
-   surroundings. Existing closed-prefix caps stay as they were, and an `items` schema
+   nullable reference gets none of these synthesized values until it has been merged
+   with its surroundings. Existing closed-prefix caps stay as they were, and an `items` schema
    that is already present is kept apart from the tuple conversions above;
    3.1/3.2 bypass these rules.
 5. Normalize and validate the document before custom-method relocation and QUERY

@@ -50,6 +50,7 @@ CASES: Final[list[tuple[dict[str, JsonValue], bool]]] = [
     ({"type": "array", "prefixItems": [], "items": True}, False),
     ({"type": "array", "prefixItems": []}, False),
     ({"type": "array", "prefixItems": [{}], "items": True}, False),
+    ({"type": "array", "prefixItems": [{"type": "array", "items": True}], "items": False}, False),
     ({"type": "array", "prefixItems": [True]}, False),
     ({"type": "array", "prefixItems": [False]}, True),
     ({"type": "array", "prefixItems": [{"title": "Anything"}]}, False),
@@ -237,11 +238,23 @@ def test_open_tail_loss_names_the_unconstrained_tail_and_the_approximation() -> 
 @pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
 @pytest.mark.parametrize("key", ["anyOf", "oneOf"])
 @pytest.mark.parametrize("extra", [{}, {"maxItems": 1}], ids=["plain", "capped"])
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"type": "array"},
+        {"type": "array", "prefixItems": []},
+        {"type": "array", "prefixItems": [{}]},
+        {"type": "array", "prefixItems": [True]},
+        {"type": "array", "prefixItems": [{"title": "Anything"}]},
+    ],
+    ids=["item-less", "empty-prefix", "empty-schema-prefix", "true-prefix", "annotation-prefix"],
+)
 def test_authored_items_beside_a_nullable_array_reference_are_kept(
-    hoisted: bool, key: str, extra: dict[str, JsonValue]
+    hoisted: bool, key: str, extra: dict[str, JsonValue], target: dict[str, JsonValue]
 ) -> None:
-    # Given: an item-less array component behind a nullable union that declares the items itself.
-    definitions: dict[str, JsonValue] = {"Target": {"type": "array"}}
+    # Given: an array component without item constraints behind a nullable union that declares
+    # the items itself.
+    definitions: dict[str, JsonValue] = {"Target": target}
     node: dict[str, JsonValue] = {
         key: [{"$ref": "#/$defs/Target"}, {"type": "null"}],
         "items": {"type": "integer"},
@@ -311,3 +324,33 @@ def test_annotation_only_prefix_with_an_open_tail_loses_nothing(prefix: JsonValu
     assert [OAS30Validator(converted).is_valid(p) for p in PROBES] == [
         OAS31Validator(schema).is_valid(p) for p in PROBES
     ]
+
+
+def test_authored_items_survive_a_reported_open_tuple_tail_behind_a_nullable_reference() -> None:
+    # Given: a referenced tuple with a constrained prefix and an open tail, whose own loss is
+    # reported, behind a union that declares the items itself.
+    node = {
+        "anyOf": [{"$ref": "#/components/schemas/T"}, {"type": "null"}],
+        "items": {"type": "integer"},
+    }
+    schemas: dict[str, JsonValue] = {"T": {"type": "array", "prefixItems": [{"type": "string"}]}}
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(node, schemas, lossy=losses)
+
+    # Then: the positional loss is reported and the authored items are not displaced.
+    assert converted["items"] == {"type": "integer"}
+    assert len(losses) == 1
+
+
+def test_open_tuple_tail_without_a_type_is_still_unconstrained() -> None:
+    # Given: a tuple schema that names no type, so nothing else would fill its items.
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0({"prefixItems": [{"type": "string"}]}, lossy=losses)
+
+    # Then
+    assert converted == {"items": {}}
+    assert len(losses) == 1
