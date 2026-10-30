@@ -1442,3 +1442,92 @@ def test_pydantic_constrained_dict_keys_use_the_downgrade_channel(kind: str, str
             ),
         )
     )
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("heterogeneous", [False, True])
+@pytest.mark.parametrize(
+    "tail", [{}, {"additionalItems": False}, {"additionalItems": {"type": "integer"}}]
+)
+def test_legacy_tuple_items_match_equivalent_prefix_items(
+    version: str,
+    hoisted: bool,
+    strict: bool,
+    heterogeneous: bool,
+    tail: dict[str, JsonValue],
+) -> None:
+    # Given: draft-07 positional items and its equivalent 2020-12 declaration.
+    members: list[JsonValue] = [
+        {"type": "integer"},
+        {"type": "number" if heterogeneous else "integer"},
+    ]
+    legacy: dict[str, JsonValue] = {"type": "array", "items": members, **tail}
+    modern: dict[str, JsonValue] = {"type": "array", "prefixItems": members}
+    if "additionalItems" in tail:
+        modern["items"] = tail["additionalItems"]
+    registry = OpenAPIRegistry()
+    body = {"$ref": "#/$defs/Pair", "$defs": {"Pair": legacy}} if hoisted else legacy
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": body})
+    before = copy.deepcopy(legacy)
+    expected_losses: list[str] = []
+    expected = _convert_schema_to_3_0(modern, lossy=expected_losses)
+    messages = [("Schema 'Pair': " if hoisted else "") + loss for loss in expected_losses]
+
+    # When / Then: normalization reuses the established strict-mode tuple decision.
+    if strict and heterogeneous and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert (
+            str(caught.value)
+            == "Strict mode: generated spec has validation errors:\n  - " + messages[0]
+        )
+        assert legacy == before
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then: modern outputs retain the authored legacy syntax byte-for-byte, not normalized.
+    actual = (
+        spec["components"]["schemas"]["Pair"]
+        if hoisted
+        else spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    )
+    assert actual == (expected if version == "3.0.0" else legacy)
+    assert collect_spec_warnings(spec, registry) == tuple(
+        SpecWarning(code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None)
+        for message in (messages if version == "3.0.0" else [])
+    )
+    assert legacy == before
+    if version == "3.0.0":
+        validate(spec)
+        if not heterogeneous and tail:
+            probes: list[JsonValue] = [[], [1], [1, 2], [1, 2, 3], [1, "x"], [None]]
+            assert [OAS30Validator(actual).is_valid(p) for p in probes] == [
+                OAS31Validator(modern).is_valid(p) for p in probes
+            ]
+
+
+def test_legacy_tuple_keyword_losses_keep_original_positions() -> None:
+    # Given: unsupported predicates occur in both a legacy prefix and schema tail.
+    schema = {
+        "type": "array",
+        "items": [{"propertyNames": {"maxLength": 3}}],
+        "additionalItems": {"propertyNames": {"maxLength": 3}},
+    }
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(schema, lossy=losses)
+
+    # Then: loss reporting precedes normalization and homogeneous matching.
+    assert converted == {"type": "array", "items": {}}
+    assert losses == [
+        f"dropped 'propertyNames' at /{path}/propertyNames: "
+        "OpenAPI 3.0 does not define it; key names are no longer restricted"
+        for path in ("items/0", "additionalItems")
+    ]

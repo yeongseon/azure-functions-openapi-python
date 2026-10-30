@@ -18,8 +18,8 @@ _DROPPED_KEYWORDS: Final = {
     "dependentSchemas": "dependent object constraints are no longer enforced",
 }
 _MAP_KEYS: Final = frozenset({"properties", "patternProperties", "$defs"})
-_SCHEMA_KEYS: Final = frozenset({"items", "additionalProperties", "not"})
-_LIST_KEYS: Final = frozenset({"prefixItems", "allOf", "anyOf", "oneOf"})
+_SCHEMA_KEYS: Final = frozenset({"items", "additionalItems", "additionalProperties", "not"})
+_LIST_KEYS: Final = frozenset({"items", "prefixItems", "allOf", "anyOf", "oneOf"})
 
 
 def _prepare_schema_for_3_0(
@@ -55,4 +55,8 @@ def _prepare_schema_for_3_0(
             ]
         else:
             result[key] = value
+    if isinstance(result.get("items"), list):
+        result["prefixItems"] = result.pop("items")
+        if "additionalItems" in result:
+            result["items"] = result.pop("additionalItems")
     return result
