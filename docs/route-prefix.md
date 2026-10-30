@@ -41,11 +41,15 @@ Resolution uses the first available value:
    `./host.json` in the current working directory when no path is supplied).
 3. The default `/api`.
 
-An empty string at either configured level means no prefix, including an empty
-environment variable. Values are normalized: `api` becomes `/api`, `/v1/`
-becomes `/v1`, and `""` stays empty. Missing files and missing keys silently
-fall back. Unreadable files, invalid JSON, and non-string `routePrefix` values
-emit a `RuntimeWarning` naming the file and reason, then fall back to `/api`.
+An empty string at either configured level means no prefix: an empty
+`routePrefix` in `host.json` removes the host's prefix, and the helper applies
+the same rule to a present but empty app setting. Whether a given hosting
+environment delivers an empty app setting to the host is outside the helper's
+control, so confirm that before relying on it. Values are normalized: `api`
+becomes `/api`, `/v1/` becomes `/v1`, and `""` stays empty. Missing files and
+missing keys silently fall back. Unreadable files, invalid JSON, and non-string
+`routePrefix` values emit a `RuntimeWarning` naming the file and reason, then
+fall back to `/api`.
 The file is parsed as strict JSON with an optional UTF-8 byte order mark, so a
 `host.json` that contains comments or trailing commas is reported as unreadable.
 The helper only reads configuration; it never imports or executes application code.
@@ -73,8 +77,10 @@ azure-functions-openapi generate --app function_app:app --route-prefix auto
 
 The CLI reads `host.json` beside the imported `--app` module, falling back to
 the current working directory if there is no app or the module has no `__file__`.
-The app-setting override above still wins in `auto` mode. A **literal** prefix
-named `auto` must be written `--route-prefix /auto`.
+The app-setting override above still wins in `auto` mode. If the file cannot be
+read, `auto` falls back to `/api` and prints the same `RuntimeWarning` on stderr;
+that warning does not gate `--fail-on-warnings`. A **literal** prefix named
+`auto` must be written `--route-prefix /auto`.
 
 Without `auto`, a configured file prefix that differs from the effective
 prefix produces a structured `route-prefix-mismatch` warning as a JSON line on

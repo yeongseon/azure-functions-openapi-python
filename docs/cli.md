@@ -185,7 +185,9 @@ file's normalized `extensions.http.routePrefix` differs from the effective
 default or explicit CLI prefix. Fix it with `--route-prefix <value>` or opt into
 `--route-prefix auto`. Equal values, `auto`, missing keys/files, and malformed or
 unreadable files do not produce this warning. The comparison ignores environment
-overrides; `auto` honors them. See [Route Prefix](route-prefix.md) for precedence.
+overrides; `auto` honors them. With `auto`, a malformed or unreadable file falls
+back to `/api` with a `RuntimeWarning` that does not gate `--fail-on-warnings`.
+See [Route Prefix](route-prefix.md) for precedence.
 
 ## Validate generated output
 
