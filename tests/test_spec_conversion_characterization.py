@@ -1531,3 +1531,18 @@ def test_legacy_tuple_keyword_losses_keep_original_positions() -> None:
         "OpenAPI 3.0 does not define it; key names are no longer restricted"
         for path in ("items/0", "additionalItems")
     ]
+
+
+def test_operation_preparation_skips_non_operation_path_fields() -> None:
+    # Given: path metadata and malformed schemas must retain their existing pass-through behavior.
+    from azure_functions_openapi._schema_version_conversion import _convert_operation_schemas_to_3_0
+
+    paths = {"/raw": {"summary": "raw", "post": {"parameters": [{"schema": "raw"}]}}}
+    before = copy.deepcopy(paths)
+
+    # When
+    losses = _convert_operation_schemas_to_3_0(paths, {"Raw": "raw"})
+
+    # Then
+    assert losses == []
+    assert paths == before
