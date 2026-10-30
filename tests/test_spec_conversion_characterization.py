@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import copy
+from typing import Annotated, Any, Literal
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
 from openapi_spec_validator import validate
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, StringConstraints
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
     _convert_schema_to_3_0,
+    _convert_schemas_to_3_0,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
-from azure_functions_openapi._warnings import WarningCode
+from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -1237,3 +1239,439 @@ def test_operation_schema_slots_yield_nothing_for_unusable_containers(
 ) -> None:
     # Given / When / Then
     assert list(_operation_schema_slots(operation)) == []
+
+
+UNDEFINED_KEYWORDS: list[tuple[str, JsonValue, str]] = [
+    ("propertyNames", {"maxLength": 3}, "key names are no longer restricted"),
+    ("if", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("then", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("else", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("contains", {"type": "integer"}, "matching array elements are no longer required"),
+    ("minContains", 1, "the minimum matching element count is no longer enforced"),
+    ("maxContains", 2, "the maximum matching element count is no longer enforced"),
+    (
+        "unevaluatedProperties",
+        False,
+        "unevaluated object properties are no longer restricted",
+    ),
+    ("unevaluatedItems", False, "unevaluated array elements are no longer restricted"),
+    ("dependentRequired", {"a": ["b"]}, "dependent properties are no longer required"),
+    (
+        "dependentSchemas",
+        {"a": {"required": ["b"]}},
+        "dependent object constraints are no longer enforced",
+    ),
+]
+
+
+NESTED_IN_DROPPED = {
+    "type": "object",
+    "propertyNames": {
+        "if": {"contains": {"dependentSchemas": {"a/b": {"unevaluatedItems": False}}}},
+        "dependentRequired": {"if": ["contains"]},
+    },
+}
+NESTED_PATHS = [
+    ("propertyNames", "/propertyNames"),
+    ("if", "/propertyNames/if"),
+    ("contains", "/propertyNames/if/contains"),
+    ("dependentSchemas", "/propertyNames/if/contains/dependentSchemas"),
+    ("unevaluatedItems", "/propertyNames/if/contains/dependentSchemas/a~1b/unevaluatedItems"),
+    ("dependentRequired", "/propertyNames/dependentRequired"),
+]
+
+
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_keywords_nested_in_a_dropped_keyword_are_reported_too(hoisted: bool, strict: bool) -> None:
+    # Given: dropped keywords that hold other dropped keywords, and data that only looks like them.
+    schema = (
+        {"$ref": "#/$defs/Nested", "$defs": {"Nested": NESTED_IN_DROPPED}}
+        if hoisted
+        else NESTED_IN_DROPPED
+    )
+    registry = OpenAPIRegistry()
+    registry.set("nested", {"route": "nested", "method": "post", "request_body": schema})
+    losses = {keyword: loss for keyword, _, loss in UNDEFINED_KEYWORDS}
+    inline = "POST /api/nested requestBody.content.application/json.schema"
+    expected = sorted(
+        f"Schema 'Nested': dropped '{keyword}' at {path}: OpenAPI 3.0 does not define it; "
+        f"{losses[keyword]}"
+        if hoisted
+        else f"dropped '{keyword}' at {inline}{path}: OpenAPI 3.0 does not define it; "
+        f"{losses[keyword]}"
+        for keyword, path in NESTED_PATHS
+    )
+
+    # When / Then
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        lines = str(caught.value).splitlines()[1:]
+        assert sorted(line.removeprefix("  - ") for line in lines) == expected
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+    assert sorted(w.message for w in collect_spec_warnings(spec, registry)) == expected
+    validate(spec)
+
+
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        "propertyNames",
+        "if",
+        "then",
+        "else",
+        "contains",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+    ],
+)
+def test_every_schema_valued_dropped_keyword_reports_the_keywords_it_holds(keyword: str) -> None:
+    # Given: a dropped keyword whose value is a schema that carries another dropped keyword.
+    schemas = {"Nested": {"type": "object", keyword: {"contains": True}}}
+
+    # When
+    converted, messages = _convert_schemas_to_3_0(schemas)
+
+    # Then: both occurrences are reported, the outer one first, and neither is kept.
+    assert converted["Nested"] == {"type": "object"}
+    assert [message.split(" at ")[1].split(":")[0] for message in messages] == [
+        f"/{keyword}",
+        f"/{keyword}/contains",
+    ]
+
+
+def test_nested_dropped_keywords_are_reported_in_document_order() -> None:
+    # Given
+    schemas = {"Nested": NESTED_IN_DROPPED}
+
+    # When
+    converted, messages = _convert_schemas_to_3_0(schemas)
+
+    # Then: an outer keyword precedes what it holds, and the result keeps only what 3.0 defines.
+    assert converted["Nested"] == {"type": "object"}
+    assert [message.split(" at ")[1].split(":")[0] for message in messages] == [
+        f"{path}" for _, path in NESTED_PATHS
+    ]
+
+
+def test_keyword_named_data_is_neither_dropped_nor_reported() -> None:
+    # Given: the keyword names appear as property names, values and extension payloads.
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "if": {"type": "string"},
+            "contains": {"type": "string"},
+            "then": {"type": "integer"},
+            "propertyNames": {"type": "string"},
+            "dependentSchemas": {"type": "string"},
+            "tagged": {"enum": [{"if": 1, "contains": {"propertyNames": "x"}}]},
+        },
+        "required": ["if", "contains"],
+        "example": {"if": 1, "contains": {"propertyNames": "x", "dependentSchemas": []}},
+        "default": {"then": {"else": 1}},
+        "x-extension": {"if": {"contains": 1}, "propertyNames": {"maxLength": 1}},
+        "discriminator": {"propertyName": "if", "mapping": {"contains": "#/components/schemas/X"}},
+    }
+    before = copy.deepcopy(schema)
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(schema, lossy=losses)
+
+    # Then
+    assert losses == []
+    assert converted["properties"].keys() == schema["properties"].keys()
+    assert converted["properties"]["tagged"] == schema["properties"]["tagged"]
+    assert converted["required"] == ["if", "contains"]
+    assert converted["example"] == schema["example"]
+    assert converted["default"] == schema["default"]
+    assert converted["x-extension"] == schema["x-extension"]
+    assert converted["discriminator"] == schema["discriminator"]
+    assert schema == before
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(("keyword", "value", "loss"), UNDEFINED_KEYWORDS)
+def test_undefined_keyword_is_dropped_and_reported_at_every_operation_slot(
+    version: str, hoisted: bool, strict: bool, keyword: str, value: JsonValue, loss: str
+) -> None:
+    # Given: one occurrence per slot, or one shared component referenced by every slot.
+    original = {"type": "object", keyword: value}
+    schema = {"$ref": "#/$defs/X", "$defs": {"X": original}} if hoisted else original
+    registry = OpenAPIRegistry()
+    registry.set(
+        "undefined",
+        {
+            "route": "undefined",
+            "method": "post",
+            "request_body": schema,
+            "response": {
+                200: {
+                    "description": "ok",
+                    "content": {"application/json": {"schema": schema}},
+                    "headers": {
+                        "X-Value": {
+                            "schema": {"$ref": "#/components/schemas/X"} if hoisted else schema
+                        }
+                    },
+                }
+            },
+            "parameters": [{"name": "value", "in": "query", "schema": schema}],
+        },
+    )
+    before = copy.deepcopy(schema)
+    locations = [
+        "requestBody.content.application/json.schema",
+        "responses.200.content.application/json.schema",
+        "responses.200.headers.X-Value.schema",
+        "parameters[0].schema",
+    ]
+    messages = (
+        [f"Schema 'X': dropped '{keyword}' at /{keyword}: OpenAPI 3.0 does not define it; {loss}"]
+        if hoisted
+        else [
+            f"dropped '{keyword}' at POST /api/undefined {slot}/{keyword}: "
+            f"OpenAPI 3.0 does not define it; {loss}"
+            for slot in locations
+        ]
+    )
+
+    # When / Then: strict errors use the existing wrapper and leave producer data intact.
+    if strict and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert str(caught.value) == (
+            "Strict mode: generated spec has validation errors:\n"
+            + "\n".join(f"  - {message}" for message in messages)
+        )
+        assert schema == before
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then
+    operation = spec["paths"]["/api/undefined"]["post"]
+    slots = [container[key] for _, container, key in _operation_schema_slots(operation)]
+    expected = {"type": "object"} if version == "3.0.0" else original
+    if hoisted:
+        assert slots == [{"$ref": "#/components/schemas/X"}] * 4
+        assert spec["components"]["schemas"]["X"] == expected
+    else:
+        assert slots == [expected] * 4
+    assert collect_spec_warnings(spec, registry) == tuple(
+        SpecWarning(code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None)
+        for message in sorted(messages if version == "3.0.0" else [])
+    )
+    assert schema == before
+    if version == "3.0.0":
+        validate(spec)
+
+
+@pytest.mark.parametrize(("keyword", "value", "loss"), UNDEFINED_KEYWORDS)
+@pytest.mark.parametrize(
+    "position",
+    [
+        ("properties", "a~/b"),
+        ("items",),
+        ("prefixItems", 0),
+        ("additionalProperties",),
+        ("patternProperties", "^a"),
+        ("allOf", 0),
+        ("anyOf", 0),
+        ("oneOf", 0),
+        ("not",),
+        ("$defs", "X"),
+    ],
+)
+def test_undefined_keyword_traversal_strips_and_reports_original_position(
+    keyword: str, value: JsonValue, loss: str, position: tuple[str | int, ...]
+) -> None:
+    # Given: a predicate beneath each schema edge, including edges later rewritten or hoisted.
+    from azure_functions_openapi._schema_3_0_preparation import _prepare_schema_for_3_0
+
+    original: JsonValue = {keyword: value}
+    expected: JsonValue = {}
+    for token in reversed(position):
+        original = [original] if isinstance(token, int) else {token: original}
+        expected = [expected] if isinstance(token, int) else {token: expected}
+    assert isinstance(original, dict)
+    assert isinstance(expected, dict)
+    before = copy.deepcopy(original)
+    losses: list[str] = []
+    path = "/" + "/".join(str(token).replace("~", "~0").replace("/", "~1") for token in position)
+
+    # When
+    prepared = _prepare_schema_for_3_0(original, losses)
+
+    # Then: reporting and removal share one visit, even with no warning accumulator.
+    assert prepared == expected
+    assert losses == [
+        f"dropped '{keyword}' at {path}/{keyword}: OpenAPI 3.0 does not define it; {loss}"
+    ]
+    assert _prepare_schema_for_3_0(original, None) == expected
+    assert original == before
+    converted_losses: list[str] = []
+    _convert_schema_to_3_0(original, lossy=converted_losses)
+    assert converted_losses == losses
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("kind", ["literal", "length", "pattern"])
+def test_pydantic_constrained_dict_keys_use_the_downgrade_channel(kind: str, strict: bool) -> None:
+    # Given: real producer models distinguish propertyNames from supported patternProperties.
+    class LiteralKeys(BaseModel):
+        flags: dict[Literal["a", "b"], int]
+
+    class LengthKeys(BaseModel):
+        flags: dict[Annotated[str, StringConstraints(max_length=3)], int]
+
+    class PatternKeys(BaseModel):
+        flags: dict[Annotated[str, StringConstraints(pattern="^item-")], int]
+
+    models: dict[str, type[BaseModel]] = {
+        "literal": LiteralKeys,
+        "length": LengthKeys,
+        "pattern": PatternKeys,
+    }
+    model = models[kind]
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/keys", "POST", request_model=model, registry=registry)
+    message = (
+        f"Schema '{model.__name__}': dropped 'propertyNames' at /properties/flags/propertyNames: "
+        "OpenAPI 3.0 does not define it; key names are no longer restricted"
+    )
+
+    # When / Then
+    if strict and kind != "pattern":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        assert (
+            str(caught.value)
+            == "Strict mode: generated spec has validation errors:\n  - " + message
+        )
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=strict)
+    validate(spec)
+    assert spec["components"]["schemas"][model.__name__]["properties"]["flags"] == {
+        "type": "object",
+        "title": "Flags",
+        "additionalProperties": {"type": "integer"},
+    }
+    assert collect_spec_warnings(spec, registry) == (
+        ()
+        if kind == "pattern"
+        else (
+            SpecWarning(
+                code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("heterogeneous", [False, True])
+@pytest.mark.parametrize(
+    "tail", [{}, {"additionalItems": False}, {"additionalItems": {"type": "integer"}}]
+)
+def test_legacy_tuple_items_match_equivalent_prefix_items(
+    version: str,
+    hoisted: bool,
+    strict: bool,
+    heterogeneous: bool,
+    tail: dict[str, JsonValue],
+) -> None:
+    # Given: draft-07 positional items and its equivalent 2020-12 declaration.
+    members: list[JsonValue] = [
+        {"type": "integer"},
+        {"type": "number" if heterogeneous else "integer"},
+    ]
+    legacy: dict[str, JsonValue] = {"type": "array", "items": members, **tail}
+    modern: dict[str, JsonValue] = {"type": "array", "prefixItems": members}
+    if "additionalItems" in tail:
+        modern["items"] = tail["additionalItems"]
+    registry = OpenAPIRegistry()
+    body = {"$ref": "#/$defs/Pair", "$defs": {"Pair": legacy}} if hoisted else legacy
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": body})
+    before = copy.deepcopy(legacy)
+    expected_losses: list[str] = []
+    expected = _convert_schema_to_3_0(modern, lossy=expected_losses)
+    messages = [("Schema 'Pair': " if hoisted else "") + loss for loss in expected_losses]
+
+    # When / Then: normalization reuses the established strict-mode tuple decision.
+    if strict and heterogeneous and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert (
+            str(caught.value)
+            == "Strict mode: generated spec has validation errors:\n  - " + messages[0]
+        )
+        assert legacy == before
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then: modern outputs retain the authored legacy syntax byte-for-byte, not normalized.
+    actual = (
+        spec["components"]["schemas"]["Pair"]
+        if hoisted
+        else spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    )
+    assert actual == (expected if version == "3.0.0" else legacy)
+    assert collect_spec_warnings(spec, registry) == tuple(
+        SpecWarning(code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None)
+        for message in (messages if version == "3.0.0" else [])
+    )
+    assert legacy == before
+    if version == "3.0.0":
+        validate(spec)
+        if not heterogeneous and tail:
+            probes: list[JsonValue] = [[], [1], [1, 2], [1, 2, 3], [1, "x"], [None]]
+            assert [OAS30Validator(actual).is_valid(p) for p in probes] == [
+                OAS31Validator(modern).is_valid(p) for p in probes
+            ]
+
+
+def test_legacy_tuple_keyword_losses_keep_original_positions() -> None:
+    # Given: unsupported predicates occur in both a legacy prefix and schema tail.
+    schema = {
+        "type": "array",
+        "items": [{"propertyNames": {"maxLength": 3}}],
+        "additionalItems": {"propertyNames": {"maxLength": 3}},
+    }
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(schema, lossy=losses)
+
+    # Then: loss reporting precedes normalization and homogeneous matching.
+    assert converted == {"type": "array", "items": {}}
+    assert losses == [
+        f"dropped 'propertyNames' at /{path}/propertyNames: "
+        "OpenAPI 3.0 does not define it; key names are no longer restricted"
+        for path in ("items/0", "additionalItems")
+    ]
+
+
+def test_operation_preparation_skips_non_operation_path_fields() -> None:
+    # Given: path metadata and malformed schemas must retain their existing pass-through behavior.
+    from azure_functions_openapi._schema_version_conversion import _convert_operation_schemas_to_3_0
+
+    paths = {"/raw": {"summary": "raw", "post": {"parameters": [{"schema": "raw"}]}}}
+    before = copy.deepcopy(paths)
+
+    # When
+    losses = _convert_operation_schemas_to_3_0(paths, {"Raw": "raw"})
+
+    # Then
+    assert losses == []
+    assert paths == before

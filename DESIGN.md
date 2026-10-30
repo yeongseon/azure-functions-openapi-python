@@ -98,7 +98,21 @@ The final call-flow is:
    Inline schemas include response header schemas. A null-only schema converts to
    `enum: [null]` with `nullable`, which keeps it exact beneath `not`. Non-strict
    findings join the schema-loss findings below rather than being logged on their own.
-   Keywords OpenAPI 3.0 does not define are not audited.
+   Before conversion reshapes schemas, a schema-only preparation traversal drops
+   and reports each occurrence of `propertyNames`, `if`/`then`/`else`, `contains`,
+   `minContains`/`maxContains`, `unevaluatedProperties`/`unevaluatedItems`,
+   `dependentRequired` and `dependentSchemas`. Removal and reporting share the
+   same visit, retaining original escaped schema paths and component names or
+   inline operation-slot labels; occurrences nested inside a dropped keyword are
+   reported as well. A component expanded for a nullable reference is prepared once
+   per batch, or on demand when a caller passes a raw component map. These losses use `version-downgrade-drop` and
+   the existing strict error wrapper, not the residual audit. Legacy array-valued
+   `items` is instead normalized to `prefixItems`, with `additionalItems` becoming
+   the tail `items` (schema, false or absent preserved), before the existing tuple
+   conversion handles homogeneous matching, positional loss and closed-prefix
+   caps. The preparation covers properties, items, prefix items, additional and
+   pattern-property schemas, combinators, `not` and `$defs`; 3.1/3.2 bypass it.
+   Keywords outside this list are not generally audited.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
    before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
