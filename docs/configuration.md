@@ -257,8 +257,8 @@ Numeric exclusive bounds become boolean modifiers of `minimum` or `maximum`.
 When both forms are present, conversion keeps the stricter bound; equal bounds
 stay exclusive. An `enum` beside `const` is intersected using JSON Schema equality
 (booleans are distinct from numbers). A conflicting pair remains unsatisfiable
-by retaining both predicates with `allOf`; an empty `enum`, which OpenAPI 3.0 does
-not allow, becomes `not: {}` instead.
+by retaining both predicates with `allOf`. When the `enum` it meets is empty, which
+OpenAPI 3.0 does not allow, the contradiction is written as `not: {}` instead.
 
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
