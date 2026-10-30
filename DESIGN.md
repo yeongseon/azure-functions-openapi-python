@@ -78,18 +78,27 @@ The final call-flow is:
 1. Snapshot metadata and scan-lifetime warnings; assemble operations and hoist
    definitions into the complete component map. Compilation events accumulate
    locally rather than updating the registry during the walk.
-2. Convert inline request, response (including `itemSchema`), and parameter schemas:
-   3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy nullable/example
-   syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable unions, refs,
-   and other downgrade forms, recording losses in encounter order. Inline nullable
-   refs resolve against the **original complete component map**, before replacement.
+2. Convert inline request, response (including `itemSchema` and headers), and
+   parameter schemas: 3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy
+   nullable/example syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable
+   unions, refs, and other downgrade forms, recording losses in encounter order.
+   Inline nullable refs resolve against the **original complete component map**,
+   before replacement.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
    the original map, replacing it only after all converted components are returned.
-4. For 3.0, retain `_check_schemas_3_0_compatible` after conversion. It rejects or
-   warns about residual constructs such as non-null type arrays that conversion
-   does not normalize. Faithfully converted nullable schemas must not trigger it.
+4. For 3.0, retain the residual compatibility audit after conversion:
+   `_check_operation_schemas_3_0_compatible` for inline operation schemas and
+   `_check_schemas_3_0_compatible` for components. Each rejects (strict) or reports
+   a `type` array or null-`anyOf` that conversion could not normalize, naming the
+   construct and where it was found. Conversion rewrites non-null `type` arrays to
+   `anyOf` except a multi-type array beside a `discriminator`, which a combinator
+   would activate, and faithfully converted schemas must not trigger the audit.
+   Inline schemas include response header schemas. A null-only schema converts to
+   `enum: [null]` with `nullable`, which keeps it exact beneath `not`. Non-strict
+   findings join the schema-loss findings below rather than being logged on their own.
+   Keywords OpenAPI 3.0 does not define are not audited.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
    before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
