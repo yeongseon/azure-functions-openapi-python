@@ -50,6 +50,9 @@ CASES: Final[list[tuple[dict[str, JsonValue], bool]]] = [
     ({"type": "array", "prefixItems": [], "items": True}, False),
     ({"type": "array", "prefixItems": []}, False),
     ({"type": "array", "prefixItems": [{}], "items": True}, False),
+    ({"type": "array", "prefixItems": [True]}, False),
+    ({"type": "array", "prefixItems": [False]}, True),
+    ({"type": "array", "prefixItems": [{"title": "Anything"}]}, False),
     ({"type": "array", "prefixItems": [{"type": "string"}], "items": False}, False),
     ({"type": "array", "prefixItems": [{"type": "string"}], "items": {"type": "string"}}, False),
     ({"type": "array", "contains": {"type": "integer"}}, True),
@@ -228,4 +231,83 @@ def test_open_tail_loss_names_the_unconstrained_tail_and_the_approximation() -> 
         "tuple[string, any] positional constraints cannot be preserved in OpenAPI 3.0 "
         "and were approximated as items: {}; a value valid at any position is now "
         "accepted at every position"
+    ]
+
+
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("key", ["anyOf", "oneOf"])
+@pytest.mark.parametrize("extra", [{}, {"maxItems": 1}], ids=["plain", "capped"])
+def test_authored_items_beside_a_nullable_array_reference_are_kept(
+    hoisted: bool, key: str, extra: dict[str, JsonValue]
+) -> None:
+    # Given: an item-less array component behind a nullable union that declares the items itself.
+    definitions: dict[str, JsonValue] = {"Target": {"type": "array"}}
+    node: dict[str, JsonValue] = {
+        key: [{"$ref": "#/$defs/Target"}, {"type": "null"}],
+        "items": {"type": "integer"},
+        **extra,
+    }
+    body = (
+        {"$ref": "#/$defs/Holder", "$defs": {"Holder": node, **definitions}}
+        if hoisted
+        else {**node, "$defs": definitions}
+    )
+    registry = OpenAPIRegistry()
+    registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+    probes: list[JsonValue] = [None, [], [1], ["a"], [1, "a"], [1, 2], "x", {}]
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the synthesized empty `items` never displaces the authored one.
+    validate(spec)
+    schema = (
+        {"$ref": "#/components/schemas/Holder"}
+        if hoisted
+        else spec["paths"]["/api/holder"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    )
+    original = OAS31Validator({**node, "$defs": definitions})
+    converted = OAS30Validator({**schema, "components": spec["components"]})
+    assert [converted.is_valid(probe) for probe in probes] == [
+        original.is_valid(probe) for probe in probes
+    ]
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+def test_array_branch_of_a_multi_type_schema_has_items() -> None:
+    # Given / When
+    converted = _convert_schema_to_3_0({"type": ["array", "string"]})
+
+    # Then
+    assert {"type": "array", "items": {}} in converted["anyOf"]
+
+
+def test_array_under_a_pattern_property_has_items() -> None:
+    # Given / When
+    converted = _convert_schema_to_3_0(
+        {"type": "object", "patternProperties": {"^x": {"type": "array"}}}
+    )
+
+    # Then
+    assert converted["additionalProperties"] == {"type": "array", "items": {}}
+
+
+@pytest.mark.parametrize(
+    "prefix", [{}, True, {"title": "Anything"}, {"description": "d", "x-note": 1}], ids=str
+)
+def test_annotation_only_prefix_with_an_open_tail_loses_nothing(prefix: JsonValue) -> None:
+    # Given: a prefix schema that carries no constraint, followed by an open tail.
+    schema: dict[str, JsonValue] = {"type": "array", "prefixItems": [prefix]}
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(schema, lossy=losses)
+
+    # Then: nothing positional is lost, so nothing is reported and strict mode stays quiet.
+    assert converted == {"type": "array", "items": {}}
+    assert losses == []
+    assert [OAS30Validator(converted).is_valid(p) for p in PROBES] == [
+        OAS31Validator(schema).is_valid(p) for p in PROBES
     ]

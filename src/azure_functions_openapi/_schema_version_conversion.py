@@ -186,7 +186,9 @@ def _inline_ref_nullable(
         if lossy is not None:
             messages = (f"Schema '{name}': {message}" for message in target_losses)
             lossy.extend(message for message in messages if message not in lossy)
-    inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
+    inlined = _convert_prepared_schema_to_3_0(
+        dict(target), schemas, resolving | {name}, lossy, normalize_items=False
+    )
     inlined = _ensure_null_accepting(inlined)
     for k, v in extra_keys.items():
         inlined.setdefault(k, v)
@@ -409,6 +411,22 @@ def _keep_null_only(schema: dict[str, Any]) -> None:
     _intersect_enum(schema, None)
 
 
+_ANNOTATION_ONLY_KEYS = frozenset(
+    {"title", "description", "default", "example", "deprecated", "readOnly", "writeOnly"}
+    | {"externalDocs", "xml"}
+)
+
+
+def _constrains_nothing(schema: Any) -> bool:
+    """Whether *schema* is ``true`` or carries annotations only, so it accepts every instance."""
+    if schema is True:
+        return True
+    return isinstance(schema, dict) and all(
+        key in _ANNOTATION_ONLY_KEYS or (isinstance(key, str) and key.startswith("x-"))
+        for key in schema
+    )
+
+
 def _json_schema_equal(first: Any, second: Any) -> bool:
     """Compare JSON values without Python's boolean/number equivalence, including nested values."""
     if isinstance(first, bool) or isinstance(second, bool):
@@ -460,6 +478,8 @@ def _convert_prepared_schema_to_3_0(
     schemas: dict[str, Any] | None = None,
     resolving: frozenset[str] = frozenset(),
     lossy: list[str] | None = None,
+    *,
+    normalize_items: bool = True,
 ) -> dict[str, Any]:
     """Recursively down-convert a JSON-Schema-2020-12 schema to OpenAPI 3.0.
 
@@ -475,6 +495,11 @@ def _convert_prepared_schema_to_3_0(
     call chain, used to stop a self- or mutually-referencing nullable ref from
     inlining forever) are threaded through every recursive call so a nullable
     ``$ref`` can be resolved no matter how deeply nested it is.
+
+    *normalize_items* is cleared for a referenced schema that is about to be merged with the
+    keys around its nullable union: an ``items`` filled in beforehand would displace an
+    ``items`` that the surrounding schema declares, so the merged result is normalized by the
+    caller's own conversion instead.
 
     *lossy* is an optional accumulator for conversions that are not merely
     re-expressed but demonstrably weakened -- currently, a heterogeneous
@@ -617,6 +642,8 @@ def _convert_prepared_schema_to_3_0(
             # array faithfully represents it, with nothing position-specific
             # to lose.
             result["items"] = converted_items[0]
+        elif reachable_open_tail and all(_constrains_nothing(item) for item in converted_items):
+            result["items"] = {}
         elif converted_items:
             # A heterogeneous tuple has no OpenAPI-3.0-native representation:
             # ``oneOf`` looks closest to the original intent, but JSON
@@ -662,12 +689,13 @@ def _convert_prepared_schema_to_3_0(
         }
 
     result = _collapse_nullable_combinator(result, schemas, resolving, lossy)
-    if result.get("items") is True:
-        result["items"] = {}
-    elif result.get("items") is False:
-        result["items"] = {"not": {}}
-    if result.get("type") == "array" and "items" not in result:
-        result["items"] = {}
+    if normalize_items:
+        if result.get("items") is True:
+            result["items"] = {}
+        elif result.get("items") is False:
+            result["items"] = {"not": {}}
+        if result.get("type") == "array" and "items" not in result:
+            result["items"] = {}
     return result
 
 

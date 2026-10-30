@@ -304,8 +304,9 @@ below the prefix length makes unreachable is ignored. An absent or `true` tail i
 open: when reachable, it contributes an unconstrained schema. If any prefix
 position is constrained, conversion emits `items: {}` and reports the same
 positional loss (or raises in strict mode), because retaining a uniform prefix
-schema would incorrectly restrict the tail. An empty prefix or a prefix of empty
-schemas with an open tail remains unconstrained without a positional-loss warning.
+schema would incorrectly restrict the tail. An empty prefix, or one whose schemas
+constrain nothing (`true`, `{}`, or only annotations such as `title`), with an open
+tail remains unconstrained without a positional-loss warning.
 
 Boolean `items: true` becomes `items: {}`. Without a prefix, `items: false`
 becomes `items: {not: {}}`, preserving its rejection of every array element;
@@ -314,8 +315,11 @@ closed prefixes retain the cap logic above. Every converted schema with
 arrays left item-less after dropping `contains`. Filling a missing `items` adds
 no restriction and no warning; dropping `contains` still reports its own loss.
 These rules apply recursively to inline operation schemas and components.
-Non-array schemas do not gain `items`, and valid existing `items` schemas are
-retained. OpenAPI 3.1 and 3.2 output is unchanged.
+Non-array schemas do not gain `items`, and an `items` schema that is already
+present is kept, apart from the tuple conversions above (a typed tail still joins
+`items.anyOf`). When a nullable union refers to an item-less array, the filled
+`items` never displaces an `items` that the surrounding schema declares.
+OpenAPI 3.1 and 3.2 output is unchanged.
 
 Legacy array-valued `items` is normalized to `prefixItems` before this same tuple
 conversion runs. Its sibling `additionalItems`, when present, becomes `items`:
