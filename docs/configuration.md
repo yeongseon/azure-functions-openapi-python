@@ -230,6 +230,16 @@ attaching `nullable` directly to one branch of a nullable multi-type union,
 so the result is not just structurally valid but actually accepts a `null`
 value under real OpenAPI 3.0 tooling.
 
+The `nullable` idiom is used only where it accepts `null` exactly as the original
+did. A nullable union it cannot reach (a union of references, a `oneOf`, an `allOf`
+conjunct), or one where it would exempt a `type` or constraint that sits beside the
+union, is written instead as a union with a branch that accepts only `null`
+(`nullable: true` with `enum: [null]`), which is exact by construction; an optional
+discriminated union keeps its discriminator and gains that branch. When a field's own
+keys meet those of an inlined reference, annotations such as `description` describe
+the field, a numeric bound both declare keeps the tighter value, and any other
+constraint both declare is kept in an `allOf`, so neither side is lost.
+
 A `type` array without `null` (for example `type: [string, integer]`, which
 validation producers use for error locations) is rewritten to an `anyOf` of
 single-type schemas, and sibling keywords stay on the schema. An `array` branch
@@ -311,13 +321,11 @@ absent. Thus homogeneous matching, positional-loss warnings and closed-prefix
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is
-`Optional[SameModel]`), has one level of the self-reference inlined so the
-leaf case works, but the recursive edge one level deeper has no OpenAPI 3.0
-form that can mark a bare `$ref` nullable — the same representability gap as
-the tuple case above, not merely an approximation. `strict=True` raises
-`OpenAPISpecConfigError`; non-strict generation keeps the schema (valid for
-every instance except a `null` at that one recursive edge) and emits the same
-structured `version-downgrade-drop` warning.
+`Optional[SameModel]`), has one level of the self-reference inlined, and the
+recursive edge one level deeper keeps the reference inside a union with a
+`null`-only branch. OpenAPI 3.0 cannot mark a bare `$ref` nullable, but it can
+express that union, so `null` is accepted at every level exactly as in 3.1 and
+nothing is reported.
 
 ### What changes in 3.1 / 3.2 mode
 

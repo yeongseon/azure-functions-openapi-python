@@ -83,7 +83,9 @@ The final call-flow is:
    nullable/example syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable
    unions, refs, and other downgrade forms, recording losses in encounter order.
    Inline nullable refs resolve against the **original complete component map**,
-   before replacement.
+   before replacement. A nullable union keeps the `nullable` idiom only where it
+   accepts `null` exactly as the original did; otherwise it is written as a union
+   with a `null`-only branch, so nothing about nullability is reported as a loss.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against

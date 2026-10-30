@@ -311,13 +311,10 @@ def _collapse_nullable_combinator(
     * single ``$ref`` member, resolvable against *schemas* and not already
       being expanded higher up this same chain (*resolving*) -> the
       referenced schema's own content, recursively converted and merged with
-      this node's own existing keys (this node's value wins a conflict,
-      except a shared numeric bound keeps the tighter of the two so neither
-      constraint is silently dropped), plus genuine null-acceptance. Falls
-      back to the pre-#782 ``{"allOf": [<ref>], "nullable": true}`` form
-      (structurally valid, but does not itself satisfy the null case, and is
-      reported via *lossy* when supplied) when the ref cannot be resolved or
-      would recurse into itself.
+      this node's own existing keys (see :func:`_merge_wrapper_into_inlined`),
+      plus genuine null-acceptance. A reference that cannot be resolved or
+      would recurse into itself stays a reference inside a union with a
+      ``null``-only branch (see :func:`_exact_nullable_union`).
     * single inline member -> the member's keys merged up (existing node keys
       such as ``description`` win) + ``nullable: true``; already lands
       ``nullable`` next to the merged-in ``type``, so this form was already
@@ -331,6 +328,10 @@ def _collapse_nullable_combinator(
     * null members alone -> the combinator is dropped and the schema stays
       null-only (an ``enum`` of ``null`` plus ``nullable: true``), because
       ``nullable`` without a ``type`` accepts every value.
+
+    Whichever form is chosen must accept ``null`` exactly as the original did. When
+    the ``nullable`` idiom would not (see :func:`_accepts_null`), the union is written
+    with a ``null``-only branch instead.
 
     Nodes without a null-bearing ``anyOf``/``oneOf`` are returned unchanged.
     """
