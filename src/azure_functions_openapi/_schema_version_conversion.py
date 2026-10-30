@@ -585,12 +585,14 @@ def _convert_prepared_schema_to_3_0(
     prefix_items = result.pop("prefixItems", None)
     if isinstance(prefix_items, list):
         additional_items = result.get("items")
+        open_tail = additional_items is None or additional_items is True
         declared_cap = result.get("maxItems")
         max_items = (
             declared_cap
             if isinstance(declared_cap, (int, float)) and not isinstance(declared_cap, bool)
             else None
         )
+        reachable_open_tail = open_tail and (max_items is None or max_items > len(prefix_items))
         if additional_items is False:
             result["maxItems"] = (
                 len(prefix_items) if max_items is None else min(max_items, len(prefix_items))
@@ -603,10 +605,11 @@ def _convert_prepared_schema_to_3_0(
         # A tail schema only matters when an array can hold more items than the prefix
         # covers; beyond a ``maxItems`` at or below the prefix length it is unreachable
         # and must not widen the positions the prefix does constrain.
-        if isinstance(additional_items, dict) and (
-            max_items is None or max_items > len(prefix_items)
-        ):
-            converted_items.append(additional_items)
+        if max_items is None or max_items > len(prefix_items):
+            if open_tail:
+                converted_items.append({})
+            elif isinstance(additional_items, dict):
+                converted_items.append(additional_items)
         if converted_items and all(
             _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
         ):
@@ -625,16 +628,19 @@ def _convert_prepared_schema_to_3_0(
             # *which* schema: this is a genuine, not cosmetic, loss of the
             # tuple's positional constraints, so it is reported rather than
             # silently emitted as if it were faithful (#782).
-            result["items"] = {"anyOf": converted_items}
+            approximation = "items: {}" if reachable_open_tail else "items.anyOf"
+            result["items"] = {} if reachable_open_tail else {"anyOf": converted_items}
             if lossy is not None:
                 item_types = ", ".join(
-                    str(item.get("type", "object")) if isinstance(item, dict) else "unknown"
+                    ("any" if not item else str(item.get("type", "object")))
+                    if isinstance(item, dict)
+                    else "unknown"
                     for item in converted_items
                 )
                 lossy.append(
                     f"tuple[{item_types}] positional constraints cannot be "
                     "preserved in OpenAPI 3.0 and were approximated as "
-                    "items.anyOf; a value valid at any position is now "
+                    f"{approximation}; a value valid at any position is now "
                     "accepted at every position"
                 )
     for combinator in ("allOf", "anyOf", "oneOf"):
@@ -655,7 +661,14 @@ def _convert_prepared_schema_to_3_0(
             for k, v in result["$defs"].items()
         }
 
-    return _collapse_nullable_combinator(result, schemas, resolving, lossy)
+    result = _collapse_nullable_combinator(result, schemas, resolving, lossy)
+    if result.get("items") is True:
+        result["items"] = {}
+    elif result.get("items") is False:
+        result["items"] = {"not": {}}
+    if result.get("type") == "array" and "items" not in result:
+        result["items"] = {}
+    return result
 
 
 def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
