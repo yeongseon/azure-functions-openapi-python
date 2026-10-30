@@ -243,8 +243,32 @@ reported as a structured `version-downgrade-drop`
 warning (visible via `generate_openapi_report()` or the CLI's
 `--fail-on-warnings`) and raises `OpenAPISpecConfigError` under `strict=True`.
 These rewrites and the check cover every inline schema, including the schemas
-of response headers. Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does
-not define, for example `if`/`then`/`else` or `contains`, are not checked.
+of response headers.
+
+Conversion drops the following keywords that OpenAPI 3.0 does not define and
+reports each occurrence through `version-downgrade-drop` (or raises through the
+same strict-mode error above):
+
+| Dropped keywords | Constraint lost |
+| --- | --- |
+| `propertyNames` | Restrictions on object key names, including constrained Pydantic dict keys |
+| `if`, `then`, `else` | Conditional constraints |
+| `contains`, `minContains`, `maxContains` | Requirements and counts for matching array elements |
+| `unevaluatedProperties`, `unevaluatedItems` | Restrictions on unevaluated properties or elements |
+| `dependentRequired`, `dependentSchemas` | Dependent property requirements and object constraints |
+
+Each message names the keyword and its original JSON-pointer-like schema path
+(escaping `~` as `~0` and `/` as `~1`). Components include `Schema 'Name':`;
+inline schemas include the method, emitted route and operation slot, for example
+`POST /api/config requestBody.content.application/json.schema/properties/flags/propertyNames`.
+A dropped keyword that holds schemas of its own (for example a `propertyNames`
+with an `if` inside) is reported together with the occurrences nested in it.
+Removal and reporting use one preparation traversal before nullable collapsing or
+tuple approximation can relocate or revisit predicates. It covers properties,
+items, prefix items, additional properties, pattern-property values, combinator
+members, `not` and `$defs`, for both components and inline operation schemas.
+This is a scoped conversion policy, not a general audit of all JSON Schema keywords.
+OpenAPI 3.1 and 3.2 output is unchanged.
 
 A schema that accepts only `null` (`type: "null"`, or a union of nothing but null
 members) becomes `enum: [null]` with `nullable: true`. A type-less `nullable`
@@ -278,6 +302,12 @@ matches that tail schema. Otherwise, the tail joins `items.anyOf` and the same
 positional-loss warning (or strict error) applies. A tail that a `maxItems` at or
 below the prefix length makes unreachable is ignored. Absent or `true` tail
 handling is unchanged.
+
+Legacy array-valued `items` is normalized to `prefixItems` before this same tuple
+conversion runs. Its sibling `additionalItems`, when present, becomes `items`:
+a schema remains a schema, `false` remains `false`, and an absent tail remains
+absent. Thus homogeneous matching, positional-loss warnings and closed-prefix
+`maxItems` caps follow exactly the same rules as authored `prefixItems`.
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is
