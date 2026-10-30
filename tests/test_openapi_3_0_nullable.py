@@ -24,7 +24,6 @@ from typing import Any, Literal
 from pydantic import BaseModel
 import pytest
 
-from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import clear_openapi_registry, register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -126,18 +125,17 @@ class TestConvertSchemaTo30Scalars:
 
 
 class TestCollapseNullableCombinator:
-    def test_nullable_ref_wraps_in_allof(self) -> None:
+    def test_nullable_ref_that_cannot_be_inlined_gets_a_null_branch(self) -> None:
         schema = {"anyOf": [{"$ref": "#/components/schemas/User"}, {"type": "null"}]}
 
         result = _collapse_nullable_combinator(schema)
 
+        # A bare $ref cannot be marked nullable in 3.0, so null becomes its own branch.
         assert result == {
-            "nullable": True,
-            "allOf": [{"$ref": "#/components/schemas/User"}],
+            "anyOf": [{"$ref": "#/components/schemas/User"}, {"nullable": True, "enum": [None]}]
         }
-        assert "anyOf" not in result
 
-    def test_nullable_ref_lifts_annotation_siblings(self) -> None:
+    def test_nullable_ref_keeps_its_annotation_siblings_in_its_branch(self) -> None:
         schema = {
             "anyOf": [
                 {"$ref": "#/components/schemas/User", "description": "the user"},
@@ -147,9 +145,13 @@ class TestCollapseNullableCombinator:
 
         result = _collapse_nullable_combinator(schema)
 
-        assert result["allOf"] == [{"$ref": "#/components/schemas/User"}]
-        assert result["description"] == "the user"
-        assert result["nullable"] is True
+        # 3.0 ignores the siblings of a $ref, so the reference moves into allOf with them.
+        assert result == {
+            "anyOf": [
+                {"allOf": [{"$ref": "#/components/schemas/User"}], "description": "the user"},
+                {"nullable": True, "enum": [None]},
+            ]
+        }
 
     def test_existing_annotation_wins_over_member(self) -> None:
         schema = {
@@ -211,8 +213,7 @@ class TestConvertSchemaTo30Nested:
 
         assert result["type"] == "array"
         assert result["items"] == {
-            "nullable": True,
-            "allOf": [{"$ref": "#/components/schemas/User"}],
+            "anyOf": [{"$ref": "#/components/schemas/User"}, {"nullable": True, "enum": [None]}]
         }
         assert not _has_null_type(result)
 
@@ -491,54 +492,44 @@ class TestNullableInstanceValidation:
         # Then: it is still rejected.
         assert errors != []
 
-    def test_self_referential_nullable_model_raises_under_strict(self) -> None:
-        # Given: a model whose only nullable field refers back to itself.
-        # The resolving-set cycle guard inlines one level of the
-        # self-reference -- as deep as it can go without looping -- but the
-        # next level back to the same component has no OpenAPI 3.0 form that
-        # can mark a bare $ref nullable, so a null value at that depth is
-        # unrepresentable, not merely approximated (#782 follow-up).
+    def test_self_referential_nullable_model_passes_under_strict(self) -> None:
+        # Given: a model whose only nullable field refers back to itself. One level of the
+        # self-reference is inlined, as deep as it can go without looping; the recursive edge
+        # keeps the reference and gets a null branch instead of rejecting null (#875).
         registry = OpenAPIRegistry()
         register_openapi_metadata("/tree", "GET", response_model=_TreeNode, registry=registry)
 
-        # When / Then: strict mode must fail rather than silently emit a
-        # schema that rejects a valid null at the recursive edge.
-        with pytest.raises(OpenAPISpecConfigError, match="cannot be inlined"):
-            generate_openapi_spec(
-                openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=True
-            )
+        # When
+        spec = generate_openapi_spec(
+            openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=True
+        )
 
-    def test_self_referential_nullable_model_warns_under_non_strict(self) -> None:
-        # Given: the same self-referential model, generated non-strict.
+        # Then: nothing is reported, and the recursive edge is the exact union form.
+        assert collect_spec_warnings(spec, registry=registry) == ()
+        nested_next = spec["components"]["schemas"]["_TreeNode"]["properties"]["next"][
+            "properties"
+        ]["next"]
+        assert nested_next["anyOf"] == [
+            {"$ref": "#/components/schemas/_TreeNode"},
+            {"nullable": True, "enum": [None]},
+        ]
+
+    def test_self_referential_nullable_model_accepts_null_at_every_depth(self) -> None:
+        # Given
         registry = OpenAPIRegistry()
         register_openapi_metadata("/tree", "GET", response_model=_TreeNode, registry=registry)
         spec = generate_openapi_spec(
             openapi_version=OPENAPI_VERSION_3_0, registry=registry, strict=False
         )
-
-        # Then: a leaf instance (null at the one level the guard inlines)
-        # still validates with zero errors -- only the deeper recursive edge
-        # is affected, not the whole schema.
         validator = _oas30_validator_for(spec, "/api/tree", "get")
-        leaf_instance = _TreeNode(label="leaf").model_dump(mode="json")
-        assert list(validator.iter_errors(leaf_instance)) == []
 
-        # And the inlined level's own nested "next" is the documented
-        # fallback form, not an infinite inlining of the same component.
-        nested_next = spec["components"]["schemas"]["_TreeNode"]["properties"]["next"][
-            "properties"
-        ]["next"]
-        assert nested_next["allOf"] == [{"$ref": "#/components/schemas/_TreeNode"}]
-
-        # And the unrepresentable recursive edge is reported through the
-        # same structured channel as any other silent-loss downgrade, so
-        # ``--fail-on-warnings``/``collect_spec_warnings`` can observe it.
-        drops = [
-            w
-            for w in collect_spec_warnings(spec, registry=registry)
-            if w.code == WarningCode.VERSION_DOWNGRADE_DROP
-        ]
-        assert any("_TreeNode" in d.message for d in drops)
+        # When / Then: a chain of any length ending in null validates, including at the
+        # recursive edge, and a wrongly typed leaf is still rejected.
+        leaf: dict[str, Any] | None = None
+        for _ in range(6):
+            leaf = {"label": "node", "next": leaf}
+            assert list(validator.iter_errors(leaf)) == []
+        assert list(validator.iter_errors({"next": {"next": {"next": 1}}})) != []
 
     def test_nullable_ref_wrapper_siblings_are_preserved_and_enforced(self) -> None:
         # Given: a nullable $ref whose WRAPPER node (not the referenced
@@ -725,8 +716,6 @@ class TestOverlappingTupleInstanceValidation:
         # emit the position-losing approximation (#782's policy requirement).
         registry = OpenAPIRegistry()
         register_openapi_metadata("/tuples", "GET", response_model=_TupleModel, registry=registry)
-
-        from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
         with pytest.raises(OpenAPISpecConfigError, match="positional constraints"):
             generate_openapi_spec(

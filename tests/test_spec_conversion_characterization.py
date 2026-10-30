@@ -771,20 +771,15 @@ def test_mutual_nullable_reference_cycle(version: str, strict: bool) -> None:
             },
         },
     )
-    # When / Then
-    if version == "3.0.0" and strict:
-        with pytest.raises(OpenAPISpecConfigError, match="mutually-recursive reference"):
-            generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
-        return
+    # When
     spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then: the recursive edge keeps its reference beside a null branch, nothing is reported,
+    # and null is accepted at every depth, as by the original.
     schemas = spec["components"]["schemas"]
     if version == "3.0.0":
         assert schemas["A"]["properties"]["next"]["properties"]["next"]["properties"]["next"] == {
-            "nullable": True,
-            "allOf": [{"$ref": "#/components/schemas/B"}],
-        }
-        assert {w.code.value for w in collect_spec_warnings(spec, registry)} == {
-            "version-downgrade-drop"
+            "anyOf": [{"$ref": "#/components/schemas/B"}, {"nullable": True, "enum": [None]}]
         }
     else:
         assert schemas == {
@@ -798,16 +793,18 @@ def test_mutual_nullable_reference_cycle(version: str, strict: bool) -> None:
             }
             for name, other in [("A", "B"), ("B", "A")]
         }
-        assert collect_spec_warnings(spec, registry) == ()
+    assert collect_spec_warnings(spec, registry) == ()
     validator = (OAS30Validator if version == "3.0.0" else OAS31Validator)(
         {
             "$ref": "#/components/schemas/A",
             "components": spec["components"],
         }
     )
-    assert validator.is_valid({"next": None})
-    # Current 3.0 fallback loses nullability at a deeper recursive edge.
-    assert validator.is_valid({"next": {"next": {"next": None}}}) == (version != "3.0.0")
+    instance: dict[str, JsonValue] | None = None
+    for _ in range(6):
+        instance = {"next": instance}
+        assert validator.is_valid(instance)
+    assert not validator.is_valid({"next": {"next": 1}})
 
 
 @pytest.mark.parametrize(

@@ -144,6 +144,107 @@ class _PreparedSchemas(dict[str, Any]):
     """A component map whose schemas already went through the 3.0 preparation step."""
 
 
+def _accepts_null(
+    schema: Any,
+    schemas: dict[str, Any] | None,
+    *,
+    ref_siblings_apply: bool,
+    assume_unknown: bool,
+    seen: frozenset[str] = frozenset(),
+) -> bool:
+    """Whether the instance ``null`` is valid against *schema*.
+
+    Only the keywords that can reject ``null`` are read: ``type`` (an array, or a
+    ``nullable`` exemption), ``enum``, ``const`` and the combinators. *ref_siblings_apply*
+    is true for a 2020-12 schema, where the keywords beside a ``$ref`` still apply, and
+    false for one in OpenAPI 3.0 form, where they are ignored. A reference's target is
+    always read as a 2020-12 schema, because conversion keeps what each component accepts.
+    *assume_unknown* is the answer for a reference that cannot be resolved.
+    """
+    if not isinstance(schema, dict):
+        return schema is not False
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        name = ref.rsplit("/", 1)[-1] if ref.startswith("#/components/schemas/") else None
+        target = schemas.get(name) if schemas is not None and name is not None else None
+        if name is not None and name in seen:
+            target_accepts = True
+        elif isinstance(target, dict) and name is not None:
+            target_accepts = _accepts_null(
+                target,
+                schemas,
+                ref_siblings_apply=True,
+                assume_unknown=assume_unknown,
+                seen=seen | {name},
+            )
+        else:
+            target_accepts = assume_unknown
+        if not target_accepts or not ref_siblings_apply:
+            return target_accepts
+    types = schema.get("type")
+    if types is not None:
+        names = types if isinstance(types, list) else [types]
+        if "null" not in names and schema.get("nullable") is not True:
+            return False
+    enum = schema.get("enum")
+    if isinstance(enum, list) and None not in enum:
+        return False
+    if schema.get("const", None) is not None:
+        return False
+
+    def accepts(member: Any) -> bool:
+        return _accepts_null(
+            member,
+            schemas,
+            ref_siblings_apply=ref_siblings_apply,
+            assume_unknown=assume_unknown,
+            seen=seen,
+        )
+
+    all_of, any_of, one_of = schema.get("allOf"), schema.get("anyOf"), schema.get("oneOf")
+    if isinstance(all_of, list) and not all(accepts(member) for member in all_of):
+        return False
+    if isinstance(any_of, list) and not any(accepts(member) for member in any_of):
+        return False
+    if isinstance(one_of, list) and sum(accepts(member) for member in one_of) != 1:
+        return False
+    return not ("not" in schema and accepts(schema["not"]))
+
+
+def _exact_nullable_union(
+    base: dict[str, Any], key: str, non_null: list[Any], accepts_null: bool
+) -> dict[str, Any]:
+    """The nullable union ``base`` + ``key: non_null + [null]``, written so it is exact.
+
+    OpenAPI 3.0 has no way to mark an arbitrary schema nullable in place, but a union with a
+    schema that accepts only ``null`` (``nullable`` and an ``enum`` of ``null``) is valid
+    and accepts exactly the non-null members plus ``null``. The keys beside the union stay
+    beside it, where they keep the meaning they had. A reference that carries sibling
+    keywords moves into ``allOf``, because 3.0 ignores the siblings of a reference. When
+    the original rejected ``null`` (the keys beside the union ruled it out), no ``null``
+    branch is added.
+    """
+    members = [
+        {"allOf": [{"$ref": member["$ref"]}], **{k: v for k, v in member.items() if k != "$ref"}}
+        if isinstance(member, dict) and "$ref" in member and len(member) > 1
+        else member
+        for member in non_null
+    ]
+    if not accepts_null:
+        return {**base, key: members}
+    union = [
+        members[0] if len(members) == 1 else {key: members},
+        {"nullable": True, "enum": [None]},
+    ]
+    result = dict(base)
+    if "anyOf" in result:
+        all_of = result.get("allOf")
+        result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+    else:
+        result["anyOf"] = union
+    return result
+
+
 def _inline_ref_nullable(
     ref: str,
     extra_keys: dict[str, Any],
@@ -155,25 +256,14 @@ def _inline_ref_nullable(
     ``nullable`` genuinely accepted (see :func:`_ensure_null_accepting`) --
     or ``None`` when it cannot be resolved against *schemas* or is already
     being expanded higher up this same chain (*resolving*), a direct or
-    indirect self-reference that would otherwise inline forever. When
-    *lossy* is supplied, a self-/mutually-referential ref that is skipped
-    for this reason is reported: the caller's fallback (a bare ``$ref``,
-    which cannot carry ``nullable`` at all under OpenAPI 3.0) is a known,
-    demonstrable loss at that recursive edge, not a faithful re-expression.
+    indirect self-reference that would otherwise inline forever. The caller
+    then keeps the reference and adds a ``null`` branch to the union instead
+    (see :func:`_exact_nullable_union`).
     """
     if not ref.startswith("#/components/schemas/"):
         return None
     name = ref.rsplit("/", 1)[-1]
-    if schemas is None:
-        return None
-    if name in resolving:
-        if lossy is not None:
-            lossy.append(
-                f"a nullable self- or mutually-recursive reference to '{name}' cannot "
-                "be inlined without expanding forever; the recursive edge falls back "
-                "to a bare $ref, which OpenAPI 3.0 cannot mark nullable, so a null "
-                "value at that position is rejected"
-            )
+    if schemas is None or name in resolving:
         return None
     target = schemas.get(name)
     if not isinstance(target, dict):
@@ -187,10 +277,7 @@ def _inline_ref_nullable(
             messages = (f"Schema '{name}': {message}" for message in target_losses)
             lossy.extend(message for message in messages if message not in lossy)
     inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
-    inlined = _ensure_null_accepting(inlined)
-    for k, v in extra_keys.items():
-        inlined.setdefault(k, v)
-    return inlined
+    return _merge_wrapper_into_inlined(_ensure_null_accepting(inlined), extra_keys)
 
 
 def _collapse_nullable_combinator(
@@ -255,44 +342,26 @@ def _collapse_nullable_combinator(
         if not any(isinstance(m, dict) and m.get("type") == "null" for m in members):
             continue
         non_null = [m for m in members if not (isinstance(m, dict) and m.get("type") == "null")]
-        result = {k: v for k, v in result.items() if k != key}
-        result["nullable"] = True
+        original_accepts_null = _accepts_null(
+            result, schemas, ref_siblings_apply=True, assume_unknown=True
+        )
+        base = {k: v for k, v in result.items() if k != key}
+        result = {**base, "nullable": True}
+        exact = False
         if len(non_null) == 1:
             sole = non_null[0]
             if isinstance(sole, dict) and "$ref" in sole:
                 extra_keys = {k: v for k, v in sole.items() if k != "$ref"}
                 inlined = _inline_ref_nullable(sole["$ref"], extra_keys, schemas, resolving, lossy)
-                if inlined is not None:
-                    # Merge, not replace: `result` may carry wrapper-level
-                    # annotations (description/default/readOnly/maxProperties/
-                    # ...) from the ORIGINAL node this anyOf/oneOf lived on,
-                    # which `inlined` (the referenced schema's own content)
-                    # knows nothing about. Replacing `result` outright
-                    # silently discarded all of them. This node's own value
-                    # wins a plain conflict (it is the more specific,
-                    # field-level context the author actually wrote); a
-                    # shared numeric bound instead keeps whichever of the two
-                    # is tighter, so neither original constraint is lost.
-                    merged = dict(inlined)
-                    for wrapper_key, wrapper_value in result.items():
-                        if wrapper_key == "nullable":
-                            continue
-                        if wrapper_key not in merged:
-                            merged[wrapper_key] = wrapper_value
-                        elif merged[wrapper_key] != wrapper_value:
-                            merged[wrapper_key] = _tighter_bound(
-                                wrapper_key, merged[wrapper_key], wrapper_value
-                            )
-                    result = merged
+                if inlined is None:
+                    exact = True
                 else:
-                    # A $ref must not carry sibling keys in 3.0; wrap the bare
-                    # ref in allOf and lift any annotation siblings up to this
-                    # node. Documented above as not satisfying the null case
-                    # by itself -- kept only as a last-resort fallback for an
-                    # unresolvable or self-referential ref.
-                    result["allOf"] = [{"$ref": sole["$ref"]}]
-                    for k, v in extra_keys.items():
-                        result.setdefault(k, v)
+                    # Merge, not replace: `result` may carry wrapper-level annotations
+                    # (description/default/readOnly/maxProperties/...) from the ORIGINAL
+                    # node this anyOf/oneOf lived on, which `inlined` (the referenced
+                    # schema's own content) knows nothing about. See
+                    # _merge_wrapper_into_inlined for how a key both sides declare is settled.
+                    result = _merge_wrapper_into_inlined(inlined, result)
             elif isinstance(sole, dict):
                 conflict = any(
                     k in result and result[k] != v
@@ -332,7 +401,75 @@ def _collapse_nullable_combinator(
                     continue
                 patched_members.append(member)
             result[key] = patched_members
+        # The ``nullable`` idiom above is only trusted when it accepts ``null`` exactly as the
+        # original did: a ``nullable`` cannot reach a member that is not a plain typed schema
+        # (a union of references, an ``allOf`` conjunct, a ``oneOf``), and it must not exempt a
+        # ``type`` that sits beside the union in the original. Anything else is written as a
+        # union with a ``null`` branch, which is exact by construction.
+        if non_null and (
+            exact
+            or _accepts_null(result, schemas, ref_siblings_apply=False, assume_unknown=False)
+            != original_accepts_null
+        ):
+            result = _exact_nullable_union(base, key, non_null, original_accepts_null)
     return result
+
+
+# Keywords that describe a schema without constraining any instance: when the
+# field-level wrapper and the referenced schema both declare one, the wrapper's
+# value describes this field and wins.
+_ANNOTATION_KEYS = frozenset(
+    {
+        "title",
+        "description",
+        "default",
+        "example",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+        "externalDocs",
+        "xml",
+    }
+)
+_BOUND_KEYS = frozenset(
+    {
+        "maxProperties",
+        "maxLength",
+        "maximum",
+        "maxItems",
+        "minProperties",
+        "minLength",
+        "minimum",
+        "minItems",
+    }
+)
+
+
+def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]) -> dict[str, Any]:
+    """Merge the keys of a nullable-union wrapper into the schema inlined from its ``$ref``.
+
+    Every key keeps doing its job. A key only one side declares is kept. When both
+    declare it: an annotation (or ``x-`` extension) takes the wrapper's value, since the
+    wrapper describes this field; two ``allOf`` lists are concatenated; a numeric bound
+    keeps the tighter value; any other constraint is added to ``allOf`` so both still
+    apply. ``nullable`` is the caller's to set.
+    """
+    merged = dict(inlined)
+    for key, value in wrapper.items():
+        if key == "nullable":
+            continue
+        if key not in merged or merged[key] == value:
+            merged[key] = value
+        elif key in _ANNOTATION_KEYS or key.startswith("x-"):
+            merged[key] = value
+        elif key == "allOf" and isinstance(merged[key], list) and isinstance(value, list):
+            merged[key] = [*merged[key], *value]
+        elif key in _BOUND_KEYS:
+            merged[key] = _tighter_bound(key, value, merged[key])
+        else:
+            all_of = merged.get("allOf")
+            merged["allOf"] = [*(all_of if isinstance(all_of, list) else []), {key: value}]
+    return merged
 
 
 def _tighter_bound(key: str, first: Any, second: Any) -> Any:
