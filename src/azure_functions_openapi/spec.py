@@ -21,6 +21,9 @@ from azure_functions_openapi._schema_version_conversion import (
     _STRUCTURAL_MERGE_KEYS as _STRUCTURAL_MERGE_KEYS,
 )
 from azure_functions_openapi._schema_version_conversion import (
+    _check_operation_schemas_3_0_compatible,
+)
+from azure_functions_openapi._schema_version_conversion import (
     _check_schemas_3_0_compatible as _check_schemas_3_0_compatible,
 )
 from azure_functions_openapi._schema_version_conversion import (
@@ -862,6 +865,7 @@ def _generate_openapi_result(
             lossy_conversion_warnings.extend(
                 _convert_operation_schemas_to_3_0(paths, components.get("schemas"))
             )
+            lossy_conversion_warnings.extend(_check_operation_schemas_3_0_compatible(paths, strict))
 
         # Top-level and info metadata passthrough (#494). Each field is emitted
         # only when supplied; contact/license nest under ``info`` while
@@ -922,9 +926,9 @@ def _generate_openapi_result(
                     components["schemas"]
                 )
                 lossy_conversion_warnings.extend(component_lossy_warnings)
-                compat_warnings = _check_schemas_3_0_compatible(components["schemas"], strict)
-                for w in compat_warnings:
-                    logger.warning("OpenAPI 3.0 compatibility: %s", w)
+                lossy_conversion_warnings.extend(
+                    _check_schemas_3_0_compatible(components["schemas"], strict)
+                )
         if components.get("schemas") or components.get("securitySchemes"):
             spec["components"] = components
 
@@ -950,7 +954,8 @@ def _generate_openapi_result(
         downgrade_drops = _restructure_additional_operations(spec, openapi_version)
         downgrade_drops.extend(_drop_unsupported_query(spec, openapi_version))
         # Lossy OpenAPI 3.0 schema approximations (#782, e.g. a heterogeneous
-        # tuple down-converted to items.anyOf) share the same silent-loss
+        # tuple down-converted to items.anyOf) and residual 3.1-only constructs
+        # the conversion could not normalize (#858) share the same silent-loss
         # shape as a custom-method/query drop, so they are reported through
         # the identical downgrade-drop channel and strict/non-strict gate.
         downgrade_drops.extend(lossy_conversion_warnings)

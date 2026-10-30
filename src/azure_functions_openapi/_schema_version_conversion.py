@@ -10,7 +10,7 @@ both nullable-collapse phases preserve output and loss-message encounter order.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -414,6 +414,27 @@ def _convert_schema_to_3_0(
         else:
             del result["type"]
             result["anyOf"] = [{"type": t} for t in non_null_types]
+    elif (
+        isinstance(type_val, list)
+        and type_val
+        and all(isinstance(t, str) for t in type_val)
+        and "discriminator" not in result
+    ):
+        # A type array without ``null`` takes the same shape. Type-specific keywords
+        # (minLength, items, properties, ...) only constrain instances of their own
+        # type, so leaving them beside the ``anyOf`` accepts exactly the same values.
+        # A sibling ``discriminator`` would start constraining instances once a
+        # combinator appears, so that node is left for the audit to report instead.
+        if len(type_val) == 1:
+            result["type"] = type_val[0]
+        else:
+            del result["type"]
+            union = [{"type": t} for t in type_val]
+            if "anyOf" in result:
+                all_of = result.get("allOf")
+                result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+            else:
+                result["anyOf"] = union
 
     # ``enum: [None, ...]`` -> keep ``null`` IN the enum (``nullable: true``
     # alone does not exempt a sibling ``enum`` from its own closed-list check,
@@ -479,6 +500,8 @@ def _convert_schema_to_3_0(
         result["additionalProperties"] = _convert_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
+    if "not" in result and isinstance(result["not"], dict):
+        result["not"] = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
             k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
@@ -505,43 +528,72 @@ def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], li
     return converted, lossy_messages
 
 
-def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
-    """Check if a schema contains constructs incompatible with OpenAPI 3.0.
+_NESTED_SCHEMA_KEYS = (
+    "properties",
+    "items",
+    "allOf",
+    "anyOf",
+    "oneOf",
+    "not",
+    "additionalProperties",
+    "$defs",
+)
+
+
+def _find_3_1_only_construct(schema: dict[str, Any]) -> str | None:
+    """Name the first construct in *schema* that OpenAPI 3.0 cannot express, if any.
 
     Detects:
-    - ``anyOf`` containing ``{"type": "null"}`` (Pydantic v2 nullable pattern)
     - ``type`` as a list (JSON Schema 2020-12 / OpenAPI 3.1 syntax)
+    - ``anyOf`` containing ``{"type": "null"}`` (Pydantic v2 nullable pattern)
     """
     if not isinstance(schema, dict):
-        return False
+        return None
 
-    # type as list is 3.1-only
     if isinstance(schema.get("type"), list):
-        return True
+        return 'a "type" array'
 
-    # anyOf containing {type: "null"} is the Pydantic v2 nullable pattern
     any_of = schema.get("anyOf")
     if isinstance(any_of, list):
         for item in any_of:
             if isinstance(item, dict) and item.get("type") == "null":
-                return True
+                return 'an "anyOf" with a null type'
 
-    # Recurse into nested structures
-    for key in ("properties", "items", "allOf", "anyOf", "oneOf", "additionalProperties", "$defs"):
+    for key in _NESTED_SCHEMA_KEYS:
         val = schema.get(key)
+        children: Iterable[Any]
         if isinstance(val, dict):
-            if key == "properties":
-                for prop_schema in val.values():
-                    if isinstance(prop_schema, dict) and _has_3_1_only_constructs(prop_schema):
-                        return True
-            elif _has_3_1_only_constructs(val):
-                return True
+            children = val.values() if key in ("properties", "$defs") else [val]
         elif isinstance(val, list):
-            for item in val:
-                if isinstance(item, dict) and _has_3_1_only_constructs(item):
-                    return True
+            children = val
+        else:
+            continue
+        for child in children:
+            if (found := _find_3_1_only_construct(child)) is not None:
+                return found
 
-    return False
+    return None
+
+
+def _has_3_1_only_constructs(schema: dict[str, Any]) -> bool:
+    """Check if a schema contains constructs incompatible with OpenAPI 3.0."""
+    return _find_3_1_only_construct(schema) is not None
+
+
+def _incompatibility_message(subject: str, construct: str) -> str:
+    return (
+        f"{subject} contains OpenAPI 3.1-only constructs ({construct}) incompatible with "
+        "OpenAPI 3.0. Use openapi_version='3.1.0' (default) or provide a manual "
+        "3.0-compatible schema."
+    )
+
+
+def _report_incompatibilities(findings: list[str], strict: bool) -> list[str]:
+    if strict and findings:
+        raise OpenAPISpecConfigError(
+            "OpenAPI 3.0 compatibility error:\n" + "\n".join(f"  - {f}" for f in findings)
+        )
+    return findings
 
 
 def _check_schemas_3_0_compatible(schemas: dict[str, Any], strict: bool) -> list[str]:
@@ -550,79 +602,96 @@ def _check_schemas_3_0_compatible(schemas: dict[str, Any], strict: bool) -> list
     Returns a list of warning messages for incompatible schemas.
     In strict mode, raises OpenAPISpecConfigError if any are found.
     """
-    warnings: list[str] = []
-    for name, schema in schemas.items():
-        if _has_3_1_only_constructs(schema):
-            warnings.append(
-                f"Schema '{name}' contains OpenAPI 3.1-only constructs "
-                f"(e.g., anyOf with null type) incompatible with OpenAPI 3.0. "
-                f"Use openapi_version='3.1.0' (default) or provide a manual "
-                f"3.0-compatible schema instead of a Pydantic model."
-            )
+    findings = [
+        _incompatibility_message(f"Schema '{name}'", construct)
+        for name, schema in schemas.items()
+        if (construct := _find_3_1_only_construct(schema)) is not None
+    ]
+    return _report_incompatibilities(findings, strict)
 
-    if strict and warnings:
-        raise OpenAPISpecConfigError(
-            "OpenAPI 3.0 compatibility error:\n" + "\n".join(f"  - {w}" for w in warnings)
-        )
 
-    return warnings
+def _operation_schema_slots(
+    operation: dict[str, Any],
+) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Yield ``(location, container, key)`` for every inline schema of one operation.
+
+    Covers:
+    - requestBody.content.*.schema
+    - responses.*.content.*.schema and .itemSchema
+    - parameters[].schema (and querystring parameters' content.*.schema)
+    """
+    request_body = operation.get("requestBody")
+    if isinstance(request_body, dict):
+        content = request_body.get("content")
+        if isinstance(content, dict):
+            for media, media_obj in content.items():
+                if isinstance(media_obj, dict) and "schema" in media_obj:
+                    yield f"requestBody.content.{media}.schema", media_obj, "schema"
+
+    responses = operation.get("responses")
+    if isinstance(responses, dict):
+        for status, resp in responses.items():
+            if not isinstance(resp, dict):
+                continue
+            content = resp.get("content")
+            if isinstance(content, dict):
+                for media, media_obj in content.items():
+                    if not isinstance(media_obj, dict):
+                        continue
+                    for schema_key in _MEDIA_SCHEMA_KEYS:
+                        if schema_key in media_obj:
+                            yield (
+                                f"responses.{status}.content.{media}.{schema_key}",
+                                media_obj,
+                                schema_key,
+                            )
+
+    for index, param in enumerate(operation.get("parameters", [])):
+        if not isinstance(param, dict):
+            continue
+        if "schema" in param:
+            yield f"parameters[{index}].schema", param, "schema"
+        # querystring parameters (OpenAPI 3.2) carry a content map instead of a
+        # bare schema.
+        param_content = param.get("content")
+        if isinstance(param_content, dict):
+            for media, media_obj in param_content.items():
+                if isinstance(media_obj, dict) and "schema" in media_obj:
+                    yield f"parameters[{index}].content.{media}.schema", media_obj, "schema"
 
 
 def _convert_operation_schemas(
     paths: dict[str, Any],
     converter: Callable[[dict[str, Any]], dict[str, Any]],
 ) -> dict[str, Any]:
-    """Apply *converter* to every inline schema in operations, in place.
-
-    Converts schemas in:
-    - requestBody.content.*.schema
-    - responses.*.content.*.schema and .itemSchema
-    - parameters[].schema (and querystring parameters' content.*.schema)
-    """
+    """Apply *converter* to every inline schema in operations, in place."""
     for _path, methods in paths.items():
         for _method, operation in methods.items():
             if not isinstance(operation, dict):
                 continue
-
-            # requestBody
-            rb = operation.get("requestBody")
-            if isinstance(rb, dict):
-                content = rb.get("content")
-                if isinstance(content, dict):
-                    for _media, media_obj in content.items():
-                        if isinstance(media_obj, dict) and "schema" in media_obj:
-                            media_obj["schema"] = converter(media_obj["schema"])
-
-            # responses
-            responses = operation.get("responses")
-            if isinstance(responses, dict):
-                for _status, resp in responses.items():
-                    if not isinstance(resp, dict):
-                        continue
-                    content = resp.get("content")
-                    if isinstance(content, dict):
-                        for _media, media_obj in content.items():
-                            if not isinstance(media_obj, dict):
-                                continue
-                            for _schema_key in _MEDIA_SCHEMA_KEYS:
-                                if _schema_key in media_obj:
-                                    media_obj[_schema_key] = converter(media_obj[_schema_key])
-
-            # parameters
-            for param in operation.get("parameters", []):
-                if not isinstance(param, dict):
-                    continue
-                if "schema" in param:
-                    param["schema"] = converter(param["schema"])
-                # querystring parameters (OpenAPI 3.2) carry a content map
-                # instead of a bare schema.
-                param_content = param.get("content")
-                if isinstance(param_content, dict):
-                    for _media, media_obj in param_content.items():
-                        if isinstance(media_obj, dict) and "schema" in media_obj:
-                            media_obj["schema"] = converter(media_obj["schema"])
+            for _location, container, key in _operation_schema_slots(operation):
+                container[key] = converter(container[key])
 
     return paths
+
+
+def _check_operation_schemas_3_0_compatible(paths: dict[str, Any], strict: bool) -> list[str]:
+    """Check inline operation schemas for OpenAPI 3.1-only constructs when targeting 3.0.
+
+    Counterpart of :func:`_check_schemas_3_0_compatible` for schemas that sit directly
+    in an operation rather than in ``components.schemas``. Each message names the
+    operation and the schema location. In strict mode, raises OpenAPISpecConfigError
+    if any are found.
+    """
+    findings = [
+        _incompatibility_message(f"{method.upper()} {path} {location}", construct)
+        for path, methods in paths.items()
+        for method, operation in methods.items()
+        if isinstance(operation, dict)
+        for location, container, key in _operation_schema_slots(operation)
+        if (construct := _find_3_1_only_construct(container[key])) is not None
+    ]
+    return _report_incompatibilities(findings, strict)
 
 
 def _convert_operation_schemas_to_3_1(paths: dict[str, Any]) -> dict[str, Any]:

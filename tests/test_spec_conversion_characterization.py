@@ -8,6 +8,11 @@ from openapi_schema_validator import OAS30Validator, OAS31Validator
 from pydantic import JsonValue
 import pytest
 
+from azure_functions_openapi._schema_version_conversion import (
+    _find_3_1_only_construct,
+    _operation_schema_slots,
+)
+from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -70,8 +75,96 @@ TUPLE_LOSS = (
             [{"choice": "fixed", "score": 2, "labels": [None, "x"]}],
             [{"choice": "other"}, {"score": 1}, {"labels": [42]}],
         ),
+        (
+            {"type": ["string"]},
+            {"type": "string"},
+            {"type": ["string"]},
+            ["yes"],
+            [42, None],
+        ),
+        (
+            {"type": ["string", "integer"]},
+            {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+            {"type": ["string", "integer"]},
+            ["yes", 42],
+            [[1], 1.5, None],
+        ),
+        (
+            {"type": ["string", "integer"], "minLength": 2, "minimum": 0},
+            {
+                "anyOf": [{"type": "string"}, {"type": "integer"}],
+                "minLength": 2,
+                "minimum": 0,
+            },
+            {"type": ["string", "integer"], "minLength": 2, "minimum": 0},
+            ["ab", 0, 5],
+            ["a", -1, 1.5],
+        ),
+        (
+            {
+                "type": ["string", "integer"],
+                "anyOf": [
+                    {"type": "string", "minLength": 2},
+                    {"type": "integer", "minimum": 5},
+                ],
+            },
+            {
+                "anyOf": [
+                    {"type": "string", "minLength": 2},
+                    {"type": "integer", "minimum": 5},
+                ],
+                "allOf": [{"anyOf": [{"type": "string"}, {"type": "integer"}]}],
+            },
+            {
+                "type": ["string", "integer"],
+                "anyOf": [
+                    {"type": "string", "minLength": 2},
+                    {"type": "integer", "minimum": 5},
+                ],
+            },
+            ["ab", 6],
+            ["a", 4, 1.5, None],
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"loc": {"type": "array", "items": {"type": ["string", "integer"]}}},
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "loc": {
+                        "type": "array",
+                        "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                    }
+                },
+            },
+            {
+                "type": "object",
+                "properties": {"loc": {"type": "array", "items": {"type": ["string", "integer"]}}},
+            },
+            [{"loc": ["body", 0]}],
+            [{"loc": [None]}, {"loc": [1.5]}],
+        ),
+        (
+            {"not": {"type": ["string", "integer"]}},
+            {"not": {"anyOf": [{"type": "string"}, {"type": "integer"}]}},
+            {"not": {"type": ["string", "integer"]}},
+            [[1], None, 1.5],
+            ["x", 5],
+        ),
     ],
-    ids=["legacy-nullable", "nullable-union", "nested-keywords"],
+    ids=[
+        "legacy-nullable",
+        "nullable-union",
+        "nested-keywords",
+        "single-type-array",
+        "type-array",
+        "type-array-with-sibling-keywords",
+        "type-array-beside-any-of",
+        "nested-type-array",
+        "negated-type-array",
+    ],
 )
 def test_schema_conversion_at_every_operation_position(
     version: str,
@@ -255,3 +348,124 @@ def test_mutual_nullable_reference_cycle(version: str, strict: bool) -> None:
     assert validator.is_valid({"next": None})
     # Current 3.0 fallback loses nullability at a deeper recursive edge.
     assert validator.is_valid({"next": {"next": {"next": None}}}) == (version != "3.0.0")
+
+
+@pytest.mark.parametrize(
+    ("schema", "construct"),
+    [
+        ({"type": ["string", "integer"]}, 'a "type" array'),
+        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, 'an "anyOf" with a null type'),
+        (
+            {"type": "object", "properties": {"a": {"items": {"type": ["string"]}}}},
+            'a "type" array',
+        ),
+        ({"allOf": ["junk", {"type": ["string"]}]}, 'a "type" array'),
+        ({"$defs": {"X": {"type": ["string"]}}}, 'a "type" array'),
+        ({"not": {"type": ["string", "integer"]}}, 'a "type" array'),
+        ({"type": "string", "nullable": True}, None),
+    ],
+)
+def test_audit_names_the_first_construct_openapi_3_0_cannot_express(
+    schema: dict[str, JsonValue], construct: str | None
+) -> None:
+    # Given / When / Then: the finding names what is wrong, not just that something is.
+    assert _find_3_1_only_construct(schema) == construct
+
+
+@pytest.mark.parametrize(
+    "odd",
+    [
+        {"type": []},
+        {"type": ["string", "integer"], "discriminator": {"propertyName": "kind"}},
+    ],
+    ids=["empty-type-list", "type-array-beside-discriminator"],
+)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_unconvertible_construct_is_reported_through_the_downgrade_channel(
+    odd: dict[str, JsonValue], hoisted: bool, strict: bool
+) -> None:
+    # Given: a ``type`` array no OpenAPI 3.0 conversion can normalize faithfully: an
+    # empty list, or one beside a ``discriminator`` (a combinator would activate it).
+    body = {"$ref": "#/$defs/Odd", "$defs": {"Odd": odd}} if hoisted else odd
+    registry = OpenAPIRegistry()
+    registry.set("odd", {"route": "odd", "method": "post", "request_body": body})
+    subject = (
+        "Schema 'Odd'" if hoisted else "POST /api/odd requestBody.content.application/json.schema"
+    )
+
+    # When / Then: strict mode refuses the document and names the construct and location.
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError, match="3.1-only constructs") as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        assert subject in str(caught.value)
+        assert '(a "type" array)' in str(caught.value)
+        return
+
+    # When: non-strict generation still produces a document.
+    spec = generate_openapi_spec(
+        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted
+    )
+
+    # Then: the finding is a structured warning that --fail-on-warnings can gate on.
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert warning.message.startswith(f"{subject} contains OpenAPI 3.1-only constructs")
+    assert '(a "type" array)' in warning.message
+
+
+def test_has_3_1_only_constructs_stays_importable_from_spec() -> None:
+    # Given / When: the compatibility re-export that predates the construct-naming audit.
+    from azure_functions_openapi.spec import _has_3_1_only_constructs
+
+    # Then: it still answers the yes/no question it always did.
+    assert _has_3_1_only_constructs({"type": ["string", "integer"]}) is True
+    assert _has_3_1_only_constructs({"type": "string"}) is False
+
+
+def test_operation_schema_slots_label_each_schema_and_skip_malformed_entries() -> None:
+    # Given: an operation mixing well-formed schema positions with malformed raw entries.
+    operation = {
+        "requestBody": {"content": {"application/json": {"schema": {"type": "object"}}}},
+        "responses": {
+            "200": "junk",
+            "201": {"content": {"application/json": "junk"}},
+            "202": {"content": {"application/json": {"schema": {"type": "string"}}}},
+        },
+        "parameters": [
+            "junk",
+            {"name": "q", "in": "query", "schema": {"type": "string"}},
+            {
+                "name": "qs",
+                "in": "querystring",
+                "content": {"application/x-www-form-urlencoded": {"schema": {"type": "object"}}},
+            },
+        ],
+    }
+
+    # When
+    locations = [location for location, _container, _key in _operation_schema_slots(operation)]
+
+    # Then: every location names where the schema sits, and malformed entries are skipped.
+    assert locations == [
+        "requestBody.content.application/json.schema",
+        "responses.202.content.application/json.schema",
+        "parameters[1].schema",
+        "parameters[2].content.application/x-www-form-urlencoded.schema",
+    ]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        {"requestBody": {"content": "junk"}, "responses": "junk"},
+        {"requestBody": {"content": {"application/json": "junk"}}, "parameters": []},
+        {"requestBody": "junk", "responses": {"200": {"content": "junk"}}},
+        {"parameters": [{"name": "qs", "in": "querystring", "content": {"x": "junk"}}]},
+    ],
+)
+def test_operation_schema_slots_yield_nothing_for_unusable_containers(
+    operation: dict[str, JsonValue],
+) -> None:
+    # Given / When / Then
+    assert list(_operation_schema_slots(operation)) == []
