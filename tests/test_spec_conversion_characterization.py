@@ -35,6 +35,64 @@ TUPLE_LOSS = (
     [
         *[
             (
+                {"type": "array", "prefixItems": prefix, "items": items, **extra},
+                {"type": "array", "items": expected_items, **expected_extra},
+                {"type": "array", "prefixItems": prefix, "items": items, **extra},
+                valid,
+                invalid,
+            )
+            for prefix, items, extra, expected_items, expected_extra, valid, invalid in [
+                (
+                    [{"type": "string"}],
+                    False,
+                    {},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}] * 2,
+                    False,
+                    {},
+                    {"type": "string"},
+                    {"maxItems": 2},
+                    [[], ["a"], ["a", "b"]],
+                    [["a"] * 3, [1]],
+                ),
+                (
+                    [{"type": "string"}] * 2,
+                    False,
+                    {"maxItems": 1},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}],
+                    False,
+                    {"maxItems": 5},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}],
+                    {"type": "string"},
+                    {},
+                    {"type": "string"},
+                    {},
+                    [[], ["a"], ["a", "b"]],
+                    [[1], ["a", 1]],
+                ),
+                ([], False, {}, {}, {"maxItems": 0}, [[]], [["a"], [1]]),
+                ([], {"type": "string"}, {}, {"type": "string"}, {}, [[], ["a"]], [[1]]),
+            ]
+        ],
+        *[
+            (
                 {"enum": enum, "const": const},
                 expected,
                 {"enum": enum, "const": const},
@@ -384,6 +442,13 @@ TUPLE_LOSS = (
         ),
     ],
     ids=[
+        "closed-single-prefix",
+        "closed-homogeneous-prefix",
+        "closed-prefix-tighter-max",
+        "closed-prefix-looser-max",
+        "prefix-matches-additional-items",
+        "closed-empty-prefix",
+        "empty-prefix-additional-items",
         "enum-const-intersection",
         "enum-const-contradiction",
         "enum-number-const-bool",
@@ -547,6 +612,59 @@ def test_heterogeneous_tuple_strict_exception_is_repeatable() -> None:
         assert str(caught.value) == (
             "Strict mode: generated spec has validation errors:\n  - " + TUPLE_LOSS
         )
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("closed", [False, True], ids=["schema-tail", "closed"])
+def test_prefix_items_overlap_reports_positional_loss(
+    version: str, hoisted: bool, strict: bool, closed: bool
+) -> None:
+    # Given: the tail differs from the prefix, or the closed prefix is heterogeneous.
+    members = [{"type": "integer"}, {"type": "number"}]
+    schema = {
+        "type": "array",
+        "prefixItems": members if closed else members[:1],
+        "items": False if closed else members[1],
+    }
+    body = {"$ref": "#/$defs/Pair", "$defs": {"Pair": schema}} if hoisted else schema
+    registry = OpenAPIRegistry()
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": body})
+    message = ("Schema 'Pair': " if hoisted else "") + TUPLE_LOSS
+
+    # When / Then: strict conversion refuses the approximation through the existing channel.
+    if strict and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert message in str(caught.value)
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then: the tail is retained in the approximation and closed tuples keep their cap.
+    validate(spec)
+    actual = spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
+    if hoisted:
+        actual = spec["components"]["schemas"]["Pair"]
+    if version != "3.0.0":
+        assert actual == schema
+        assert collect_spec_warnings(spec, registry) == ()
+        return
+    assert actual == {
+        "type": "array",
+        "items": {"anyOf": members},
+        **({"maxItems": 2} if closed else {}),
+    }
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert warning.message == message
+    assert OAS30Validator(actual).is_valid([2.5])
+    assert not OAS31Validator(schema).is_valid([2.5])
+    assert OAS30Validator(actual).is_valid([1, 2, 3]) is not closed
 
 
 @pytest.mark.parametrize("version", VERSIONS)
@@ -848,6 +966,18 @@ def test_boolean_exclusive_bounds_are_already_openapi_3_0(exclusive: bool) -> No
     converted = _convert_schema_to_3_0(schema)
     # Then
     assert converted == schema
+
+
+@pytest.mark.parametrize("items", [{}, {"items": True}])
+def test_empty_prefix_without_tail_constraints_stays_unconstrained(
+    items: dict[str, JsonValue],
+) -> None:
+    # Given: an empty prefix adds no positional constraints.
+    schema = {"type": "array", "prefixItems": [], **items}
+    # When
+    converted = _convert_schema_to_3_0(schema)
+    # Then
+    assert converted == {"type": "array", **items}
 
 
 @pytest.mark.parametrize(

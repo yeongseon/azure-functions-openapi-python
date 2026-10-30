@@ -547,16 +547,24 @@ def _convert_schema_to_3_0(
     if "items" in result:
         result["items"] = _convert_schema_to_3_0(result["items"], schemas, resolving, lossy)
     prefix_items = result.pop("prefixItems", None)
-    if isinstance(prefix_items, list) and prefix_items:
+    if isinstance(prefix_items, list):
+        additional_items = result.get("items")
+        if additional_items is False:
+            result["maxItems"] = min(result.get("maxItems", len(prefix_items)), len(prefix_items))
+            result["items"] = {}
         converted_items = [
             _convert_schema_to_3_0(item, schemas, resolving, lossy) for item in prefix_items
         ]
-        if all(item == converted_items[0] for item in converted_items[1:]):
+        if isinstance(additional_items, dict):
+            converted_items.append(additional_items)
+        if converted_items and all(
+            _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
+        ):
             # Every position shares the identical schema: a plain ``items``
             # array faithfully represents it, with nothing position-specific
             # to lose.
             result["items"] = converted_items[0]
-        else:
+        elif converted_items:
             # A heterogeneous tuple has no OpenAPI-3.0-native representation:
             # ``oneOf`` looks closest to the original intent, but JSON
             # Schema's "integer" is a subset of "number", so a value valid at
