@@ -199,19 +199,29 @@ Discovery semantics:
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
+| `1` | Configuration, runtime or generation error (including unusable `host.json` in `--route-prefix auto`, `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
 | `2` | Either invalid CLI arguments (argparse parse error) **or** gating structured warnings (including `route-prefix-mismatch`) were emitted while `--fail-on-warnings` is set |
 
-### Route-prefix warnings
+### Route-prefix errors and warnings
 
 `route-prefix-mismatch` is printed as a structured JSON line on stderr when a
 file's normalized `extensions.http.routePrefix` differs from the effective
 default or explicit CLI prefix. Fix it with `--route-prefix <value>` or opt into
 `--route-prefix auto`. Equal values, `auto`, missing keys/files, and malformed or
 unreadable files do not produce this warning. The comparison ignores environment
-overrides; `auto` honors them. With `auto`, a malformed or unreadable file falls
-back to `/api` with a `RuntimeWarning` that does not gate `--fail-on-warnings`.
-See [Route Prefix](route-prefix.md) for precedence.
+overrides; `auto` honors them.
+
+With `--route-prefix auto`, a present app-setting override
+`AzureFunctionsJobHost__extensions__http__routePrefix`, including an empty value,
+is used before any file is read. Without that override, an unreadable file,
+invalid JSON (including comments or trailing commas), or a non-string
+`extensions.http.routePrefix` causes exit `1`, with the file path and reason on
+stderr. This configuration error prevents output from being created or modified
+and does not depend on `--fail-on-warnings`. Fix the file or pass a literal
+`--route-prefix`. Missing files or keys still silently use `/api`. This stricter
+behavior applies only to CLI `auto`; the Python helper `resolve_route_prefix()`
+retains its `RuntimeWarning` and `/api` fallback for unusable files.
+See [Route Prefix](route-prefix.md) for precedence and file location.
 
 ## Validate generated output
 
