@@ -7,7 +7,11 @@ from pydantic import BaseModel
 import pytest
 from test_bridge_endpoint_v2 import make_app, media
 
-from azure_functions_openapi.bridge import _merge_into_existing, scan_endpoint_metadata
+from azure_functions_openapi.bridge import (
+    _merge_into_existing,
+    _response_details_conflict,
+    scan_endpoint_metadata,
+)
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -139,3 +143,25 @@ def test_response_model_keeps_json_when_discovered_media_fills_gap() -> None:
         "$ref": "#/components/schemas/Result"
     }
     assert response["headers"]["Location"]["schema"] == {"type": "string"}
+
+
+@pytest.mark.parametrize(("left", "right", "expected"), [(None, {}, True), ({}, {}, False)])
+def test_comparison_when_raw_response_details_are_empty(
+    left: Any, right: Any, expected: bool
+) -> None:
+    # Given / When / Then
+    assert _response_details_conflict(left, right) is expected
+
+
+def test_model_merge_when_raw_status_already_exists() -> None:
+    # Given
+    existing: dict[str, Any] = {"response_model": Result, "response": {201: {"content": media()}}}
+    discovered = {
+        "response": {
+            201: {"content": media(), "headers": {"Location": {"schema": {"type": "string"}}}}
+        }
+    }
+    # When
+    _merge_into_existing(existing, discovered)
+    # Then
+    assert existing["response"][201]["headers"] == {"Location": {"schema": {"type": "string"}}}
