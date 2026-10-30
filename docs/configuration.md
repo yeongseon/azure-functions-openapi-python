@@ -207,6 +207,9 @@ Supported versions:
 - `OPENAPI_VERSION_3_1` (`"3.1.0"`)
 - `OPENAPI_VERSION_3_2` (`"3.2.0"`)
 
+For guidance on choosing a version for downstream consumers such as Azure API
+Management, see the [OpenAPI version FAQ](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use).
+
 ```python
 from azure_functions_openapi import OPENAPI_VERSION_3_1, get_openapi_json
 
@@ -226,6 +229,29 @@ model reference's own content (rather than `allOf`-wrapping the `$ref`) and
 attaching `nullable` directly to one branch of a nullable multi-type union,
 so the result is not just structurally valid but actually accepts a `null`
 value under real OpenAPI 3.0 tooling.
+
+A `type` array without `null` (for example `type: [string, integer]`, which
+validation producers use for error locations) is rewritten to an `anyOf` of
+single-type schemas, and sibling keywords stay on the schema. An `array` branch
+gains an empty `items`, because OpenAPI 3.0 requires one; a nullable union
+carries `nullable` on its first branch, so `null` is still accepted; and a
+`$ref` beside the array moves into `allOf`, because OpenAPI 3.0 ignores the
+siblings of a reference. A multi-type `type` array that conversion cannot
+rewrite faithfully, such as one beside a `discriminator`, stays in the document.
+Like an `anyOf` with a `null` branch that conversion could not normalize, it is
+reported as a structured `version-downgrade-drop`
+warning (visible via `generate_openapi_report()` or the CLI's
+`--fail-on-warnings`) and raises `OpenAPISpecConfigError` under `strict=True`.
+These rewrites and the check cover every inline schema, including the schemas
+of response headers. Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does
+not define, for example `if`/`then`/`else` or `contains`, are not checked.
+
+A schema that accepts only `null` (`type: "null"`, or a union of nothing but null
+members) becomes `enum: [null]` with `nullable: true`. A type-less `nullable`
+schema would accept every value in OpenAPI 3.0, and a `not` over it would then
+reject every value. An `enum` or `const` beside it is intersected with that: a
+list that includes `null` narrows to it, and one that excludes `null` leaves a
+schema that accepts nothing, as the original does.
 
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
