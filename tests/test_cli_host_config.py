@@ -1,6 +1,7 @@
 from collections.abc import Callable, Iterator
 import json
 from pathlib import Path
+import re
 import sys
 from types import ModuleType
 
@@ -147,7 +148,7 @@ def test_auto_honors_environment(run_cli: RunCLI, monkeypatch: pytest.MonkeyPatc
         ("{", "Expecting property name"),
         ("{// comment\n}", "Expecting property name"),
         ("{/* comment */}", "Expecting property name"),
-        ('{"version":"2.0",}', "Expecting property name"),
+        ('{"version":"2.0",}', "Expecting property name|Illegal trailing comma"),
         ('{"extensions":{"http":{"routePrefix":17}}}', "must be a string"),
         ('{"extensions":{"http":{"routePrefix":null}}}', "must be a string"),
         ('{"extensions":{"http":{"routePrefix":[]}}}', "must be a string"),
@@ -164,8 +165,10 @@ def test_auto_rejects_unusable_host_json(run_cli: RunCLI, case: tuple[str, str])
     assert output == ""
     assert not Path("blocked.json").exists()
     assert f"Cannot use {path} for --route-prefix auto:" in error
-    assert reason in error
+    assert re.search(reason, error)
     assert "Fix the file or pass --route-prefix explicitly." in error
+    assert len(error.splitlines()) == 1
+    assert "Traceback" not in error
 
 
 def test_auto_rejects_directory_host_json(run_cli: RunCLI) -> None:
@@ -182,6 +185,21 @@ def test_auto_rejects_directory_host_json(run_cli: RunCLI) -> None:
     assert not Path("blocked.json").exists()
     assert f"Cannot use {path} for --route-prefix auto:" in error
     assert "Is a directory" in error
+    assert len(error.splitlines()) == 1
+    assert "Traceback" not in error
+
+
+def test_auto_failure_leaves_an_existing_output_file_untouched(run_cli: RunCLI) -> None:
+    # Given
+    target = Path("existing.json")
+    target.write_text("previous", encoding="utf-8")
+    # When
+    code, output, error = run_cli(["--route-prefix", "auto", "--output", "existing.json"], "{")
+    # Then
+    assert code == 1
+    assert output == ""
+    assert "Cannot use" in error
+    assert target.read_text(encoding="utf-8") == "previous"
 
 
 @pytest.mark.parametrize("host", [None, "{}", '{"extensions":{"http":{}}}'])
@@ -210,6 +228,26 @@ def test_auto_environment_bypasses_unusable_file(
     # Then
     assert code == 0
     assert set(json.loads(output)["paths"]) == {"/override/widgets" if prefix else "/widgets"}
+    assert error == ""
+
+
+@pytest.mark.parametrize(
+    ("setting", "expected"), [("override", "/override/widgets"), ("", "/widgets")]
+)
+def test_auto_environment_is_resolved_before_the_file_is_read(
+    run_cli: RunCLI, monkeypatch: pytest.MonkeyPatch, setting: str, expected: str
+) -> None:
+    # Given
+    def fail(path: Path) -> tuple[str | None, str | None]:
+        raise AssertionError(f"{path} was read although the app setting is present")
+
+    monkeypatch.setattr("azure_functions_openapi._cli_route_prefix._read_route_prefix", fail)
+    monkeypatch.setenv(SETTING, setting)
+    # When
+    code, output, error = run_cli(["--route-prefix", "auto", "--fail-on-warnings"], "{")
+    # Then
+    assert code == 0
+    assert set(json.loads(output)["paths"]) == {expected}
     assert error == ""
 
 

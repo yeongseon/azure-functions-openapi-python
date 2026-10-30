@@ -188,12 +188,13 @@ app module (cwd when no module file is available). A present app-setting overrid
 even empty, short-circuits before any file is read. Without that override, an
 unreadable file, invalid strict JSON (including comments or trailing commas), or
 a non-string `extensions.http.routePrefix` raises a configuration error: exit `1`,
-file path and reason on stderr, no output written, independent of
+file path and reason on stderr, no specification written, independent of
 `--fail-on-warnings`. Missing files or keys silently use `/api` in both APIs.
 Non-auto CLI generation still diagnoses file-prefix mismatches through structured
 warnings that gate `--fail-on-warnings`; unusable files produce no mismatch
 warning. Python APIs do not infer caller intent or warn about mismatches.
-Configuration reading never executes application code.
+Reading the file never executes application code, but the CLI imports the app module
+before it resolves the prefix, so import-time side effects precede a configuration error.
 
 - Minimum supported Python version: `3.11`
 - Supported runtime target: Azure Functions Python v2 programming model

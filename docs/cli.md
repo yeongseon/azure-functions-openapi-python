@@ -217,7 +217,8 @@ is used before any file is read. Without that override, an unreadable file,
 invalid JSON (including comments or trailing commas), or a non-string
 `extensions.http.routePrefix` causes exit `1`, with the file path and reason on
 stderr. This configuration error prevents output from being created or modified
-and does not depend on `--fail-on-warnings`. Fix the file or pass a literal
+and does not depend on `--fail-on-warnings`; the app module has already been imported
+by then, so its import-time side effects have run. Fix the file or pass a literal
 `--route-prefix`. Missing files or keys still silently use `/api`. This stricter
 behavior applies only to CLI `auto`; the Python helper `resolve_route_prefix()`
 retains its `RuntimeWarning` and `/api` fallback for unusable files.
