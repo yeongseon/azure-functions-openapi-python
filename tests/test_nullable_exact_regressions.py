@@ -20,6 +20,7 @@ REF: dict[str, Any] = {"$ref": "#/$defs/T"}
 PROBES: list[JsonValue] = [
     None,
     "x",
+    "a",
     "",
     -1,
     0,
@@ -132,6 +133,74 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ),
     *[
         (
+            f"single-discriminator-null-ruled-out-{key}",
+            {
+                "type": "object",
+                "discriminator": {"propertyName": "kind"},
+                key: [REF, {"type": "null"}],
+            },
+            {"T": {"type": "object"}},
+        )
+        for key in ("anyOf", "oneOf")
+    ],
+    *[
+        (
+            f"member-discriminator-{key}-{shape}",
+            {key: [*members, {"type": "null"}]},
+            {"T": {"type": "object"}, "S": {"type": "string"}},
+        )
+        for key in ("anyOf", "oneOf")
+        for shape, members in [
+            (
+                "sole",
+                [{**REF, "discriminator": {"propertyName": "kind"}}],
+            ),
+            (
+                "mixed",
+                [
+                    {**REF, "discriminator": {"propertyName": "kind"}},
+                    {"$ref": "#/$defs/S"},
+                ],
+            ),
+            (
+                "two",
+                [
+                    {**REF, "discriminator": {"propertyName": "kind"}},
+                    {"$ref": "#/$defs/T", "discriminator": {"propertyName": "kind"}},
+                ],
+            ),
+        ]
+    ],
+    *[
+        (
+            f"discriminator-collision-{key}-{accepting}-{mapping}",
+            {
+                "discriminator": {
+                    "propertyName": "kind",
+                    **({"mapping": {"A": "#/$defs/A"}} if mapping else {}),
+                },
+                key: [
+                    *({"$ref": f"#/$defs/{name}"} for name in members),
+                    {"type": "null"},
+                ],
+            },
+            {
+                "A": {"enum": [None, "a"]},
+                "B": {"type": ["object", "null"]},
+                "S": {"type": "string"},
+                "O": {"type": "object"},
+            },
+        )
+        for key in ("oneOf", "anyOf")
+        for accepting, members in [
+            ("one", ("A", "S")),
+            ("two", ("A", "B")),
+            ("all", ("A", "B", "S")),
+        ]
+        for mapping in (False, True)
+    ],
+    *[
+        (
             f"discriminator-{key}-{mapping}-{rejects_null}-{existing}",
             {
                 **({"type": "object"} if rejects_null else {}),
@@ -198,7 +267,9 @@ def test_nullable_fallback_preserves_instance_acceptance(
     if name.startswith("multi-ref-"):
         root = spec["components"]["schemas"]["Holder"] if hoisted else schema
         assert root["anyOf"][0]["allOf"][0] == {"$ref": "#/components/schemas/T"}
-    if name.startswith("discriminator-"):
+    if name.startswith(("member-discriminator-", "discriminator-collision-")):
+        assert "discriminator" not in str(spec["paths"]) + str(spec.get("components", {}))
+    if name.startswith("discriminator-") and not name.startswith("discriminator-collision-"):
         root = spec["components"]["schemas"]["Holder"] if hoisted else schema
         polymorphism = (
             root
@@ -245,3 +316,20 @@ def test_anyof_is_collapsed_before_oneof_without_changing_acceptance() -> None:
             "components": {"schemas": {"Ordered": converted}},
         }
     )
+
+
+@pytest.mark.parametrize("shape", ["sole", "multi"])
+def test_reference_with_siblings_is_not_expanded_for_the_nullable_idiom(shape: str) -> None:
+    # Given: a sibling-bearing reference to a component that carries a dropped keyword.
+    member = {"$ref": "#/components/schemas/T", "minimum": 3}
+    members = [member] if shape == "sole" else [member, {"type": "string"}]
+    node = {"anyOf": [*members, {"type": "null"}]}
+    schemas = {"T": {"type": "number", "contains": {"type": "integer"}}}
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(node, schemas, lossy=losses)
+
+    # Then: the reference stays a reference, and the component's own loss is not reported again.
+    assert converted["anyOf"][0]["allOf"][0] == {"$ref": "#/components/schemas/T"}
+    assert losses == []

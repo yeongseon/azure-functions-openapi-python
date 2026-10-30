@@ -211,6 +211,19 @@ def _accepts_null(
     return not ("not" in schema and accepts(schema["not"]))
 
 
+def _hoist_reference_siblings(member: Any) -> Any:
+    """Move the keys beside a ``$ref`` into an ``allOf`` with it, keeping any ``allOf`` it has.
+
+    3.0 ignores the siblings of a reference, so they only keep meaning inside an ``allOf``. A
+    ``discriminator`` beside the reference discriminated nothing and was inert there, but beside an
+    ``allOf`` it would start rejecting objects without the property, so it is not carried.
+    """
+    if not (isinstance(member, dict) and "$ref" in member and len(member) > 1):
+        return member
+    siblings = {k: v for k, v in member.items() if k not in ("$ref", "discriminator")}
+    return {**siblings, "allOf": [{"$ref": member["$ref"]}, *member.get("allOf", [])]}
+
+
 def _exact_nullable_union(
     base: dict[str, Any], key: str, non_null: list[Any], schemas: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -218,39 +231,41 @@ def _exact_nullable_union(
 
     OpenAPI 3.0 has no way to mark an arbitrary schema nullable in place, but a union with a
     schema that accepts only ``null`` (``nullable`` and an ``enum`` of ``null``) is valid
-    and accepts exactly the non-null members plus ``null``. The keys beside the union stay
-    beside it, where they keep the meaning they had. A reference that carries sibling
-    keywords moves into ``allOf``, because 3.0 ignores the siblings of a reference. When
-    the keys beside the union reject ``null``, no ``null``
-    branch is added.
+    and accepts exactly the non-null members plus ``null``. The union keyword stays, so a
+    ``oneOf`` still needs exactly one match, even when a member itself accepts ``null``. The
+    keys beside the union stay beside it, where they keep the meaning they had, and a
+    reference that carries sibling keys moves into ``allOf``. When the keys beside the union
+    reject ``null``, no ``null`` branch is added.
+
+    A ``discriminator`` is active in 3.0 (it rejects ``null`` and any object without the
+    property) but annotation-only in 3.1, so it is only carried where it cannot change what
+    is accepted: with at least two non-null members, none of which accepts ``null``, it
+    stays with them and ``null`` gets its own branch outside its scope. Otherwise it
+    discriminates nothing and is not carried.
     """
-    members = [
-        {
-            **{k: v for k, v in member.items() if k not in ("$ref", "allOf")},
-            "allOf": [{"$ref": member["$ref"]}, *member.get("allOf", [])],
-        }
-        if isinstance(member, dict) and "$ref" in member and len(member) > 1
-        else member
-        for member in non_null
-    ]
-    result = dict(base)
-    discriminator = result.get("discriminator")
-    if len(members) <= 1:
-        result.pop("discriminator", None)
-    if not _accepts_null(base, schemas, ref_siblings_apply=True, assume_unknown=True):
-        return {**result, key: members}
+    members = [_hoist_reference_siblings(member) for member in non_null]
+    discriminator = base.get("discriminator")
+    rest = {k: v for k, v in base.items() if k != "discriminator"}
+    if not _accepts_null(rest, schemas, ref_siblings_apply=True, assume_unknown=True):
+        carried = {"discriminator": discriminator} if discriminator and len(members) > 1 else {}
+        return {**rest, **carried, key: members}
     null_only = {"nullable": True, "enum": [None]}
-    if discriminator is not None and len(members) > 1:
-        result.pop("discriminator")
+    if (
+        discriminator is not None
+        and len(members) > 1
+        and not any(
+            _accepts_null(member, schemas, ref_siblings_apply=True, assume_unknown=True)
+            for member in non_null
+        )
+    ):
         union = [{key: members, "discriminator": discriminator}, null_only]
-        if "anyOf" in result:
-            all_of = result.get("allOf")
-            result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+        if "anyOf" in rest:
+            all_of = rest.get("allOf")
+            rest["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
         else:
-            result["anyOf"] = union
-    else:
-        result[key] = [*members, null_only]
-    return result
+            rest["anyOf"] = union
+        return rest
+    return {**rest, key: [*members, null_only]}
 
 
 def _inline_ref_nullable(
