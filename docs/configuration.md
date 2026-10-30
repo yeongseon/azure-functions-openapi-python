@@ -234,11 +234,19 @@ The `nullable` idiom is used only where it accepts `null` exactly as the origina
 did. A nullable union it cannot reach (a union of references, a `oneOf`, an `allOf`
 conjunct), or one where it would exempt a `type` or constraint that sits beside the
 union, is written instead as a union with a branch that accepts only `null`
-(`nullable: true` with `enum: [null]`), which is exact by construction; an optional
-discriminated union keeps its discriminator and gains that branch. When a field's own
-keys meet those of an inlined reference, annotations such as `description` describe
-the field, a numeric bound both declare keeps the tighter value, and any other
-constraint both declare is kept in an `allOf`, so neither side is lost.
+(`nullable: true` with `enum: [null]`). The fallback keeps the union keyword, so
+`oneOf` still requires exactly one match, including when a member already accepts
+null. Keys beside the union that reject null make the null branch unreachable.
+A `discriminator` beside a nullable union with at most one non-null member is not
+carried to 3.0: it discriminates nothing and is annotation-only in 3.1. With several
+non-null members, it stays with those members and null gets its own branch, outside
+the discriminator's scope. A reference with sibling constraints stays in an `allOf`
+branch rather than mixing its raw constraints with converted, inlined content.
+When a field's own keys meet those of an inlined bare reference, annotations such
+as `description` describe the field, size bounds keep the tighter value, and other
+shared constraints are kept in `allOf`. Numeric bounds and their exclusivity flags
+are kept together: when both sides declare a lower or upper bound family, the
+field's family is retained as a separate `allOf` conjunct, so neither side is lost.
 
 A `type` array without `null` (for example `type: [string, integer]`, which
 validation producers use for error locations) is rewritten to an `anyOf` of

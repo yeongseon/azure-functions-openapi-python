@@ -85,7 +85,14 @@ The final call-flow is:
    Inline nullable refs resolve against the **original complete component map**,
    before replacement. A nullable union keeps the `nullable` idiom only where it
    accepts `null` exactly as the original did; otherwise it is written as a union
-   with a `null`-only branch, so nothing about nullability is reported as a loss.
+   with a `null`-only branch, preserving the union keyword and its match count.
+   A `discriminator` beside a nullable union with at most one non-null member is
+   not carried to 3.0: it discriminates nothing and is annotation-only in 3.1.
+   With several non-null members, it stays with those members and null gets a
+   separate branch; keys beside the union that reject null make that branch dead.
+   Numeric bounds and their exclusivity flags are kept together when merging
+   inlined content with field constraints, using separate `allOf` conjuncts when
+   both sides declare a bound family.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
