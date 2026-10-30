@@ -195,6 +195,9 @@ def test_nullable_fallback_preserves_instance_acceptance(
     converted = OAS30Validator({**schema, "components": spec.get("components", {})})
     assert [converted.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
     assert collect_spec_warnings(spec, registry) == ()
+    if name.startswith("multi-ref-"):
+        root = spec["components"]["schemas"]["Holder"] if hoisted else schema
+        assert root["anyOf"][0]["allOf"][0] == {"$ref": "#/components/schemas/T"}
     if name.startswith("discriminator-"):
         root = spec["components"]["schemas"]["Holder"] if hoisted else schema
         polymorphism = (
