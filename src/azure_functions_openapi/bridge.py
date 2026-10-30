@@ -11,6 +11,7 @@ from azure_functions_openapi._endpoint_contract import (
     ENDPOINT_NAMESPACE,
     HANDLER_METADATA_ATTR,
     SUPPORTED_ENDPOINT_VERSIONS,
+    read_v2_responses,
 )
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import (
@@ -464,7 +465,10 @@ def _discovered_operation_from_endpoint(
 
     response: dict[int, dict[str, Any]] = {}
     raw_responses = endpoint.get("responses")
-    if isinstance(raw_responses, dict):
+    diagnostics: list[str] = []
+    if endpoint.get("version") == 2:
+        response, diagnostics = read_v2_responses(endpoint)
+    elif isinstance(raw_responses, dict):
         for status, detail in raw_responses.items():
             if not isinstance(detail, dict):
                 continue
@@ -499,6 +503,7 @@ def _discovered_operation_from_endpoint(
         ),
         "parameters": parameters,
         "response": response,
+        "_endpoint_warnings": diagnostics,
     }
 
 
@@ -829,6 +834,8 @@ def scan_endpoint_metadata(
                 discovered = _discovered_operation_from_endpoint(
                     function_name, endpoint_hints, path, method
                 )
+                for diagnostic in discovered["_endpoint_warnings"]:
+                    reg.add_discovery_warning(function_name, diagnostic)
 
             # When methods= was unspecified and we auto-expanded to every HTTP
             # method, drop the request body from GET/HEAD/DELETE operations:
