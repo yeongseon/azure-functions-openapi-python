@@ -28,6 +28,73 @@ To match this default, `azure-functions-openapi` uses `"/api"` as the default
 - `scan_endpoint_metadata(app, route_prefix="/api")`
 - The CLI flag `azure-functions-openapi generate --route-prefix /api`
 
+## Resolving the prefix from host.json (opt-in)
+
+Existing Python entry points and the CLI still default to `/api`; detection is
+never enabled implicitly. Call `resolve_route_prefix()` and pass its result to
+any existing `route_prefix=` parameter to avoid duplicating configuration.
+Resolution uses the first available value:
+
+1. The app-setting override environment variable
+   `AzureFunctionsJobHost__extensions__http__routePrefix`, when present.
+2. `extensions.http.routePrefix` in the supplied `host.json` path (or
+   `./host.json` in the current working directory when no path is supplied).
+3. The default `/api`.
+
+An empty string at either configured level means no prefix: an empty
+`routePrefix` in `host.json` removes the host's prefix, and the helper applies
+the same rule to a present but empty app setting. Whether a given hosting
+environment delivers an empty app setting to the host is outside the helper's
+control, so confirm that before relying on it. Values are normalized: `api`
+becomes `/api`, `/v1/` becomes `/v1`, and `""` stays empty. Missing files and
+missing keys silently fall back. Unreadable files, invalid JSON, and non-string
+`routePrefix` values emit a `RuntimeWarning` naming the file and reason, then
+fall back to `/api`.
+The file is parsed as strict JSON with an optional UTF-8 byte order mark, so a
+`host.json` that contains comments or trailing commas is reported as unreadable.
+The helper only reads configuration; it never imports or executes application code.
+
+In `function_app.py`, explicitly locate the file beside your module:
+
+```python
+from pathlib import Path
+
+from azure_functions_openapi import register_openapi_routes, resolve_route_prefix
+
+route_prefix = resolve_route_prefix(Path(__file__).with_name("host.json"))
+register_openapi_routes(app, title="My API", version="1.0.0", route_prefix=route_prefix)
+```
+
+This keeps generated paths and Swagger UI's specification URL aligned. Reuse
+the resolved value for standalone generation or scanning calls as needed.
+Python API calls do not emit mismatch warnings.
+
+For CLI generation, opt in with `auto`:
+
+```bash
+azure-functions-openapi generate --app function_app:app --route-prefix auto
+```
+
+The CLI reads `host.json` beside the imported `--app` module, falling back to
+the current working directory if there is no app or the module has no `__file__`.
+The app-setting override above still wins in `auto` mode. If the file is
+unreadable or malformed, `auto` falls back to `/api` and prints the same
+`RuntimeWarning` on stderr; that warning does not gate `--fail-on-warnings`. A
+**literal** prefix named `auto` must be written `--route-prefix /auto`.
+
+Without `auto`, a configured file prefix that differs from the effective
+prefix produces a structured `route-prefix-mismatch` warning as a JSON line on
+stderr. This applies both to the unchanged `/api` default and an explicit
+prefix. The message names both values and suggests `--route-prefix <value>`
+or `--route-prefix auto`. It **gates `--fail-on-warnings` (exit 2)** before
+writing output, unlike the advisory `unresolved-route` warning. This comparison
+checks the file only, not the environment; missing, malformed, or unreadable
+configuration does not produce a mismatch warning. Equal prefixes and `auto`
+never produce it. An explicit value that differs from the file is still honored
+for the generated paths, but it also produces the warning, so a job that
+intentionally documents a gateway-facing prefix should not use
+`--fail-on-warnings`.
+
 ## Authoring routes with `@openapi`
 
 You can author routes in `@openapi(route=...)` either with or without the
@@ -63,7 +130,7 @@ the prefix:
 
 ```python
 @openapi(summary="List users")
-@app.route(route="api/users", methods=["GET"])   # → /api/api/users, not /api/users
+@app.route(route="api/users", methods=["GET"])  # → /api/api/users, not /api/users
 def list_users(req): ...
 ```
 

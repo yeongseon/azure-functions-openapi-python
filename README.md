@@ -199,6 +199,12 @@ to the Python facade; that registry remains caller-owned and additive.
 See the [CLI Guide](docs/cli.md) for all options, CI integration examples, and
 the warning that `--app` imports execute module-level code.
 
+Route-prefix detection is opt-in: use `--route-prefix auto` in the CLI, or pass
+`resolve_route_prefix(Path(__file__).with_name("host.json"))` to `route_prefix=`
+in Python (`Path` comes from `pathlib`; the helper is exported at the package
+root). Existing defaults stay `/api`. See [Route Prefix](docs/route-prefix.md)
+for app-setting precedence and the CLI's `route-prefix-mismatch` warning.
+
 ## Installation
 
 ```bash

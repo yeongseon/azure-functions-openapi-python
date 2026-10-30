@@ -178,6 +178,15 @@ URL after `history.replaceState`.
 
 ## Compatibility Policy
 
+Route-prefix configuration detection is opt-in: existing Python parameters and
+the CLI's effective default remain `/api`. `resolve_route_prefix` reads only the
+explicitly located host file (cwd by default), with a present Azure app-setting
+override taking precedence, and returns a normalized string for existing APIs.
+The CLI's `auto` mode locates the file beside the imported app module. Non-auto
+CLI generation diagnoses file-prefix mismatches through structured warnings that
+gate `--fail-on-warnings`; Python APIs do not infer caller intent or warn about
+mismatches. Invalid host configuration warns and falls back without execution.
+
 - Minimum supported Python version: `3.11`
 - Supported runtime target: Azure Functions Python v2 programming model
 - Public APIs follow semantic versioning expectations

@@ -214,6 +214,29 @@ from azure_functions_openapi import scan_endpoint_metadata
 # Call after all routes are registered
 scan_endpoint_metadata(app)
 ```
+
+### resolve_route_prefix
+
+```python
+def resolve_route_prefix(host_json: str | os.PathLike[str] | None = None) -> str: ...
+```
+
+Opt-in prefix resolution: present environment variable
+`AzureFunctionsJobHost__extensions__http__routePrefix`, then the supplied
+`host.json` (default `./host.json`), then `/api`. Returns a normalized prefix;
+empty strings mean no prefix. Missing files/keys silently fall back; unreadable
+files, malformed JSON and non-string prefixes emit `RuntimeWarning` then fall
+back. Never imports or executes application code. Existing API defaults remain
+`/api`. In function_app.py use
+`resolve_route_prefix(Path(__file__).with_name("host.json"))` for `route_prefix=`.
+The CLI's `--route-prefix auto` reads beside the imported app module (otherwise
+cwd), honoring the environment override; an unreadable file falls back to `/api`
+with the same RuntimeWarning, which does not gate `--fail-on-warnings`. A literal
+auto prefix is `/auto`.
+Without auto, a differing file prefix produces a structured stderr JSON-line
+`route-prefix-mismatch` warning that gates `--fail-on-warnings` (exit 2).
+Python APIs do not perform mismatch checks; `unresolved-route` stays advisory.
+
 ### generate_openapi_spec
 
 ```python

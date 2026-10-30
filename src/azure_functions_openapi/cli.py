@@ -8,6 +8,7 @@ import sys
 
 from azure_functions_openapi import _prepare_generation
 from azure_functions_openapi._atomic import write_text_atomic
+from azure_functions_openapi._cli_route_prefix import _resolve_cli_route_prefix
 from azure_functions_openapi._generation_result import GenerationResult
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import scan_endpoint_metadata
@@ -155,11 +156,11 @@ Examples:
     )
     generate_parser.add_argument(
         "--route-prefix",
-        default="/api",
+        default=None,
         help=(
-            "HTTP route prefix from host.json extensions.http.routePrefix "
-            "(default: /api). Pass an empty string for hosts that disable "
-            "the prefix, or a custom value such as /v1 for a custom deployment."
+            "HTTP route prefix (default: /api). Use auto to resolve the app-setting "
+            "override or host.json beside the imported --app module (otherwise cwd). "
+            "Pass an empty string for no prefix, or /auto for a literal auto prefix."
         ),
     )
     generate_parser.add_argument(
@@ -177,7 +178,8 @@ Examples:
         default=False,
         help=(
             "Exit with code 2 if the generator emits any structured warnings "
-            "(version skew, namespace fallback, or spec-validation issues). "
+            "(version skew, namespace fallback, spec-validation issues, or a route-prefix "
+            "mismatch; unresolved-route is advisory). "
             "Use in CI to stop a wrong-but-plausible spec from being published."
         ),
     )
@@ -269,13 +271,14 @@ def handle_generate(args: argparse.Namespace) -> int:
                 )
                 return 1
 
+            route_prefix, prefix_warnings = _resolve_cli_route_prefix(args)
             if variable_given and resolved_app is not None:
                 active_registry = OpenAPIRegistry()
                 # One-shot discovery through the #325 adapter. `build()` is
                 # idempotent; we never call the non-idempotent `get_functions()`.
                 scan_endpoint_metadata(
                     resolved_app,
-                    route_prefix=getattr(args, "route_prefix", "/api"),
+                    route_prefix=route_prefix,
                     registry=active_registry,
                 )
             else:
@@ -299,6 +302,8 @@ def handle_generate(args: argparse.Namespace) -> int:
                     "function_app:app) to also discover endpoint-metadata routes.",
                     file=sys.stderr,
                 )
+        else:
+            route_prefix, prefix_warnings = _resolve_cli_route_prefix(args)
 
         if args.openapi_version == "3.2":
             openapi_version = OPENAPI_VERSION_3_2
@@ -313,7 +318,7 @@ def handle_generate(args: argparse.Namespace) -> int:
 
         unresolved = _prepare_generation(
             None,
-            getattr(args, "route_prefix", "/api"),
+            route_prefix,
             active_registry,
         )
         result = generate_openapi_spec(
@@ -321,7 +326,7 @@ def handle_generate(args: argparse.Namespace) -> int:
             args.version,
             openapi_version,
             description=description,
-            route_prefix=getattr(args, "route_prefix", "/api"),
+            route_prefix=route_prefix,
             strict=getattr(args, "strict", False),
             registry=active_registry,
             infer_auth_level=getattr(args, "infer_auth_level", False) is True,
@@ -329,11 +334,15 @@ def handle_generate(args: argparse.Namespace) -> int:
         if isinstance(result, GenerationResult):
             report = _report_generation_result(result)
             spec = report.spec
-            warnings = (*report.warnings, *unresolved)
+            warnings = (*report.warnings, *unresolved, *prefix_warnings)
         else:
             # Preserve the plain-document seam used by embedded/mocked callers.
             spec = result
-            warnings = (*collect_spec_warnings(spec, registry=active_registry), *unresolved)
+            warnings = (
+                *collect_spec_warnings(spec, registry=active_registry),
+                *unresolved,
+                *prefix_warnings,
+            )
         # Surface structured warnings (version skew / namespace fallback /
         # spec-validation) as JSON lines on stderr so CI can parse them, and
         # gate the exit code on them when --fail-on-warnings is set.

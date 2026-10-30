@@ -187,10 +187,10 @@ Discovery semantics:
 | `--format` | `-f` | `json`, `yaml` | `json` | Output serialization format |
 | `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version. See [version selection guidance](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use). |
 | `--pretty` | `-p` | flag | `false` | Pretty-print JSON output (adds indentation); no effect on YAML |
-| `--route-prefix` | - | any string (or `""`) | `/api` | HTTP route prefix from `host.json` `extensions.http.routePrefix`. See [Route Prefix](route-prefix.md). |
+| `--route-prefix` | - | `auto`, any literal prefix (or `""`) | `/api` | Opt into app-setting / `host.json` resolution with `auto`; the file is beside the imported app module, otherwise cwd. Write `/auto` for a literal prefix named auto. See [Route Prefix](route-prefix.md). |
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
 | `--strict` | - | flag | `false` | Fail on any malformed registry entry instead of skipping it. Recommended for CI where a missing path should break the build |
-| `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, or spec-validation issues; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
+| `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, spec-validation issues, or a `route-prefix-mismatch`; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
 | `--infer-auth-level` | - | flag | `false` | Infer operation security from scanned Azure Functions `auth_level` bindings. Requires `--app module:variable`; explicit operation security wins |
 | `--isolate-app` | - | flag | `false` | Compatibility flag requiring `--app module:variable`; selecting a variable now always uses a fresh, app-scoped registry, even without this flag |
 
@@ -200,7 +200,18 @@ Discovery semantics:
 | --- | --- |
 | `0` | Success |
 | `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
-| `2` | Either invalid CLI arguments (argparse parse error) **or** structured warnings were emitted while `--fail-on-warnings` is set |
+| `2` | Either invalid CLI arguments (argparse parse error) **or** gating structured warnings (including `route-prefix-mismatch`) were emitted while `--fail-on-warnings` is set |
+
+### Route-prefix warnings
+
+`route-prefix-mismatch` is printed as a structured JSON line on stderr when a
+file's normalized `extensions.http.routePrefix` differs from the effective
+default or explicit CLI prefix. Fix it with `--route-prefix <value>` or opt into
+`--route-prefix auto`. Equal values, `auto`, missing keys/files, and malformed or
+unreadable files do not produce this warning. The comparison ignores environment
+overrides; `auto` honors them. With `auto`, a malformed or unreadable file falls
+back to `/api` with a `RuntimeWarning` that does not gate `--fail-on-warnings`.
+See [Route Prefix](route-prefix.md) for precedence.
 
 ## Validate generated output
 

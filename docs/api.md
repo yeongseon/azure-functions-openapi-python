@@ -27,6 +27,7 @@ from azure_functions_openapi import (
     register_openapi_metadata,
     register_openapi_routes,
     render_swagger_ui,
+    resolve_route_prefix,
     scan_endpoint_metadata,
     scan_validation_metadata,
 )
@@ -47,6 +48,7 @@ from azure_functions_openapi import (
 | `get_openapi_json` | function | Build OpenAPI and serialize to JSON string |
 | `get_openapi_yaml` | function | Build OpenAPI and serialize to YAML string |
 | `render_swagger_ui` | function | Return Swagger UI `HttpResponse` |
+| `resolve_route_prefix` | function | Opt into normalized app-setting / host.json prefix resolution |
 | `OpenAPIOperationMetadata` | dataclass | Frozen dataclass for operation metadata |
 | `OpenAPIRegistry` | class | Thread-safe registry backing the decorator; pass an instance for isolated (test-friendly) registration |
 | `SpecReport` | dataclass | Result of `generate_openapi_report`: the `spec` dict plus a `warnings` tuple |
@@ -57,6 +59,21 @@ from azure_functions_openapi import (
 | `OPENAPI_VERSION_3_0` | constant | OpenAPI version string `"3.0.0"` |
 | `OPENAPI_VERSION_3_1` | constant | OpenAPI version string `"3.1.0"` |
 | `OPENAPI_VERSION_3_2` | constant | OpenAPI version string `"3.2.0"` |
+
+## Route-prefix resolution
+
+```python
+def resolve_route_prefix(host_json: str | os.PathLike[str] | None = None) -> str: ...
+```
+
+Reads the present `AzureFunctionsJobHost__extensions__http__routePrefix`
+environment variable first, then `extensions.http.routePrefix` from the supplied
+file (default `./host.json`), then `/api`. Empty strings are honored and the
+result is normalized for any `route_prefix=` parameter. Missing files/keys are
+silent; unreadable files, malformed JSON, or a non-string prefix cause a
+`RuntimeWarning` and fallback. No application code is imported or executed.
+Existing Python defaults stay `/api`; this helper is explicitly opt-in.
+See [Route Prefix](route-prefix.md) for a `function_app.py` example.
 
 ## Documentation route registration
 
@@ -281,6 +298,9 @@ The sections below are generated directly from source docstrings.
 
 ::: azure_functions_openapi.render_swagger_ui
 
+### `resolve_route_prefix`
+
+::: azure_functions_openapi.host_config.resolve_route_prefix
 
 ## Bridge: Auto-discover validation metadata
 
@@ -363,6 +383,10 @@ spec = report.spec
 | `SpecReport` | Dataclass with `spec: dict` and `warnings: tuple[SpecWarning, ...]` |
 | `SpecWarning` | Frozen dataclass: `code: WarningCode`, `message: str`, `function_name: str \| None`, plus optional `path`, `method`, and `location`; `to_dict()` includes every field for JSON |
 | `WarningCode` | `str`-based enum of stable codes: `version-skew`, `ambiguous-namespace`, `duplicate-operation`, `spec-validation`, `discovery-skipped`, `empty-discovery`, `method-binding-mismatch` |
+
+The CLI also emits `route-prefix-mismatch` for a file prefix differing from its
+effective prefix; it gates `--fail-on-warnings`. Python generation does not
+perform this mismatch check. `unresolved-route` remains advisory in the CLI.
 
 When conversion of an explicit request or response model fails, strict generation
 raises an error naming the HTTP method, normalized emitted path, function or

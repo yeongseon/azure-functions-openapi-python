@@ -72,7 +72,7 @@ class HelloResponse(BaseModel):
         },
         400: {"description": "Missing name"},
     },
-    )
+)
 @app.route(route="http_trigger", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     name = req.params.get("name")
@@ -104,8 +104,12 @@ register_openapi_routes(app, title="Hello API", version="1.0.0")
 ```
 
 Pass the same `route_prefix` configured in `host.json` when it differs from
-the default `/api`. Use `enabled=False` to register nothing in environments
-where runtime documentation must stay unavailable.
+the default `/api`, or read it without duplicating it by opting into
+`route_prefix=resolve_route_prefix(Path(__file__).with_name("host.json"))`.
+Import `Path` from `pathlib` and `resolve_route_prefix` from the package root;
+see [Resolving the prefix](route-prefix.md#resolving-the-prefix-from-hostjson-opt-in)
+for precedence and the app-setting override. The default remains `/api`.
+Use `enabled=False` to register nothing where runtime documentation must stay unavailable.
 
 ### Manual alternative
 
