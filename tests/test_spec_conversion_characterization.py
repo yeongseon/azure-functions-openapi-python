@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
+    _convert_schema_to_3_0,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -32,6 +33,23 @@ TUPLE_LOSS = (
 @pytest.mark.parametrize(
     ("original", "expected_30", "expected_31", "valid", "invalid"),
     [
+        *[
+            (
+                {"type": "number", bound: inclusive, exclusive: numeric},
+                {"type": "number", bound: kept, **({exclusive: True} if strict else {})},
+                {"type": "number", bound: inclusive, exclusive: numeric},
+                valid,
+                invalid,
+            )
+            for bound, exclusive, inclusive, numeric, kept, strict, valid, invalid in [
+                ("minimum", "exclusiveMinimum", 5, 1, 5, False, [5, 6], [1, 2, 4.9]),
+                ("minimum", "exclusiveMinimum", 1, 5, 5, True, [5.1, 6], [1, 2, 5]),
+                ("minimum", "exclusiveMinimum", 5, 5, 5, True, [5.1, 6], [4, 5]),
+                ("maximum", "exclusiveMaximum", 1, 5, 1, False, [0, 1], [1.1, 3, 5]),
+                ("maximum", "exclusiveMaximum", 5, 1, 1, True, [0, 0.9], [1, 3, 5]),
+                ("maximum", "exclusiveMaximum", 1, 1, 1, True, [0, 0.9], [1, 2]),
+            ]
+        ],
         (
             {"type": "string", "nullable": True, "example": "yes"},
             {"type": "string", "nullable": True, "example": "yes"},
@@ -319,6 +337,12 @@ TUPLE_LOSS = (
         ),
     ],
     ids=[
+        "inclusive-lower-wins",
+        "exclusive-lower-wins",
+        "equal-lower-is-exclusive",
+        "inclusive-upper-wins",
+        "exclusive-upper-wins",
+        "equal-upper-is-exclusive",
         "legacy-nullable",
         "nullable-union",
         "nested-keywords",
@@ -727,6 +751,44 @@ def test_none_typed_field_with_a_broader_enum_accepts_only_null() -> None:
     assert [converted.is_valid(probe) for probe in probes] == [True, True, False]
     assert [original.is_valid(probe) for probe in probes] == [True, True, False]
     assert collect_spec_warnings(spec, registry) == ()
+
+
+def test_pydantic_overlapping_bounds_keep_the_stricter_constraint() -> None:
+    # Given: Pydantic emits both bounds, even when the inclusive bound is stricter.
+    class Payload(BaseModel):
+        value: int = Field(ge=5, gt=1)
+
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/payload", "POST", request_model=Payload, registry=registry)
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the generated component has the same acceptance boundary as the producer.
+    validate(spec)
+    original = OAS31Validator(Payload.model_json_schema())
+    converted = OAS30Validator(
+        {"$ref": "#/components/schemas/Payload", "components": spec["components"]}
+    )
+    probes = [{"value": n} for n in (1, 2, 3, 4, 5, 6)]
+    assert [converted.is_valid(p) for p in probes] == [original.is_valid(p) for p in probes]
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize("exclusive", [False, True])
+def test_boolean_exclusive_bounds_are_already_openapi_3_0(exclusive: bool) -> None:
+    # Given: boolean exclusive bounds are modifiers, not numeric bounds.
+    schema = {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 5,
+        "exclusiveMinimum": exclusive,
+        "exclusiveMaximum": exclusive,
+    }
+    # When
+    converted = _convert_schema_to_3_0(schema)
+    # Then
+    assert converted == schema
 
 
 @pytest.mark.parametrize(

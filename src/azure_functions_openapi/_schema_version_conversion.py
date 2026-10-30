@@ -461,8 +461,13 @@ def _convert_schema_to_3_0(
     ):
         exclusive_bound = result.get(exclusive_key)
         if isinstance(exclusive_bound, (int, float)) and not isinstance(exclusive_bound, bool):
-            result[bound_key] = exclusive_bound
-            result[exclusive_key] = True
+            bound = result.get(bound_key, exclusive_bound)
+            tighter = _tighter_bound(bound_key, bound, exclusive_bound)
+            if tighter == exclusive_bound:
+                result[bound_key] = exclusive_bound
+                result[exclusive_key] = True
+            else:
+                del result[exclusive_key]
 
     # ``type: [T, "null"]`` -> ``type: T`` + ``nullable: true``. OpenAPI 3.0
     # requires ``type`` to be a single string, so a multi-type union is expressed
