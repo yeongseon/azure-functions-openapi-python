@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import copy
+from typing import Annotated, Literal
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
 from openapi_spec_validator import validate
-from pydantic import BaseModel, Field, JsonValue
+from pydantic import BaseModel, Field, JsonValue, StringConstraints
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
@@ -14,7 +15,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
-from azure_functions_openapi._warnings import WarningCode
+from azure_functions_openapi._warnings import SpecWarning, WarningCode
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -1237,3 +1238,207 @@ def test_operation_schema_slots_yield_nothing_for_unusable_containers(
 ) -> None:
     # Given / When / Then
     assert list(_operation_schema_slots(operation)) == []
+
+
+UNDEFINED_KEYWORDS: list[tuple[str, JsonValue, str]] = [
+    ("propertyNames", {"maxLength": 3}, "key names are no longer restricted"),
+    ("if", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("then", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("else", {"required": ["a"]}, "the conditional constraint is no longer enforced"),
+    ("contains", {"type": "integer"}, "matching array elements are no longer required"),
+    ("minContains", 1, "the minimum matching element count is no longer enforced"),
+    ("maxContains", 2, "the maximum matching element count is no longer enforced"),
+    (
+        "unevaluatedProperties",
+        False,
+        "unevaluated object properties are no longer restricted",
+    ),
+    ("unevaluatedItems", False, "unevaluated array elements are no longer restricted"),
+    ("dependentRequired", {"a": ["b"]}, "dependent properties are no longer required"),
+    (
+        "dependentSchemas",
+        {"a": {"required": ["b"]}},
+        "dependent object constraints are no longer enforced",
+    ),
+]
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(("keyword", "value", "loss"), UNDEFINED_KEYWORDS)
+def test_undefined_keyword_is_dropped_and_reported_at_every_operation_slot(
+    version: str, hoisted: bool, strict: bool, keyword: str, value: JsonValue, loss: str
+) -> None:
+    # Given: one occurrence per slot, or one shared component referenced by every slot.
+    original = {"type": "object", keyword: value}
+    schema = {"$ref": "#/$defs/X", "$defs": {"X": original}} if hoisted else original
+    registry = OpenAPIRegistry()
+    registry.set(
+        "undefined",
+        {
+            "route": "undefined",
+            "method": "post",
+            "request_body": schema,
+            "response": {
+                200: {
+                    "description": "ok",
+                    "content": {"application/json": {"schema": schema}},
+                    "headers": {
+                        "X-Value": {
+                            "schema": {"$ref": "#/components/schemas/X"} if hoisted else schema
+                        }
+                    },
+                }
+            },
+            "parameters": [{"name": "value", "in": "query", "schema": schema}],
+        },
+    )
+    before = copy.deepcopy(schema)
+    locations = [
+        "requestBody.content.application/json.schema",
+        "responses.200.content.application/json.schema",
+        "responses.200.headers.X-Value.schema",
+        "parameters[0].schema",
+    ]
+    messages = (
+        [f"Schema 'X': dropped '{keyword}' at /{keyword}: OpenAPI 3.0 does not define it; {loss}"]
+        if hoisted
+        else [
+            f"dropped '{keyword}' at POST /api/undefined {slot}/{keyword}: "
+            f"OpenAPI 3.0 does not define it; {loss}"
+            for slot in locations
+        ]
+    )
+
+    # When / Then: strict errors use the existing wrapper and leave producer data intact.
+    if strict and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert str(caught.value) == (
+            "Strict mode: generated spec has validation errors:\n"
+            + "\n".join(f"  - {message}" for message in messages)
+        )
+        assert schema == before
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then
+    operation = spec["paths"]["/api/undefined"]["post"]
+    slots = [container[key] for _, container, key in _operation_schema_slots(operation)]
+    expected = {"type": "object"} if version == "3.0.0" else original
+    if hoisted:
+        assert slots == [{"$ref": "#/components/schemas/X"}] * 4
+        assert spec["components"]["schemas"]["X"] == expected
+    else:
+        assert slots == [expected] * 4
+    assert collect_spec_warnings(spec, registry) == tuple(
+        SpecWarning(code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None)
+        for message in sorted(messages if version == "3.0.0" else [])
+    )
+    assert schema == before
+    if version == "3.0.0":
+        validate(spec)
+
+
+@pytest.mark.parametrize(("keyword", "value", "loss"), UNDEFINED_KEYWORDS)
+@pytest.mark.parametrize(
+    "position",
+    [
+        ("properties", "a~/b"),
+        ("items",),
+        ("prefixItems", 0),
+        ("additionalProperties",),
+        ("patternProperties", "^a"),
+        ("allOf", 0),
+        ("anyOf", 0),
+        ("oneOf", 0),
+        ("not",),
+        ("$defs", "X"),
+    ],
+)
+def test_undefined_keyword_traversal_strips_and_reports_original_position(
+    keyword: str, value: JsonValue, loss: str, position: tuple[str | int, ...]
+) -> None:
+    # Given: a predicate beneath each schema edge, including edges later rewritten or hoisted.
+    from azure_functions_openapi._schema_3_0_preparation import _prepare_schema_for_3_0
+
+    original: JsonValue = {keyword: value}
+    expected: JsonValue = {}
+    for token in reversed(position):
+        original = [original] if isinstance(token, int) else {token: original}
+        expected = [expected] if isinstance(token, int) else {token: expected}
+    assert isinstance(original, dict)
+    assert isinstance(expected, dict)
+    before = copy.deepcopy(original)
+    losses: list[str] = []
+    path = "/" + "/".join(str(token).replace("~", "~0").replace("/", "~1") for token in position)
+
+    # When
+    prepared = _prepare_schema_for_3_0(original, losses)
+
+    # Then: reporting and removal share one visit, even with no warning accumulator.
+    assert prepared == expected
+    assert losses == [
+        f"dropped '{keyword}' at {path}/{keyword}: OpenAPI 3.0 does not define it; {loss}"
+    ]
+    assert _prepare_schema_for_3_0(original, None) == expected
+    assert original == before
+    converted_losses: list[str] = []
+    _convert_schema_to_3_0(original, lossy=converted_losses)
+    assert converted_losses == losses
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("kind", ["literal", "length", "pattern"])
+def test_pydantic_constrained_dict_keys_use_the_downgrade_channel(kind: str, strict: bool) -> None:
+    # Given: real producer models distinguish propertyNames from supported patternProperties.
+    class LiteralKeys(BaseModel):
+        flags: dict[Literal["a", "b"], int]
+
+    class LengthKeys(BaseModel):
+        flags: dict[Annotated[str, StringConstraints(max_length=3)], int]
+
+    class PatternKeys(BaseModel):
+        flags: dict[Annotated[str, StringConstraints(pattern="^item-")], int]
+
+    models: dict[str, type[BaseModel]] = {
+        "literal": LiteralKeys,
+        "length": LengthKeys,
+        "pattern": PatternKeys,
+    }
+    model = models[kind]
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/keys", "POST", request_model=model, registry=registry)
+    message = (
+        f"Schema '{model.__name__}': dropped 'propertyNames' at /properties/flags/propertyNames: "
+        "OpenAPI 3.0 does not define it; key names are no longer restricted"
+    )
+
+    # When / Then
+    if strict and kind != "pattern":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        assert (
+            str(caught.value)
+            == "Strict mode: generated spec has validation errors:\n  - " + message
+        )
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=strict)
+    validate(spec)
+    assert spec["components"]["schemas"][model.__name__]["properties"]["flags"] == {
+        "type": "object",
+        "title": "Flags",
+        "additionalProperties": {"type": "integer"},
+    }
+    assert collect_spec_warnings(spec, registry) == (
+        ()
+        if kind == "pattern"
+        else (
+            SpecWarning(
+                code=WarningCode.VERSION_DOWNGRADE_DROP, message=message, function_name=None
+            ),
+        )
+    )
