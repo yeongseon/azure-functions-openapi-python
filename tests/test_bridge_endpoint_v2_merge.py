@@ -9,6 +9,7 @@ from test_bridge_endpoint_v2 import make_app, media
 
 from azure_functions_openapi.bridge import (
     _merge_into_existing,
+    _merge_response_detail,
     _response_details_conflict,
     scan_endpoint_metadata,
 )
@@ -208,6 +209,102 @@ def test_discovered_headers_replace_malformed_explicit_headers(headers: Any) -> 
     _merge_into_existing(existing, discovered)
     # Then
     assert existing["response"][200]["headers"] == {"X-Id": {"schema": {"type": "integer"}}}
+
+
+@pytest.mark.parametrize("detail", [None, [], "x", 1], ids=["none", "list", "string", "int"])
+def test_non_mapping_explicit_response_entry_is_left_as_declared(detail: Any) -> None:
+    # Given
+    existing: dict[str, Any] = {"response": {200: detail}}
+    # When
+    _merge_into_existing(existing, {"response": {200: {"content": media()}}})
+    # Then
+    assert existing["response"] == {200: detail}
+
+
+@pytest.mark.parametrize("detail", [None, [], "x", 1], ids=["none", "list", "string", "int"])
+def test_non_mapping_discovered_response_entry_does_not_replace_the_explicit_one(
+    detail: Any,
+) -> None:
+    # Given
+    existing: dict[str, Any] = {"response": {200: {"content": media()}}}
+    # When
+    _merge_into_existing(existing, {"response": {200: detail}})
+    # Then
+    assert existing["response"] == {200: {"content": media()}}
+
+
+def test_scan_keeps_a_non_mapping_explicit_response_entry() -> None:
+    # Given
+    reg = OpenAPIRegistry()
+    explicit: Any = {200: None}
+    register_openapi_metadata(path="/api/users", method="post", response=explicit, registry=reg)
+    payload = {"version": 1, "responses": {"200": {"schema": {"type": "object"}}}}
+    # When
+    scan_endpoint_metadata(make_app(payload), registry=reg)
+    # Then
+    (entry,) = reg.snapshot().values()
+    assert entry["response"] == {200: None}
+
+
+def test_explicit_response_map_shared_by_two_registries_is_not_written_through() -> None:
+    # Given: one explicit declaration object registered in two independent registries.
+    shared: dict[Any, Any] = {200: {"content": media()}}
+    original = copy.deepcopy(shared)
+    first, second = OpenAPIRegistry(), OpenAPIRegistry()
+    discoveries = ((first, "first", "object"), (second, "second", "string"))
+    for registry, _, _ in discoveries:
+        register_openapi_metadata(
+            path="/api/users", method="post", response=shared, registry=registry
+        )
+
+    # When: each registry discovers a different description and a different extra media schema.
+    for registry, description, schema_type in discoveries:
+        payload = {
+            "version": 2,
+            "responses": {
+                "200": {
+                    "description": description,
+                    "content": {
+                        **media(),
+                        "application/problem+json": {"schema": {"type": schema_type}},
+                    },
+                }
+            },
+        }
+        scan_endpoint_metadata(make_app(payload), registry=registry)
+
+    # Then: the caller's map is untouched and each registry keeps only its own discovery.
+    assert shared == original
+    for registry, description, schema_type in discoveries:
+        spec = generate_openapi_spec(registry=registry, strict=True)
+        response = spec["paths"]["/api/users"]["post"]["responses"]["200"]
+        assert response["description"] == description
+        assert response["content"]["application/problem+json"]["schema"] == {"type": schema_type}
+
+
+def test_merge_ignores_discovered_headers_and_content_that_are_not_mappings() -> None:
+    # Given
+    existing: dict[str, Any] = {
+        "content": media(),
+        "headers": {"X-Id": {"schema": {"type": "integer"}}},
+    }
+    # When
+    merged = _merge_response_detail(existing, {"content": "x", "headers": None})
+    # Then
+    assert merged == existing
+
+
+@pytest.mark.parametrize(
+    ("current_key", "incoming_key"), [(1, "1"), ("1", 1)], ids=["explicit-int", "discovered-int"]
+)
+def test_merge_matches_header_names_by_their_text(current_key: Any, incoming_key: Any) -> None:
+    # Given
+    existing = {"headers": {current_key: {"schema": {"type": "string"}}}}
+    discovered = {"headers": {incoming_key: {"schema": {"type": "string"}, "description": "d"}}}
+    # When
+    merged = _merge_response_detail(existing, discovered)
+    # Then
+    assert merged["headers"] == {current_key: {"schema": {"type": "string"}, "description": "d"}}
 
 
 def test_malformed_explicit_media_entry_is_a_configuration_error() -> None:

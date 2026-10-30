@@ -456,18 +456,19 @@ def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -
     discovered_response = discovered.get("response")
     if isinstance(discovered_response, dict) and discovered_response:
         existing_response = existing.get("response")
-        if not isinstance(existing_response, dict):
-            existing_response = {}
+        # One explicit declaration can be registered in several registries, so write to a
+        # detached copy of its map instead of through it.
+        existing_response = dict(existing_response) if isinstance(existing_response, dict) else {}
         for status, detail in discovered_response.items():
             target_status = next(
                 (key for key in existing_response if str(key) == str(status)), status
             )
-            if target_status in existing_response:
+            if target_status not in existing_response:
+                existing_response[target_status] = copy.deepcopy(detail)
+            elif isinstance(existing_response[target_status], dict) and isinstance(detail, dict):
                 existing_response[target_status] = _merge_response_detail(
                     existing_response[target_status], detail
                 )
-            else:
-                existing_response[target_status] = copy.deepcopy(detail)
         existing["response"] = existing_response
 
     existing_params = existing.get("parameters", [])
