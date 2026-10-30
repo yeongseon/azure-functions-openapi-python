@@ -194,8 +194,12 @@ def _resolved_schema(schema: Any) -> Any:
 
 
 def _response_details_conflict(existing: Any, discovered: Any) -> bool:
+    return _response_conflict_location(existing, discovered) is not None
+
+
+def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     if not isinstance(existing, dict) or not isinstance(discovered, dict):
-        return bool(existing != discovered)
+        return "response" if existing != discovered else None
 
     def _content_schemas(detail: dict[str, Any]) -> dict[str, Any]:
         schemas: dict[str, Any] = {}
@@ -209,17 +213,48 @@ def _response_details_conflict(existing: Any, discovered: Any) -> bool:
 
     existing_schemas = _content_schemas(existing)
     discovered_schemas = _content_schemas(discovered)
-    if not existing_schemas or not discovered_schemas:
-        return existing != discovered
+    if bool(existing_schemas) != bool(discovered_schemas):
+        return "body-less versus body-bearing response"
+    if not existing_schemas and not discovered_schemas:
+        if any(key not in {"description", "headers", "content"} for key in existing | discovered):
+            return "response" if existing != discovered else None
     shared_media_types = set(existing_schemas) & set(discovered_schemas)
-    if not shared_media_types:
-        return True
-    return bool(
-        any(
-            existing_schemas[media_type] != discovered_schemas[media_type]
-            for media_type in shared_media_types
-        )
-    )
+    if existing_schemas and not shared_media_types:
+        return f"media types {sorted(existing_schemas)} versus {sorted(discovered_schemas)}"
+    for media_type in sorted(shared_media_types):
+        if existing_schemas[media_type] != discovered_schemas[media_type]:
+            return f"media {media_type}"
+    existing_headers = existing.get("headers", {})
+    discovered_headers = discovered.get("headers", {})
+    by_name = {name.lower(): header for name, header in existing_headers.items()}
+    for name, header in discovered_headers.items():
+        if name.lower() in by_name:
+            current = by_name[name.lower()]
+            if _resolved_schema(current.get("schema")) != _resolved_schema(header.get("schema")):
+                return f"header {name}"
+    return None
+
+
+def _merge_response_detail(existing: dict[str, Any], discovered: dict[str, Any]) -> dict[str, Any]:
+    """Union compatible representations, preserving explicit prose and header spelling."""
+    merged = copy.deepcopy(existing)
+    for key, value in discovered.items():
+        merged.setdefault(key, copy.deepcopy(value))
+    for field in ("content", "headers"):
+        incoming = discovered.get(field, {})
+        current = merged.get(field, {})
+        names = {name.lower() if field == "headers" else name: name for name in current}
+        for name, detail in incoming.items():
+            normalized = name.lower() if field == "headers" else name
+            target_name = names.get(normalized, name)
+            if target_name in current:
+                for key, value in detail.items():
+                    current[target_name].setdefault(key, copy.deepcopy(value))
+            else:
+                current[target_name] = copy.deepcopy(detail)
+        if current:
+            merged[field] = current
+    return merged
 
 
 def _effective_request_schema(entry: dict[str, Any]) -> Any:
@@ -299,7 +334,9 @@ def _effective_response_details(
     return details
 
 
-def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> str | None:
+def _find_model_conflict(
+    existing: dict[str, Any], discovered: dict[str, Any], *, detailed: bool = False
+) -> str | None:
     # An inferred response (P1-A return-type inference) is the lowest-precedence
     # source, so it never conflicts with discovered validation metadata — the
     # latter simply supersedes it in :func:`_merge_into_existing`.
@@ -340,10 +377,10 @@ def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -
         existing_responses = _effective_response_details(existing, known_statuses)
         discovered_responses = _effective_response_details(discovered, known_statuses)
         for status, detail in discovered_responses.items():
-            if status in existing_responses and _response_details_conflict(
-                existing_responses[status], detail
-            ):
-                return f"status {status}"
+            if status in existing_responses:
+                location = _response_conflict_location(existing_responses[status], detail)
+                if location is not None:
+                    return f"status {status} {location}" if detailed else f"status {status}"
 
     return None
 
@@ -353,7 +390,7 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
 
 
 def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -> None:
-    conflict = _find_model_conflict(existing, discovered)
+    conflict = _find_model_conflict(existing, discovered, detailed=True)
     if conflict is not None:
         method = str(discovered.get("method", existing.get("method", ""))).upper()
         route = str(discovered.get("route", existing.get("route", "")))
@@ -388,8 +425,23 @@ def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -
         existing_response = existing.get("response")
         if not isinstance(existing_response, dict):
             existing_response = {}
+        if existing.get("response_model") is not None:
+            statuses = [*_response_status_keys(existing), *_response_status_keys(discovered)]
+            effective = _effective_response_details(existing, statuses)
+            for status, detail in effective.items():
+                if not any(str(key) == status for key in existing_response):
+                    existing_response[int(status)] = detail
+            existing["response_model"] = None
         for status, detail in discovered_response.items():
-            existing_response.setdefault(status, detail)
+            target_status = next(
+                (key for key in existing_response if str(key) == str(status)), status
+            )
+            if target_status in existing_response:
+                existing_response[target_status] = _merge_response_detail(
+                    existing_response[target_status], detail
+                )
+            else:
+                existing_response[target_status] = copy.deepcopy(detail)
         existing["response"] = existing_response
 
     existing_params = existing.get("parameters", [])
