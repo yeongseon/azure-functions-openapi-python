@@ -186,7 +186,9 @@ def _inline_ref_nullable(
         if lossy is not None:
             messages = (f"Schema '{name}': {message}" for message in target_losses)
             lossy.extend(message for message in messages if message not in lossy)
-    inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
+    inlined = _convert_prepared_schema_to_3_0(
+        dict(target), schemas, resolving | {name}, lossy, normalize_items=False
+    )
     inlined = _ensure_null_accepting(inlined)
     for k, v in extra_keys.items():
         inlined.setdefault(k, v)
@@ -409,6 +411,22 @@ def _keep_null_only(schema: dict[str, Any]) -> None:
     _intersect_enum(schema, None)
 
 
+_ANNOTATION_ONLY_KEYS = frozenset(
+    {"title", "description", "default", "example", "deprecated", "readOnly", "writeOnly"}
+    | {"externalDocs", "xml"}
+)
+
+
+def _constrains_nothing(schema: Any) -> bool:
+    """Whether *schema* is ``true`` or carries annotations only, so it accepts every instance."""
+    if schema is True:
+        return True
+    return isinstance(schema, dict) and all(
+        key in _ANNOTATION_ONLY_KEYS or (isinstance(key, str) and key.startswith("x-"))
+        for key in schema
+    )
+
+
 def _json_schema_equal(first: Any, second: Any) -> bool:
     """Compare JSON values without Python's boolean/number equivalence, including nested values."""
     if isinstance(first, bool) or isinstance(second, bool):
@@ -460,6 +478,8 @@ def _convert_prepared_schema_to_3_0(
     schemas: dict[str, Any] | None = None,
     resolving: frozenset[str] = frozenset(),
     lossy: list[str] | None = None,
+    *,
+    normalize_items: bool = True,
 ) -> dict[str, Any]:
     """Recursively down-convert a JSON-Schema-2020-12 schema to OpenAPI 3.0.
 
@@ -468,13 +488,19 @@ def _convert_prepared_schema_to_3_0(
     are rewritten to the 3.0 ``nullable: true`` form so the emitted schema is
     valid under OpenAPI 3.0 (#562) and -- for a nullable ``$ref``, when
     *schemas* is supplied -- actually accepts a ``null`` instance (#782).
-    Non-nullable schemas pass through unchanged.
+    Schemas that need none of the 3.0 rewrites pass through unchanged.
 
     *schemas* (the complete ``components.schemas`` registry) and *resolving*
     (the set of component names currently being inlined higher up this same
     call chain, used to stop a self- or mutually-referencing nullable ref from
     inlining forever) are threaded through every recursive call so a nullable
     ``$ref`` can be resolved no matter how deeply nested it is.
+
+    *normalize_items* is cleared for a referenced schema that is about to be merged with the
+    keys around its nullable union: an ``items`` synthesized beforehand (the fill for a missing
+    ``items`` or an open tuple tail) would displace an ``items`` that the surrounding schema
+    declares, so the merged result is normalized by the caller's own conversion instead. An
+    ``items`` the referenced schema declares itself still takes part in the merge as written.
 
     *lossy* is an optional accumulator for conversions that are not merely
     re-expressed but demonstrably weakened -- currently, a heterogeneous
@@ -585,12 +611,14 @@ def _convert_prepared_schema_to_3_0(
     prefix_items = result.pop("prefixItems", None)
     if isinstance(prefix_items, list):
         additional_items = result.get("items")
+        open_tail = additional_items is None or additional_items is True
         declared_cap = result.get("maxItems")
         max_items = (
             declared_cap
             if isinstance(declared_cap, (int, float)) and not isinstance(declared_cap, bool)
             else None
         )
+        reachable_open_tail = open_tail and (max_items is None or max_items > len(prefix_items))
         if additional_items is False:
             result["maxItems"] = (
                 len(prefix_items) if max_items is None else min(max_items, len(prefix_items))
@@ -603,17 +631,27 @@ def _convert_prepared_schema_to_3_0(
         # A tail schema only matters when an array can hold more items than the prefix
         # covers; beyond a ``maxItems`` at or below the prefix length it is unreachable
         # and must not widen the positions the prefix does constrain.
-        if isinstance(additional_items, dict) and (
-            max_items is None or max_items > len(prefix_items)
-        ):
-            converted_items.append(additional_items)
+        if max_items is None or max_items > len(prefix_items):
+            if open_tail:
+                converted_items.append({})
+            elif isinstance(additional_items, dict):
+                converted_items.append(additional_items)
+        # An ``items`` this block would synthesize for an open tail is left out when the schema
+        # is about to be merged with the keys around a nullable reference (``normalize_items``
+        # is cleared): the merged result is normalized afterwards, and an ``items`` that the
+        # surrounding schema declares must not lose to a synthesized one.
+        synthesize = normalize_items or not reachable_open_tail
         if converted_items and all(
             _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
         ):
             # Every position shares the identical schema: a plain ``items``
             # array faithfully represents it, with nothing position-specific
             # to lose.
-            result["items"] = converted_items[0]
+            if synthesize or converted_items[0]:
+                result["items"] = converted_items[0]
+        elif reachable_open_tail and all(_constrains_nothing(item) for item in converted_items):
+            if synthesize:
+                result["items"] = {}
         elif converted_items:
             # A heterogeneous tuple has no OpenAPI-3.0-native representation:
             # ``oneOf`` looks closest to the original intent, but JSON
@@ -625,16 +663,22 @@ def _convert_prepared_schema_to_3_0(
             # *which* schema: this is a genuine, not cosmetic, loss of the
             # tuple's positional constraints, so it is reported rather than
             # silently emitted as if it were faithful (#782).
-            result["items"] = {"anyOf": converted_items}
+            approximation = "items: {}" if reachable_open_tail else "items.anyOf"
+            if not reachable_open_tail:
+                result["items"] = {"anyOf": converted_items}
+            elif synthesize:
+                result["items"] = {}
             if lossy is not None:
                 item_types = ", ".join(
-                    str(item.get("type", "object")) if isinstance(item, dict) else "unknown"
+                    ("any" if not item else str(item.get("type", "object")))
+                    if isinstance(item, dict)
+                    else "unknown"
                     for item in converted_items
                 )
                 lossy.append(
                     f"tuple[{item_types}] positional constraints cannot be "
                     "preserved in OpenAPI 3.0 and were approximated as "
-                    "items.anyOf; a value valid at any position is now "
+                    f"{approximation}; a value valid at any position is now "
                     "accepted at every position"
                 )
     for combinator in ("allOf", "anyOf", "oneOf"):
@@ -655,7 +699,15 @@ def _convert_prepared_schema_to_3_0(
             for k, v in result["$defs"].items()
         }
 
-    return _collapse_nullable_combinator(result, schemas, resolving, lossy)
+    result = _collapse_nullable_combinator(result, schemas, resolving, lossy)
+    if normalize_items:
+        if result.get("items") is True:
+            result["items"] = {}
+        elif result.get("items") is False:
+            result["items"] = {"not": {}}
+        if result.get("type") == "array" and "items" not in result:
+            result["items"] = {}
+    return result
 
 
 def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
