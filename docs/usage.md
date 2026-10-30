@@ -771,6 +771,12 @@ when the discovered description is blank. Different schemas for the same
 status, request body, or parameter remain configuration errors; the exception
 identifies the endpoint, conflicting item, and both metadata sources.
 
+`register_openapi_routes(app, ...)` and the `app=` argument of `generate_openapi_spec`,
+`get_openapi_json`, `get_openapi_yaml` and `generate_openapi_report` already scan the app, so a
+separate `scan_endpoint_metadata(app)` call is optional on that path. Call it yourself only when
+you want to seed a registry ahead of time, for example the process-wide one for a generator call
+that does not pass `app=`.
+
 !!! info "No extra dependencies required"
     `scan_endpoint_metadata()` reads the convention-based metadata attribute
     written by `@validate_http` — no extra install step needed beyond having both
