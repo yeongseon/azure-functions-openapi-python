@@ -10,6 +10,11 @@ from openapi_spec_validator import validate
 from pydantic import BaseModel, Field, JsonValue, RootModel
 import pytest
 
+from azure_functions_openapi._schema_version_conversion import (
+    _accepts_null,
+    _convert_schema_to_3_0,
+    _merge_wrapper_into_inlined,
+)
 from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -271,6 +276,30 @@ ROWS: list[tuple[str, tuple[Any, Any], list[JsonValue], list[JsonValue]]] = [
         [None, {}, "x"],
         [1, []],
     ),
+    (
+        "any-of-beside-a-one-of-union",
+        (
+            {
+                "anyOf": [{"type": "string"}, {"type": "integer"}, {"type": "null"}],
+                "oneOf": [{"$ref": "#/$defs/T"}, {"$ref": "#/$defs/S"}, {"type": "null"}],
+            },
+            {"T": {"type": "object"}, "S": {"type": "string"}},
+        ),
+        [None, "a"],
+        [1, 2.5, {}, []],
+    ),
+    (
+        "any-of-accepting-null-beside-a-one-of-union",
+        (
+            {
+                "anyOf": [{"enum": [None, "a"]}, {"type": "integer"}],
+                "oneOf": [{"$ref": "#/$defs/T"}, {"$ref": "#/$defs/S"}, {"type": "null"}],
+            },
+            {"T": {"allOf": [{"type": "object"}]}, "S": {"type": "string"}},
+        ),
+        [None, "a"],
+        [1, "b", 2.5, {}, []],
+    ),
 ]
 
 
@@ -496,3 +525,132 @@ def test_unresolvable_reference_keeps_the_surrounding_all_of() -> None:
         "allOf": [{"minProperties": 1}],
         "anyOf": [{"$ref": "#/components/schemas/Missing"}, {"nullable": True, "enum": [None]}],
     }
+
+
+def test_no_null_branch_is_added_when_the_original_rejects_null() -> None:
+    # Given: a ``type`` beside the union rules ``null`` out in the original.
+    node = {"type": "object", "anyOf": [T_REF, {"type": "null"}]}
+    registry = _registry(node, {"T": {"type": "object"}}, hoisted=True)
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the union keeps its member and does not advertise a null it would reject.
+    assert spec["components"]["schemas"]["Holder"] == {
+        "type": "object",
+        "anyOf": [{"$ref": "#/components/schemas/T"}],
+    }
+
+
+def test_union_of_unresolvable_references_gets_a_null_branch() -> None:
+    # Given: references that cannot be resolved, so ``nullable`` cannot be placed on a branch.
+    node = {
+        "anyOf": [
+            {"$ref": "#/components/schemas/A"},
+            {"$ref": "#/components/schemas/B"},
+            {"type": "null"},
+        ]
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, schemas=None)
+
+    # Then
+    assert {"nullable": True, "enum": [None]} in converted["anyOf"]
+
+
+def test_unresolvable_reference_beside_the_union_does_not_reject_null() -> None:
+    # Given: a conjunct beside the union that refers to a missing component.
+    node = {
+        "allOf": [{"$ref": "#/components/schemas/Missing"}],
+        "anyOf": [{"$ref": "#/components/schemas/A"}, {"type": "null"}],
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, schemas={})
+
+    # Then: the original is assumed to accept null, so the union keeps its null branch.
+    assert {"nullable": True, "enum": [None]} in converted["anyOf"]
+
+
+COMPONENTS = "#/components/schemas/"
+REFERENCED = {
+    "Accepts": {"type": ["string", "null"]},
+    "Rejects": {"type": "string"},
+    "Cycle": {"allOf": [{"$ref": COMPONENTS + "Cycle"}]},
+}
+
+
+@pytest.mark.parametrize(
+    ("schema", "expected"),
+    [
+        (True, True),
+        (False, False),
+        ({}, True),
+        ({"type": "string"}, False),
+        ({"type": "null"}, True),
+        ({"type": ["string", "null"]}, True),
+        ({"type": "string", "nullable": True}, True),
+        ({"type": "string", "nullable": False}, False),
+        ({"enum": ["a"]}, False),
+        ({"enum": ["a", None]}, True),
+        ({"const": "a"}, False),
+        ({"const": None}, True),
+        ({"allOf": [{"type": "null"}, {"type": "string"}]}, False),
+        ({"allOf": [{"type": ["string", "null"]}, {"enum": [None, "a"]}]}, True),
+        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, True),
+        ({"anyOf": [{"type": "string"}, {"type": "integer"}]}, False),
+        ({"oneOf": [{"type": "null"}, {"type": "string"}]}, True),
+        ({"oneOf": [{"type": "null"}, {"enum": [None]}]}, False),
+        ({"not": {"type": "null"}}, False),
+        ({"not": {"type": "string"}}, True),
+    ],
+)
+def test_null_acceptance_reads_every_keyword_that_can_reject_null(
+    schema: Any, expected: bool
+) -> None:
+    # Given / When / Then
+    assert _accepts_null(schema, None, ref_siblings_apply=True, assume_unknown=True) is expected
+
+
+def test_null_acceptance_follows_references() -> None:
+    # Given / When / Then: a resolved reference answers for its target.
+    accepts, rejects, cycle = (
+        {"$ref": COMPONENTS + name} for name in ("Accepts", "Rejects", "Cycle")
+    )
+    assert _accepts_null(accepts, REFERENCED, ref_siblings_apply=True, assume_unknown=False)
+    assert not _accepts_null(rejects, REFERENCED, ref_siblings_apply=True, assume_unknown=False)
+    # A cycle terminates and does not by itself reject null.
+    assert _accepts_null(cycle, REFERENCED, ref_siblings_apply=True, assume_unknown=False)
+
+
+@pytest.mark.parametrize(
+    "reference",
+    [COMPONENTS + "Missing", "https://example.com/schema.json"],
+    ids=["missing", "remote"],
+)
+def test_unresolvable_reference_answers_with_the_callers_assumption(reference: str) -> None:
+    # Given / When / Then
+    node = {"$ref": reference}
+    assert _accepts_null(node, REFERENCED, ref_siblings_apply=True, assume_unknown=True) is True
+    assert _accepts_null(node, REFERENCED, ref_siblings_apply=True, assume_unknown=False) is False
+
+
+def test_reference_siblings_apply_only_where_the_schema_dialect_reads_them() -> None:
+    # Given: a reference that accepts null, with a ``type`` beside it.
+    node = {"$ref": COMPONENTS + "Accepts", "type": "string"}
+
+    # When / Then: 2020-12 applies the sibling; 3.0 ignores it.
+    assert _accepts_null(node, REFERENCED, ref_siblings_apply=True, assume_unknown=False) is False
+    assert _accepts_null(node, REFERENCED, ref_siblings_apply=False, assume_unknown=False) is True
+
+
+def test_merging_a_wrapper_leaves_nullable_to_the_caller() -> None:
+    # Given
+    inlined = {"type": "object", "nullable": True}
+
+    # When
+    merged = _merge_wrapper_into_inlined(inlined, {"nullable": False, "description": "field"})
+
+    # Then
+    assert merged == {"type": "object", "nullable": True, "description": "field"}
