@@ -77,10 +77,19 @@ azure-functions-openapi generate --app function_app:app --route-prefix auto
 
 The CLI reads `host.json` beside the imported `--app` module, falling back to
 the current working directory if there is no app or the module has no `__file__`.
-The app-setting override above still wins in `auto` mode. If the file is
-unreadable or malformed, `auto` falls back to `/api` and prints the same
-`RuntimeWarning` on stderr; that warning does not gate `--fail-on-warnings`. A
-**literal** prefix named `auto` must be written `--route-prefix /auto`.
+The app-setting override above still wins in `auto` mode: when present, even
+empty, it is used before any file is read. Otherwise, an unreadable file,
+invalid JSON (including comments or trailing commas), or a non-string
+`extensions.http.routePrefix` is a configuration error. The CLI exits `1` with
+the file path and reason on stderr before writing any output, regardless of
+`--fail-on-warnings`. Fix the file or pass `--route-prefix` explicitly. A missing
+file or missing key still silently uses `/api`.
+
+This stricter failure behavior is CLI `auto` mode only: an explicit request to
+follow the host configuration must not guess when that configuration is unusable.
+The Python helper `resolve_route_prefix()` deliberately retains its
+`RuntimeWarning` and `/api` fallback for unusable files, as described above.
+A **literal** prefix named `auto` must be written `--route-prefix /auto`.
 
 Without `auto`, a configured file prefix that differs from the effective
 prefix produces a structured `route-prefix-mismatch` warning as a JSON line on
