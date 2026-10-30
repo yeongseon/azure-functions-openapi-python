@@ -227,6 +227,17 @@ attaching `nullable` directly to one branch of a nullable multi-type union,
 so the result is not just structurally valid but actually accepts a `null`
 value under real OpenAPI 3.0 tooling.
 
+A `type` array without `null` (for example `type: [string, integer]`, which
+validation producers use for error locations) is rewritten to an `anyOf` of
+single-type schemas, and sibling keywords stay on the schema. A `type` array
+that conversion cannot rewrite faithfully, such as one beside a `discriminator`,
+stays in the document. Like an `anyOf` with a `null` branch that conversion
+could not normalize, it is reported as a structured `version-downgrade-drop`
+warning (visible via `generate_openapi_report()` or the CLI's
+`--fail-on-warnings`) and raises `OpenAPISpecConfigError` under `strict=True`.
+Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does not define, for
+example `if`/`then`/`else` or `contains`, are not checked.
+
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
 `items.anyOf`, which accepts the right set of values but can no longer

@@ -87,9 +87,15 @@ The final call-flow is:
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
    the original map, replacing it only after all converted components are returned.
-4. For 3.0, retain `_check_schemas_3_0_compatible` after conversion. It rejects or
-   warns about residual constructs such as non-null type arrays that conversion
-   does not normalize. Faithfully converted nullable schemas must not trigger it.
+4. For 3.0, retain the residual compatibility audit after conversion:
+   `_check_operation_schemas_3_0_compatible` for inline operation schemas and
+   `_check_schemas_3_0_compatible` for components. Each rejects (strict) or reports
+   a `type` array or null-`anyOf` that conversion could not normalize, naming the
+   construct and where it was found. Conversion rewrites non-null `type` arrays to
+   `anyOf` except beside a `discriminator`, which a combinator would activate, and
+   faithfully converted schemas must not trigger the audit. Non-strict findings
+   join the schema-loss findings below rather than being logged on their own.
+   Keywords OpenAPI 3.0 does not define are not audited.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
    before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
