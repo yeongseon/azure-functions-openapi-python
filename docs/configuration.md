@@ -261,6 +261,8 @@ Each message names the keyword and its original JSON-pointer-like schema path
 (escaping `~` as `~0` and `/` as `~1`). Components include `Schema 'Name':`;
 inline schemas include the method, emitted route and operation slot, for example
 `POST /api/config requestBody.content.application/json.schema/properties/flags/propertyNames`.
+A dropped keyword that holds schemas of its own (for example a `propertyNames`
+with an `if` inside) is reported together with the occurrences nested in it.
 Removal and reporting use one preparation traversal before nullable collapsing or
 tuple approximation can relocate or revisit predicates. It covers properties,
 items, prefix items, additional properties, pattern-property values, combinator

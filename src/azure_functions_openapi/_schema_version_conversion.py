@@ -140,6 +140,10 @@ def _ensure_null_accepting(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+class _PreparedSchemas(dict[str, Any]):
+    """A component map whose schemas already went through the 3.0 preparation step."""
+
+
 def _inline_ref_nullable(
     ref: str,
     extra_keys: dict[str, Any],
@@ -174,6 +178,14 @@ def _inline_ref_nullable(
     target = schemas.get(name)
     if not isinstance(target, dict):
         return None
+    if not isinstance(schemas, _PreparedSchemas):
+        # A caller outside the batch conversions handed over a raw component map: prepare
+        # the target being expanded, and report what that drops, once.
+        target_losses: list[str] = []
+        target = _prepare_schema_for_3_0(target, target_losses)
+        if lossy is not None:
+            messages = (f"Schema '{name}': {message}" for message in target_losses)
+            lossy.extend(message for message in messages if message not in lossy)
     inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
     inlined = _ensure_null_accepting(inlined)
     for k, v in extra_keys.items():
@@ -440,15 +452,7 @@ def _convert_schema_to_3_0(
     if not isinstance(schema, dict):
         return schema
     prepared = _prepare_schema_for_3_0(schema, lossy)
-    prepared_schemas = (
-        {
-            name: _prepare_schema_for_3_0(value, None) if isinstance(value, dict) else value
-            for name, value in schemas.items()
-        }
-        if schemas is not None
-        else None
-    )
-    return _convert_prepared_schema_to_3_0(prepared, prepared_schemas, resolving, lossy)
+    return _convert_prepared_schema_to_3_0(prepared, schemas, resolving, lossy)
 
 
 def _convert_prepared_schema_to_3_0(
@@ -664,7 +668,7 @@ def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], li
     """
     converted: dict[str, Any] = {}
     lossy_messages: list[str] = []
-    prepared_schemas: dict[str, Any] = {}
+    prepared_schemas = _PreparedSchemas()
     preparation_losses: dict[str, list[str]] = {}
     for name, schema in schemas.items():
         preparation_losses[name] = []
@@ -883,10 +887,10 @@ def _convert_operation_schemas_to_3_0(
     """
     lossy: list[str] = []
     prepared_schemas = (
-        {
-            name: _prepare_schema_for_3_0(value, None) if isinstance(value, dict) else value
+        _PreparedSchemas(
+            (name, _prepare_schema_for_3_0(value, None) if isinstance(value, dict) else value)
             for name, value in schemas.items()
-        }
+        )
         if schemas is not None
         else None
     )

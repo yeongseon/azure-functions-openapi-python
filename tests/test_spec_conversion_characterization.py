@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
 from openapi_spec_validator import validate
@@ -12,6 +12,7 @@ import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
     _convert_schema_to_3_0,
+    _convert_schemas_to_3_0,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -1261,6 +1262,107 @@ UNDEFINED_KEYWORDS: list[tuple[str, JsonValue, str]] = [
         "dependent object constraints are no longer enforced",
     ),
 ]
+
+
+NESTED_IN_DROPPED = {
+    "type": "object",
+    "propertyNames": {
+        "if": {"contains": {"dependentSchemas": {"a/b": {"unevaluatedItems": False}}}},
+        "dependentRequired": {"if": ["contains"]},
+    },
+}
+NESTED_PATHS = [
+    ("propertyNames", "/propertyNames"),
+    ("if", "/propertyNames/if"),
+    ("contains", "/propertyNames/if/contains"),
+    ("dependentSchemas", "/propertyNames/if/contains/dependentSchemas"),
+    ("unevaluatedItems", "/propertyNames/if/contains/dependentSchemas/a~1b/unevaluatedItems"),
+    ("dependentRequired", "/propertyNames/dependentRequired"),
+]
+
+
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_keywords_nested_in_a_dropped_keyword_are_reported_too(hoisted: bool, strict: bool) -> None:
+    # Given: dropped keywords that hold other dropped keywords, and data that only looks like them.
+    schema = (
+        {"$ref": "#/$defs/Nested", "$defs": {"Nested": NESTED_IN_DROPPED}}
+        if hoisted
+        else NESTED_IN_DROPPED
+    )
+    registry = OpenAPIRegistry()
+    registry.set("nested", {"route": "nested", "method": "post", "request_body": schema})
+    losses = {keyword: loss for keyword, _, loss in UNDEFINED_KEYWORDS}
+    inline = "POST /api/nested requestBody.content.application/json.schema"
+    expected = sorted(
+        f"Schema 'Nested': dropped '{keyword}' at {path}: OpenAPI 3.0 does not define it; "
+        f"{losses[keyword]}"
+        if hoisted
+        else f"dropped '{keyword}' at {inline}{path}: OpenAPI 3.0 does not define it; "
+        f"{losses[keyword]}"
+        for keyword, path in NESTED_PATHS
+    )
+
+    # When / Then
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        lines = str(caught.value).splitlines()[1:]
+        assert sorted(line.removeprefix("  - ") for line in lines) == expected
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+    assert sorted(w.message for w in collect_spec_warnings(spec, registry)) == expected
+    validate(spec)
+
+
+def test_nested_dropped_keywords_are_reported_in_document_order() -> None:
+    # Given
+    schemas = {"Nested": NESTED_IN_DROPPED}
+
+    # When
+    converted, messages = _convert_schemas_to_3_0(schemas)
+
+    # Then: an outer keyword precedes what it holds, and the result keeps only what 3.0 defines.
+    assert converted["Nested"] == {"type": "object"}
+    assert [message.split(" at ")[1].split(":")[0] for message in messages] == [
+        f"{path}" for _, path in NESTED_PATHS
+    ]
+
+
+def test_keyword_named_data_is_neither_dropped_nor_reported() -> None:
+    # Given: the keyword names appear as property names, values and extension payloads.
+    schema: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "if": {"type": "string"},
+            "contains": {"type": "string"},
+            "then": {"type": "integer"},
+            "propertyNames": {"type": "string"},
+            "dependentSchemas": {"type": "string"},
+            "tagged": {"enum": [{"if": 1, "contains": {"propertyNames": "x"}}]},
+        },
+        "required": ["if", "contains"],
+        "example": {"if": 1, "contains": {"propertyNames": "x", "dependentSchemas": []}},
+        "default": {"then": {"else": 1}},
+        "x-extension": {"if": {"contains": 1}, "propertyNames": {"maxLength": 1}},
+        "discriminator": {"propertyName": "if", "mapping": {"contains": "#/components/schemas/X"}},
+    }
+    before = copy.deepcopy(schema)
+    losses: list[str] = []
+
+    # When
+    converted = _convert_schema_to_3_0(schema, lossy=losses)
+
+    # Then
+    assert losses == []
+    assert converted["properties"].keys() == schema["properties"].keys()
+    assert converted["properties"]["tagged"] == schema["properties"]["tagged"]
+    assert converted["required"] == ["if", "contains"]
+    assert converted["example"] == schema["example"]
+    assert converted["default"] == schema["default"]
+    assert converted["x-extension"] == schema["x-extension"]
+    assert converted["discriminator"] == schema["discriminator"]
+    assert schema == before
 
 
 @pytest.mark.parametrize("version", VERSIONS)

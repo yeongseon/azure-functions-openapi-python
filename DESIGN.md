@@ -103,7 +103,9 @@ The final call-flow is:
    `minContains`/`maxContains`, `unevaluatedProperties`/`unevaluatedItems`,
    `dependentRequired` and `dependentSchemas`. Removal and reporting share the
    same visit, retaining original escaped schema paths and component names or
-   inline operation-slot labels. These losses use `version-downgrade-drop` and
+   inline operation-slot labels; occurrences nested inside a dropped keyword are
+   reported as well. A component expanded for a nullable reference is prepared once
+   per batch, or on demand when a caller passes a raw component map. These losses use `version-downgrade-drop` and
    the existing strict error wrapper, not the residual audit. Legacy array-valued
    `items` is instead normalized to `prefixItems`, with `additionalItems` becoming
    the tail `items` (schema, false or absent preserved), before the existing tuple

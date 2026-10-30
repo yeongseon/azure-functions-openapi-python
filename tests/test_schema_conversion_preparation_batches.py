@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import inspect
+from typing import Any
 
 from pydantic import JsonValue
 import pytest
@@ -91,3 +93,58 @@ def test_component_batches_keep_preparation_and_conversion_message_order() -> No
     assert converted == expected_schemas
     assert messages == expected_messages
     assert schemas == before
+
+
+NULLABLE_X = {"anyOf": [{"$ref": "#/components/schemas/X"}, {"type": "null"}]}
+X_LOSS = (
+    "Schema 'X': dropped 'propertyNames' at /propertyNames: "
+    "OpenAPI 3.0 does not define it; key names are no longer restricted"
+)
+
+
+def test_compatibility_wrapper_reports_what_an_expanded_reference_drops() -> None:
+    # Given: a raw component map, as an external caller of the wrapper would pass it.
+    schemas: dict[str, JsonValue] = {"X": {"type": "object", "propertyNames": {"maxLength": 2}}}
+    node = {"properties": {"first": NULLABLE_X, "second": NULLABLE_X}}
+    before = copy.deepcopy(schemas)
+    losses: list[str] = []
+
+    # When
+    converted = conversion._convert_schema_to_3_0(node, schemas, lossy=losses)
+
+    # Then: the dropped keyword is neither kept nor silent, and a repeated expansion adds nothing.
+    assert converted["properties"]["first"] == {"type": "object", "nullable": True}
+    assert converted["properties"]["second"] == {"type": "object", "nullable": True}
+    assert losses == [X_LOSS]
+    assert schemas == before
+
+
+def test_batch_conversions_report_a_component_once_however_often_it_is_expanded() -> None:
+    # Given: an inline slot and another component both expand the same nullable reference.
+    schemas: dict[str, Any] = {
+        "X": {"type": "object", "propertyNames": {"maxLength": 2}},
+        "Y": {"type": "object", "properties": {"x": NULLABLE_X}},
+    }
+    paths = {
+        "/a": {"post": {"requestBody": {"content": {"application/json": {"schema": NULLABLE_X}}}}}
+    }
+
+    # When
+    operation_losses = conversion._convert_operation_schemas_to_3_0(paths, schemas)
+    _, component_losses = conversion._convert_schemas_to_3_0(schemas)
+
+    # Then: components are reported by their own pass, not by the places that expand them.
+    assert operation_losses == []
+    assert component_losses == [X_LOSS]
+
+
+def test_compatibility_wrapper_keeps_its_signature() -> None:
+    # Given / When
+    parameters = inspect.signature(conversion._convert_schema_to_3_0).parameters
+
+    # Then
+    assert list(parameters) == ["schema", "schemas", "resolving", "lossy"]
+    assert parameters["schema"].default is inspect.Parameter.empty
+    assert parameters["schemas"].default is None
+    assert parameters["resolving"].default == frozenset()
+    assert parameters["lossy"].default is None

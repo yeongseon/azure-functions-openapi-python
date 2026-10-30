@@ -17,9 +17,16 @@ _DROPPED_KEYWORDS: Final = {
     "dependentRequired": "dependent properties are no longer required",
     "dependentSchemas": "dependent object constraints are no longer enforced",
 }
+_SCHEMA_VALUED_DROPS: Final = frozenset(
+    {"propertyNames", "if", "then", "else", "contains", "unevaluatedProperties", "unevaluatedItems"}
+)
 _MAP_KEYS: Final = frozenset({"properties", "patternProperties", "$defs"})
 _SCHEMA_KEYS: Final = frozenset({"items", "additionalItems", "additionalProperties", "not"})
 _LIST_KEYS: Final = frozenset({"items", "prefixItems", "allOf", "anyOf", "oneOf"})
+
+
+def _escape(name: str) -> str:
+    return name.replace("~", "~0").replace("/", "~1")
 
 
 def _prepare_schema_for_3_0(
@@ -27,19 +34,24 @@ def _prepare_schema_for_3_0(
 ) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in schema.items():
-        path = f"{location}/{key.replace('~', '~0').replace('/', '~1')}"
+        path = f"{location}/{_escape(key)}"
         if key in _DROPPED_KEYWORDS:
             if lossy is not None:
                 lossy.append(
                     f"dropped '{key}' at {path}: OpenAPI 3.0 does not define it; "
                     f"{_DROPPED_KEYWORDS[key]}"
                 )
+                # What the dropped keyword held is dropped with it, so report its own occurrences.
+                if key in _SCHEMA_VALUED_DROPS and isinstance(value, dict):
+                    _prepare_schema_for_3_0(value, lossy, path)
+                elif key == "dependentSchemas" and isinstance(value, dict):
+                    for name, child in value.items():
+                        if isinstance(child, dict):
+                            _prepare_schema_for_3_0(child, lossy, f"{path}/{_escape(name)}")
             continue
         if key in _MAP_KEYS and isinstance(value, dict):
             result[key] = {
-                name: _prepare_schema_for_3_0(
-                    child, lossy, f"{path}/{name.replace('~', '~0').replace('/', '~1')}"
-                )
+                name: _prepare_schema_for_3_0(child, lossy, f"{path}/{_escape(name)}")
                 if isinstance(child, dict)
                 else child
                 for name, child in value.items()
