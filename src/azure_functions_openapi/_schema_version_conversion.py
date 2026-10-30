@@ -296,7 +296,7 @@ def _collapse_nullable_combinator(
             else:
                 result[key] = non_null
         elif not non_null:
-            result.setdefault("enum", [None])
+            _keep_null_only(result)
         elif len(non_null) > 1:
             patched_members: list[Any] = []
             patched_one = False
@@ -384,6 +384,23 @@ def _wrap_ref_siblings(schema: dict[str, Any]) -> None:
     schema["allOf"] = [{"$ref": schema.pop("$ref")}, *(all_of if isinstance(all_of, list) else [])]
 
 
+def _keep_null_only(schema: dict[str, Any]) -> None:
+    """Keep *schema*, which just lost a null-only ``type``, accepting nothing but ``null``.
+
+    ``nullable`` without a ``type`` accepts every value, so the schema gets an ``enum`` of
+    ``null`` instead. An ``enum`` it already carries (a ``const`` was turned into one) is
+    intersected with that: a list that includes ``null`` narrows to it, and one that
+    excludes it can be met by no instance, so the null-only predicate joins ``allOf`` and
+    the two together still accept nothing.
+    """
+    enum = schema.get("enum")
+    if isinstance(enum, list) and None not in enum:
+        all_of = schema.get("allOf")
+        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"enum": [None]}]
+    else:
+        schema["enum"] = [None]
+
+
 def _convert_schema_to_3_0(
     schema: dict[str, Any],
     schemas: dict[str, Any] | None = None,
@@ -459,7 +476,7 @@ def _convert_schema_to_3_0(
             result["type"] = non_null_types[0]
         elif not non_null_types:
             del result["type"]
-            result.setdefault("enum", [None])
+            _keep_null_only(result)
         else:
             _expand_type_union(result, non_null_types)
         type_array_rewritten = True
@@ -488,10 +505,10 @@ def _convert_schema_to_3_0(
 
     if result.get("type") == "null":
         # Without ``type``, ``nullable`` alone accepts every value, so a null-only schema
-        # keeps an ``enum`` of ``null``; a ``not`` over it would otherwise reject everything.
+        # must stay null-only; a ``not`` over it would otherwise reject everything.
         del result["type"]
         result["nullable"] = True
-        result.setdefault("enum", [None])
+        _keep_null_only(result)
 
     result = _collapse_nullable_combinator(result, schemas, resolving, lossy)
 

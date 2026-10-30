@@ -246,7 +246,9 @@ not define, for example `if`/`then`/`else` or `contains`, are not checked.
 A schema that accepts only `null` (`type: "null"`, or a union of nothing but null
 members) becomes `enum: [null]` with `nullable: true`. A type-less `nullable`
 schema would accept every value in OpenAPI 3.0, and a `not` over it would then
-reject every value.
+reject every value. An `enum` or `const` beside it is intersected with that: a
+list that includes `null` narrows to it, and one that excludes `null` leaves a
+schema that accepts nothing, as the original does.
 
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as

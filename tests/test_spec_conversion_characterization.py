@@ -6,7 +6,7 @@ import copy
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
 from openapi_spec_validator import validate
-from pydantic import JsonValue
+from pydantic import BaseModel, Field, JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
@@ -14,6 +14,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _operation_schema_slots,
 )
 from azure_functions_openapi._warnings import WarningCode
+from azure_functions_openapi.decorator import register_openapi_metadata
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -261,6 +262,61 @@ TUPLE_LOSS = (
             [1, {}, [1]],
             [None, "x"],
         ),
+        (
+            {"type": "null", "enum": [None, "x"]},
+            {"enum": [None], "nullable": True},
+            {"type": "null", "enum": [None, "x"]},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"type": ["null"], "enum": [None, "x"]},
+            {"enum": [None], "nullable": True},
+            {"type": ["null"], "enum": [None, "x"]},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"anyOf": [{"type": "null"}], "enum": [None, "x"]},
+            {"enum": [None], "nullable": True},
+            {"anyOf": [{"type": "null"}], "enum": [None, "x"]},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"properties": {"a": {"type": "null", "enum": [None, "x"]}}},
+            {"properties": {"a": {"enum": [None], "nullable": True}}},
+            {"properties": {"a": {"type": "null", "enum": [None, "x"]}}},
+            [{}, {"a": None}],
+            [{"a": "x"}],
+        ),
+        (
+            {"type": "null", "enum": ["x"]},
+            {"enum": ["x"], "nullable": True, "allOf": [{"enum": [None], "nullable": True}]},
+            {"type": "null", "enum": ["x"]},
+            [],
+            [None, "x", 1, {}],
+        ),
+        (
+            {"type": "null", "const": "x"},
+            {"enum": ["x"], "nullable": True, "allOf": [{"enum": [None], "nullable": True}]},
+            {"type": "null", "const": "x"},
+            [],
+            [None, "x", 1],
+        ),
+        (
+            {"not": {"type": "null", "const": "x"}},
+            {
+                "not": {
+                    "enum": ["x"],
+                    "nullable": True,
+                    "allOf": [{"enum": [None], "nullable": True}],
+                }
+            },
+            {"not": {"type": "null", "const": "x"}},
+            [None, "x", 1, {}],
+            [],
+        ),
     ],
     ids=[
         "legacy-nullable",
@@ -283,6 +339,13 @@ TUPLE_LOSS = (
         "null-only-in-a-property",
         "negated-null-only",
         "negated-null-list-member",
+        "null-only-beside-a-broader-enum",
+        "null-list-beside-a-broader-enum",
+        "only-null-member-beside-a-broader-enum",
+        "null-only-property-beside-a-broader-enum",
+        "null-only-beside-an-enum-without-null",
+        "null-only-beside-a-const",
+        "negated-null-only-beside-a-const",
     ],
 )
 def test_schema_conversion_at_every_operation_position(
@@ -641,6 +704,28 @@ def test_reference_to_a_null_only_component_stays_null_only(strict: bool) -> Non
     rest: list[JsonValue] = ["x", 1, {}]
     assert all(validator.is_valid(instance) for instance in rest)
     assert not validator.is_valid(None)
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+def test_none_typed_field_with_a_broader_enum_accepts_only_null() -> None:
+    # Given: Pydantic keeps both ``type: "null"`` and the enum that an extra supplies.
+    class Payload(BaseModel):
+        value: None = Field(default=None, json_schema_extra={"enum": [None, "x"]})
+
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/payload", "POST", request_model=Payload, registry=registry)
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the 3.0 property accepts exactly what the original property does.
+    original = OAS31Validator(Payload.model_json_schema())
+    converted = OAS30Validator(
+        {"$ref": "#/components/schemas/Payload", "components": spec["components"]}
+    )
+    probes: list[JsonValue] = [{}, {"value": None}, {"value": "x"}]
+    assert [converted.is_valid(probe) for probe in probes] == [True, True, False]
+    assert [original.is_valid(probe) for probe in probes] == [True, True, False]
     assert collect_spec_warnings(spec, registry) == ()
 
 
