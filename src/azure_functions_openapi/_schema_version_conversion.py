@@ -393,12 +393,41 @@ def _keep_null_only(schema: dict[str, Any]) -> None:
     excludes it can be met by no instance, so the null-only predicate joins ``allOf`` and
     the two together still accept nothing.
     """
+    _intersect_enum(schema, None)
+
+
+def _json_schema_equal(first: Any, second: Any) -> bool:
+    """Compare JSON values without Python's boolean/number equivalence, including nested values."""
+    if isinstance(first, bool) or isinstance(second, bool):
+        return type(first) is type(second) and first == second
+    if isinstance(first, list) and isinstance(second, list):
+        return len(first) == len(second) and all(
+            _json_schema_equal(a, b) for a, b in zip(first, second)
+        )
+    if isinstance(first, dict) and isinstance(second, dict):
+        return first.keys() == second.keys() and all(
+            _json_schema_equal(value, second[key]) for key, value in first.items()
+        )
+    return bool(first == second)
+
+
+def _intersect_enum(schema: dict[str, Any], value: Any) -> None:
+    """Intersect a singleton with an existing enum, keeping contradictions as conjuncts.
+
+    OpenAPI 3.0 requires a non-empty ``enum``, so an empty one, which accepts nothing, is
+    replaced by ``not: {}``, the 3.0 schema that rejects every instance.
+    """
     enum = schema.get("enum")
-    if isinstance(enum, list) and None not in enum:
-        all_of = schema.get("allOf")
-        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"enum": [None]}]
+    if not isinstance(enum, list) or any(_json_schema_equal(value, member) for member in enum):
+        schema["enum"] = [value]
+        return
+    if enum:
+        conjunct: dict[str, Any] = {"enum": [value]}
     else:
-        schema["enum"] = [None]
+        del schema["enum"]
+        conjunct = {"not": {}}
+    all_of = schema.get("allOf")
+    schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), conjunct]
 
 
 def _convert_schema_to_3_0(
@@ -437,7 +466,7 @@ def _convert_schema_to_3_0(
     result = dict(schema)
 
     if "const" in result:
-        result["enum"] = [result.pop("const")]
+        _intersect_enum(result, result.pop("const"))
 
     examples = result.pop("examples", None)
     if isinstance(examples, list) and examples:
@@ -461,8 +490,13 @@ def _convert_schema_to_3_0(
     ):
         exclusive_bound = result.get(exclusive_key)
         if isinstance(exclusive_bound, (int, float)) and not isinstance(exclusive_bound, bool):
-            result[bound_key] = exclusive_bound
-            result[exclusive_key] = True
+            bound = result.get(bound_key, exclusive_bound)
+            tighter = _tighter_bound(bound_key, bound, exclusive_bound)
+            if tighter == exclusive_bound:
+                result[bound_key] = exclusive_bound
+                result[exclusive_key] = True
+            else:
+                del result[exclusive_key]
 
     # ``type: [T, "null"]`` -> ``type: T`` + ``nullable: true``. OpenAPI 3.0
     # requires ``type`` to be a single string, so a multi-type union is expressed
@@ -522,16 +556,37 @@ def _convert_schema_to_3_0(
     if "items" in result:
         result["items"] = _convert_schema_to_3_0(result["items"], schemas, resolving, lossy)
     prefix_items = result.pop("prefixItems", None)
-    if isinstance(prefix_items, list) and prefix_items:
+    if isinstance(prefix_items, list):
+        additional_items = result.get("items")
+        declared_cap = result.get("maxItems")
+        max_items = (
+            declared_cap
+            if isinstance(declared_cap, (int, float)) and not isinstance(declared_cap, bool)
+            else None
+        )
+        if additional_items is False:
+            result["maxItems"] = (
+                len(prefix_items) if max_items is None else min(max_items, len(prefix_items))
+            )
+            result["items"] = {}
         converted_items = [
             _convert_schema_to_3_0(item, schemas, resolving, lossy) for item in prefix_items
         ]
-        if all(item == converted_items[0] for item in converted_items[1:]):
+        # A tail schema only matters when an array can hold more items than the prefix
+        # covers; beyond a ``maxItems`` at or below the prefix length it is unreachable
+        # and must not widen the positions the prefix does constrain.
+        if isinstance(additional_items, dict) and (
+            max_items is None or max_items > len(prefix_items)
+        ):
+            converted_items.append(additional_items)
+        if converted_items and all(
+            _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
+        ):
             # Every position shares the identical schema: a plain ``items``
             # array faithfully represents it, with nothing position-specific
             # to lose.
             result["items"] = converted_items[0]
-        else:
+        elif converted_items:
             # A heterogeneous tuple has no OpenAPI-3.0-native representation:
             # ``oneOf`` looks closest to the original intent, but JSON
             # Schema's "integer" is a subset of "number", so a value valid at

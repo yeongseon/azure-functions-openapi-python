@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
+    _convert_schema_to_3_0,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -32,6 +33,156 @@ TUPLE_LOSS = (
 @pytest.mark.parametrize(
     ("original", "expected_30", "expected_31", "valid", "invalid"),
     [
+        *[
+            (
+                {"type": "array", "prefixItems": prefix, "items": items, **extra},
+                {"type": "array", "items": expected_items, **expected_extra},
+                {"type": "array", "prefixItems": prefix, "items": items, **extra},
+                valid,
+                invalid,
+            )
+            for prefix, items, extra, expected_items, expected_extra, valid, invalid in [
+                (
+                    [{"type": "string"}],
+                    False,
+                    {},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}] * 2,
+                    False,
+                    {},
+                    {"type": "string"},
+                    {"maxItems": 2},
+                    [[], ["a"], ["a", "b"]],
+                    [["a"] * 3, [1]],
+                ),
+                (
+                    [{"type": "string"}] * 2,
+                    False,
+                    {"maxItems": 1},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}],
+                    False,
+                    {"maxItems": 5},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [["a", "b"], [1]],
+                ),
+                (
+                    [{"type": "string"}],
+                    {"type": "string"},
+                    {},
+                    {"type": "string"},
+                    {},
+                    [[], ["a"], ["a", "b"]],
+                    [[1], ["a", 1]],
+                ),
+                (
+                    [{"type": "string"}],
+                    {"type": "number"},
+                    {"maxItems": 1},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [[1], ["a", 1], ["a", "b"]],
+                ),
+                (
+                    [{"type": "string"}],
+                    {"type": "number"},
+                    {"maxItems": 0},
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    [[]],
+                    [["a"], [1]],
+                ),
+                (
+                    [],
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    [[]],
+                    [["a"], [1]],
+                ),
+                ([], False, {}, {}, {"maxItems": 0}, [[]], [["a"], [1]]),
+                ([], {"type": "string"}, {}, {"type": "string"}, {}, [[], ["a"]], [[1]]),
+            ]
+        ],
+        *[
+            (
+                {"enum": enum, "const": const},
+                expected,
+                {"enum": enum, "const": const},
+                valid,
+                invalid,
+            )
+            for enum, const, expected, valid, invalid in [
+                (["x", "y"], "x", {"enum": ["x"]}, ["x"], ["y", None]),
+                (["y"], "x", {"enum": ["y"], "allOf": [{"enum": ["x"]}]}, [], ["x", "y", None]),
+                ([1], True, {"enum": [1], "allOf": [{"enum": [True]}]}, [], [True, 1, None]),
+                ([True], 1, {"enum": [True], "allOf": [{"enum": [1]}]}, [], [True, 1, None]),
+                ([1], 1.0, {"enum": [1.0]}, [1, 1.0], [True, 2]),
+                ([None, "x"], None, {"enum": [None], "nullable": True}, [None], ["x", 0]),
+                ([], 1, {"allOf": [{"not": {}}]}, [], [1, None, "x", {}]),
+                (
+                    ["x"],
+                    None,
+                    {"enum": ["x"], "allOf": [{"enum": [None], "nullable": True}]},
+                    [],
+                    ["x", None],
+                ),
+                ([[1]], [True], {"enum": [[1]], "allOf": [{"enum": [[True]]}]}, [], [[1], [True]]),
+                (
+                    [{"a": 1}],
+                    {"a": True},
+                    {"enum": [{"a": 1}], "allOf": [{"enum": [{"a": True}]}]},
+                    [],
+                    [{"a": 1}, {"a": True}],
+                ),
+                ([[1]], [1.0], {"enum": [[1.0]]}, [[1], [1.0]], [[], [True], [1, 2]]),
+                (
+                    [{"a": 1}],
+                    {"a": 1.0},
+                    {"enum": [{"a": 1.0}]},
+                    [{"a": 1}],
+                    [{}, {"b": 1}, {"a": True}],
+                ),
+            ]
+        ],
+        (
+            {"enum": ["y"], "const": "x", "allOf": [{"type": "string"}]},
+            {"enum": ["y"], "allOf": [{"type": "string"}, {"enum": ["x"]}]},
+            {"enum": ["y"], "const": "x", "allOf": [{"type": "string"}]},
+            [],
+            ["x", "y", None],
+        ),
+        *[
+            (
+                {"type": "number", bound: inclusive, exclusive: numeric},
+                {"type": "number", bound: kept, **({exclusive: True} if strict else {})},
+                {"type": "number", bound: inclusive, exclusive: numeric},
+                valid,
+                invalid,
+            )
+            for bound, exclusive, inclusive, numeric, kept, strict, valid, invalid in [
+                ("minimum", "exclusiveMinimum", 5, 1, 5, False, [5, 6], [1, 2, 4.9]),
+                ("minimum", "exclusiveMinimum", 1, 5, 5, True, [5.1, 6], [1, 2, 5]),
+                ("minimum", "exclusiveMinimum", 5, 5, 5, True, [5.1, 6], [4, 5]),
+                ("maximum", "exclusiveMaximum", 1, 5, 1, False, [0, 1], [1.1, 3, 5]),
+                ("maximum", "exclusiveMaximum", 5, 1, 1, True, [0, 0.9], [1, 3, 5]),
+                ("maximum", "exclusiveMaximum", 1, 1, 1, True, [0, 0.9], [1, 2]),
+            ]
+        ],
         (
             {"type": "string", "nullable": True, "example": "yes"},
             {"type": "string", "nullable": True, "example": "yes"},
@@ -319,6 +470,35 @@ TUPLE_LOSS = (
         ),
     ],
     ids=[
+        "closed-single-prefix",
+        "closed-homogeneous-prefix",
+        "closed-prefix-tighter-max",
+        "closed-prefix-looser-max",
+        "prefix-matches-additional-items",
+        "unreachable-tail-at-the-cap",
+        "unreachable-tail-below-the-cap",
+        "unreachable-tail-of-an-empty-prefix",
+        "closed-empty-prefix",
+        "empty-prefix-additional-items",
+        "enum-const-intersection",
+        "enum-const-contradiction",
+        "enum-number-const-bool",
+        "enum-bool-const-number",
+        "enum-const-numeric-equality",
+        "enum-const-null",
+        "empty-enum-const",
+        "enum-const-null-contradiction",
+        "enum-const-nested-list-bool",
+        "enum-const-nested-object-bool",
+        "enum-const-list-equality",
+        "enum-const-object-equality",
+        "enum-const-keeps-all-of",
+        "inclusive-lower-wins",
+        "exclusive-lower-wins",
+        "equal-lower-is-exclusive",
+        "inclusive-upper-wins",
+        "exclusive-upper-wins",
+        "equal-upper-is-exclusive",
         "legacy-nullable",
         "nullable-union",
         "nested-keywords",
@@ -464,6 +644,102 @@ def test_heterogeneous_tuple_strict_exception_is_repeatable() -> None:
         assert str(caught.value) == (
             "Strict mode: generated spec has validation errors:\n  - " + TUPLE_LOSS
         )
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("max_items", "reachable"),
+    [(1, False), (2, True), (None, True)],
+    ids=["cap-at-the-prefix-length", "cap-beyond-the-prefix", "no-cap"],
+)
+def test_tail_schema_counts_only_when_an_array_can_reach_it(
+    max_items: int | None, reachable: bool, strict: bool
+) -> None:
+    # Given: a string prefix whose tail is a different schema, with and without a cap.
+    schema = {
+        "type": "array",
+        "prefixItems": [{"type": "string"}],
+        "items": {"type": "number"},
+        **({} if max_items is None else {"maxItems": max_items}),
+    }
+    registry = OpenAPIRegistry()
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": schema})
+
+    # When / Then: a reachable tail is a positional loss; an unreachable one changes nothing.
+    if reachable and strict:
+        with pytest.raises(OpenAPISpecConfigError, match="positional constraints"):
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=strict)
+    actual = spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
+    validate(spec)
+    validator = OAS30Validator(actual)
+    if reachable:
+        assert actual["items"] == {"anyOf": [{"type": "string"}, {"type": "number"}]}
+        (warning,) = collect_spec_warnings(spec, registry)
+        assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+        assert validator.is_valid([1])
+        return
+    assert actual == {"type": "array", "items": {"type": "string"}, "maxItems": 1}
+    assert collect_spec_warnings(spec, registry) == ()
+    assert validator.is_valid(["a"])
+    assert not validator.is_valid([1])
+    assert not OAS31Validator(schema).is_valid([1])
+
+
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("closed", [False, True], ids=["schema-tail", "closed"])
+def test_prefix_items_overlap_reports_positional_loss(
+    version: str, hoisted: bool, strict: bool, closed: bool
+) -> None:
+    # Given: the tail differs from the prefix, or the closed prefix is heterogeneous.
+    members = [{"type": "integer"}, {"type": "number"}]
+    schema = {
+        "type": "array",
+        "prefixItems": members if closed else members[:1],
+        "items": False if closed else members[1],
+    }
+    body = {"$ref": "#/$defs/Pair", "$defs": {"Pair": schema}} if hoisted else schema
+    registry = OpenAPIRegistry()
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": body})
+    message = ("Schema 'Pair': " if hoisted else "") + TUPLE_LOSS
+
+    # When / Then: strict conversion refuses the approximation through the existing channel.
+    if strict and version == "3.0.0":
+        with pytest.raises(OpenAPISpecConfigError) as caught:
+            generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+        assert message in str(caught.value)
+        return
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=strict)
+
+    # Then: the tail is retained in the approximation and closed tuples keep their cap.
+    validate(spec)
+    actual = spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
+    if hoisted:
+        actual = spec["components"]["schemas"]["Pair"]
+    if version != "3.0.0":
+        assert actual == schema
+        assert collect_spec_warnings(spec, registry) == ()
+        return
+    assert actual == {
+        "type": "array",
+        "items": {"anyOf": members},
+        **({"maxItems": 2} if closed else {}),
+    }
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert warning.message == message
+    assert OAS30Validator(actual).is_valid([2.5])
+    assert not OAS31Validator(schema).is_valid([2.5])
+    assert OAS30Validator(actual).is_valid([1, 2, 3]) is not closed
 
 
 @pytest.mark.parametrize("version", VERSIONS)
@@ -727,6 +1003,89 @@ def test_none_typed_field_with_a_broader_enum_accepts_only_null() -> None:
     assert [converted.is_valid(probe) for probe in probes] == [True, True, False]
     assert [original.is_valid(probe) for probe in probes] == [True, True, False]
     assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "unsatisfiable",
+    [{"enum": [], "const": 1}, {"type": "null", "enum": []}, {"type": ["null"], "enum": []}],
+    ids=["empty-enum-const", "null-type-empty-enum", "null-type-array-empty-enum"],
+)
+def test_unsatisfiable_enum_stays_a_valid_openapi_3_0_document(
+    unsatisfiable: dict[str, JsonValue], hoisted: bool, strict: bool
+) -> None:
+    # Given: an empty ``enum``, which accepts nothing but is not allowed by OpenAPI 3.0.
+    body = (
+        {"$ref": "#/$defs/Never", "$defs": {"Never": unsatisfiable}} if hoisted else unsatisfiable
+    )
+    registry = OpenAPIRegistry()
+    registry.set("never", {"route": "never", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(
+        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted, strict=strict
+    )
+
+    # Then: the document validates, nothing is reported, and no instance is accepted.
+    validate(spec)
+    assert collect_spec_warnings(spec, registry) == ()
+    if hoisted:
+        root = {"$ref": "#/components/schemas/Never", "components": spec["components"]}
+    else:
+        root = spec["paths"]["/api/never"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    validator = OAS30Validator(root)
+    probes: list[JsonValue] = [None, 1, "x", True, [], {}]
+    assert not any(validator.is_valid(probe) for probe in probes)
+
+
+def test_pydantic_overlapping_bounds_keep_the_stricter_constraint() -> None:
+    # Given: Pydantic emits both bounds, even when the inclusive bound is stricter.
+    class Payload(BaseModel):
+        value: int = Field(ge=5, gt=1)
+
+    registry = OpenAPIRegistry()
+    register_openapi_metadata("/payload", "POST", request_model=Payload, registry=registry)
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the generated component has the same acceptance boundary as the producer.
+    validate(spec)
+    original = OAS31Validator(Payload.model_json_schema())
+    converted = OAS30Validator(
+        {"$ref": "#/components/schemas/Payload", "components": spec["components"]}
+    )
+    probes = [{"value": n} for n in (1, 2, 3, 4, 5, 6)]
+    assert [converted.is_valid(p) for p in probes] == [original.is_valid(p) for p in probes]
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize("exclusive", [False, True])
+def test_boolean_exclusive_bounds_are_already_openapi_3_0(exclusive: bool) -> None:
+    # Given: boolean exclusive bounds are modifiers, not numeric bounds.
+    schema = {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 5,
+        "exclusiveMinimum": exclusive,
+        "exclusiveMaximum": exclusive,
+    }
+    # When
+    converted = _convert_schema_to_3_0(schema)
+    # Then
+    assert converted == schema
+
+
+def test_empty_prefix_without_a_tail_stays_unconstrained() -> None:
+    # Given: an empty prefix adds no positional constraints.
+    schema = {"type": "array", "prefixItems": []}
+    # When
+    converted = _convert_schema_to_3_0(schema)
+    # Then
+    assert converted == {"type": "array"}
 
 
 @pytest.mark.parametrize(
