@@ -1,6 +1,36 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.31.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.30.1...v0.31.0) (2026-10-30)
+
+
+### Features
+
+* **docs-routes:** forward protected Swagger UI keys by header instead of embedding them ([#823](https://github.com/yeongseon/azure-functions-openapi-python/issues/823)) ([0ca1550](https://github.com/yeongseon/azure-functions-openapi-python/commit/0ca155012502c9775f00b8133566c0b24b310418))
+* **endpoint:** consume versioned response media-type and header metadata ([#874](https://github.com/yeongseon/azure-functions-openapi-python/issues/874)) ([b2fbd20](https://github.com/yeongseon/azure-functions-openapi-python/commit/b2fbd20fd567a589bd151a552f4b3c9db1aca60e))
+* **routes:** add opt-in route prefix resolution from host.json ([#869](https://github.com/yeongseon/azure-functions-openapi-python/issues/869)) ([28a17ab](https://github.com/yeongseon/azure-functions-openapi-python/commit/28a17ab86959b8a781bce4887fb04444f833b9d1))
+
+
+### Bug Fixes
+
+* **bridge:** detect conflicts between model shorthand and endpoint schemas ([#792](https://github.com/yeongseon/azure-functions-openapi-python/issues/792)) ([9c5bec9](https://github.com/yeongseon/azure-functions-openapi-python/commit/9c5bec986c5366b522cbe25d3fb2e271240a5875))
+* **bridge:** preserve method expansion provenance during app scans ([#793](https://github.com/yeongseon/azure-functions-openapi-python/issues/793)) ([7a84e4f](https://github.com/yeongseon/azure-functions-openapi-python/commit/7a84e4f2378e7cb2816ad3bd4d01e744f9b96ab9))
+* **cli:** fail --route-prefix auto when host.json cannot be used ([#879](https://github.com/yeongseon/azure-functions-openapi-python/issues/879)) ([4f8cd36](https://github.com/yeongseon/azure-functions-openapi-python/commit/4f8cd3643521d8615a8a7c1a70ce3cd984974bcc))
+* **cli:** name the --app target and exception type when the import fails ([#864](https://github.com/yeongseon/azure-functions-openapi-python/issues/864)) ([211f4ae](https://github.com/yeongseon/azure-functions-openapi-python/commit/211f4ae51447c808fc5a45c68cdadbfe9478e019))
+* **docs-routes:** declare the trigger parameter so registered routes load on a Functions host ([#815](https://github.com/yeongseon/azure-functions-openapi-python/issues/815)) ([5f4945b](https://github.com/yeongseon/azure-functions-openapi-python/commit/5f4945bbed49eae51152030fbdfc4a40ad4937b1))
+* **routes:** apply host prefixes to discovered binding routes ([#797](https://github.com/yeongseon/azure-functions-openapi-python/issues/797)) ([12e1f38](https://github.com/yeongseon/azure-functions-openapi-python/commit/12e1f382efe2d7f66ea94dc87cc74ea7010c72c0))
+* **schema:** generate response schemas in serialization mode ([#796](https://github.com/yeongseon/azure-functions-openapi-python/issues/796)) ([193dd5a](https://github.com/yeongseon/azure-functions-openapi-python/commit/193dd5a758badc70005b8fc0cc73faf7c14edaa1))
+* **schema:** preserve component graphs when generic and raw schemas collide ([#791](https://github.com/yeongseon/azure-functions-openapi-python/issues/791)) ([c031efe](https://github.com/yeongseon/azure-functions-openapi-python/commit/c031efeba83d1027c7dc52210107ed40071662f4))
+* **spec:** convert non-null type arrays and audit inline schemas for OpenAPI 3.0 ([#863](https://github.com/yeongseon/azure-functions-openapi-python/issues/863)) ([cf1bff8](https://github.com/yeongseon/azure-functions-openapi-python/commit/cf1bff8ebbbfd703c29f2382628075e9952e711e))
+* **spec:** drop and report JSON Schema keywords that OpenAPI 3.0 does not define ([#876](https://github.com/yeongseon/azure-functions-openapi-python/issues/876)) ([2ba6c06](https://github.com/yeongseon/azure-functions-openapi-python/commit/2ba6c06127bfc15f33e748ab99c17e05257a212b))
+* **spec:** keep the stricter constraint when 3.0 conversion folds overlapping keywords ([#873](https://github.com/yeongseon/azure-functions-openapi-python/issues/873)) ([c31009b](https://github.com/yeongseon/azure-functions-openapi-python/commit/c31009bb75282a13a624d71fc5092fe37565266c))
+* **spec:** reject or report lossy OpenAPI 3.0 schema conversion ([#795](https://github.com/yeongseon/azure-functions-openapi-python/issues/795)) ([14d6dd6](https://github.com/yeongseon/azure-functions-openapi-python/commit/14d6dd6a5c266f1e5c06e5015a256fa0ce8edfdb))
+* **spec:** report an open prefixItems tail and keep array items valid in OpenAPI 3.0 output ([#881](https://github.com/yeongseon/azure-functions-openapi-python/issues/881)) ([3dd3b84](https://github.com/yeongseon/azure-functions-openapi-python/commit/3dd3b8451f13e896ca6686e550de455db566fcaa))
+* **spec:** scope generated operations to the selected FunctionApp ([#849](https://github.com/yeongseon/azure-functions-openapi-python/issues/849)) ([a532f4a](https://github.com/yeongseon/azure-functions-openapi-python/commit/a532f4a8a285bfb031debbda9c0b000ed5a12b6e))
+* **spec:** validate operations nested under additionalOperations ([#798](https://github.com/yeongseon/azure-functions-openapi-python/issues/798)) ([70863d1](https://github.com/yeongseon/azure-functions-openapi-python/commit/70863d1f9baa9c36e53f78a60f19dd3c917700e5)), closes [#785](https://github.com/yeongseon/azure-functions-openapi-python/issues/785)
+* **swagger-ui:** redact query string from client-side console.log ([#807](https://github.com/yeongseon/azure-functions-openapi-python/issues/807)) ([9fce511](https://github.com/yeongseon/azure-functions-openapi-python/commit/9fce5119a67c72b58c566ee9bc248fcbdf69e1ed)), closes [#806](https://github.com/yeongseon/azure-functions-openapi-python/issues/806)
+* **swagger:** prevent function keys from being written to logs ([#790](https://github.com/yeongseon/azure-functions-openapi-python/issues/790)) ([49a3a2b](https://github.com/yeongseon/azure-functions-openapi-python/commit/49a3a2b402cc1a5100800fc961d680023d39db22))
+
 ## [0.30.1](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.30.0...v0.30.1) (2026-10-14)
 
 
