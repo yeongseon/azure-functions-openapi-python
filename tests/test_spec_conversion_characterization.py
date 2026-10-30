@@ -87,6 +87,33 @@ TUPLE_LOSS = (
                     [[], ["a"], ["a", "b"]],
                     [[1], ["a", 1]],
                 ),
+                (
+                    [{"type": "string"}],
+                    {"type": "number"},
+                    {"maxItems": 1},
+                    {"type": "string"},
+                    {"maxItems": 1},
+                    [[], ["a"]],
+                    [[1], ["a", 1], ["a", "b"]],
+                ),
+                (
+                    [{"type": "string"}],
+                    {"type": "number"},
+                    {"maxItems": 0},
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    [[]],
+                    [["a"], [1]],
+                ),
+                (
+                    [],
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    {"type": "string"},
+                    {"maxItems": 0},
+                    [[]],
+                    [["a"], [1]],
+                ),
                 ([], False, {}, {}, {"maxItems": 0}, [[]], [["a"], [1]]),
                 ([], {"type": "string"}, {}, {"type": "string"}, {}, [[], ["a"]], [[1]]),
             ]
@@ -448,6 +475,9 @@ TUPLE_LOSS = (
         "closed-prefix-tighter-max",
         "closed-prefix-looser-max",
         "prefix-matches-additional-items",
+        "unreachable-tail-at-the-cap",
+        "unreachable-tail-below-the-cap",
+        "unreachable-tail-of-an-empty-prefix",
         "closed-empty-prefix",
         "empty-prefix-additional-items",
         "enum-const-intersection",
@@ -614,6 +644,49 @@ def test_heterogeneous_tuple_strict_exception_is_repeatable() -> None:
         assert str(caught.value) == (
             "Strict mode: generated spec has validation errors:\n  - " + TUPLE_LOSS
         )
+
+
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    ("max_items", "reachable"),
+    [(1, False), (2, True), (None, True)],
+    ids=["cap-at-the-prefix-length", "cap-beyond-the-prefix", "no-cap"],
+)
+def test_tail_schema_counts_only_when_an_array_can_reach_it(
+    max_items: int | None, reachable: bool, strict: bool
+) -> None:
+    # Given: a string prefix whose tail is a different schema, with and without a cap.
+    schema = {
+        "type": "array",
+        "prefixItems": [{"type": "string"}],
+        "items": {"type": "number"},
+        **({} if max_items is None else {"maxItems": max_items}),
+    }
+    registry = OpenAPIRegistry()
+    registry.set("pair", {"route": "pair", "method": "post", "request_body": schema})
+
+    # When / Then: a reachable tail is a positional loss; an unreachable one changes nothing.
+    if reachable and strict:
+        with pytest.raises(OpenAPISpecConfigError, match="positional constraints"):
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=strict)
+    actual = spec["paths"]["/api/pair"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
+    validate(spec)
+    validator = OAS30Validator(actual)
+    if reachable:
+        assert actual["items"] == {"anyOf": [{"type": "string"}, {"type": "number"}]}
+        (warning,) = collect_spec_warnings(spec, registry)
+        assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+        assert validator.is_valid([1])
+        return
+    assert actual == {"type": "array", "items": {"type": "string"}, "maxItems": 1}
+    assert collect_spec_warnings(spec, registry) == ()
+    assert validator.is_valid(["a"])
+    assert not validator.is_valid([1])
+    assert not OAS31Validator(schema).is_valid([1])
 
 
 @pytest.mark.parametrize("version", VERSIONS)

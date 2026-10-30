@@ -275,8 +275,9 @@ For `prefixItems` with `items: false`, conversion caps `maxItems` at the prefix
 length, retaining a tighter existing cap. When `items` is a schema, it also
 constrains additional positions: plain `items` is exact when every prefix schema
 matches that tail schema. Otherwise, the tail joins `items.anyOf` and the same
-positional-loss warning (or strict error) applies. Absent or `true` tail handling
-is unchanged.
+positional-loss warning (or strict error) applies. A tail that a `maxItems` at or
+below the prefix length makes unreachable is ignored. Absent or `true` tail
+handling is unchanged.
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is

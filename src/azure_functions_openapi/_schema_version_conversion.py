@@ -558,13 +558,26 @@ def _convert_schema_to_3_0(
     prefix_items = result.pop("prefixItems", None)
     if isinstance(prefix_items, list):
         additional_items = result.get("items")
+        declared_cap = result.get("maxItems")
+        max_items = (
+            declared_cap
+            if isinstance(declared_cap, (int, float)) and not isinstance(declared_cap, bool)
+            else None
+        )
         if additional_items is False:
-            result["maxItems"] = min(result.get("maxItems", len(prefix_items)), len(prefix_items))
+            result["maxItems"] = (
+                len(prefix_items) if max_items is None else min(max_items, len(prefix_items))
+            )
             result["items"] = {}
         converted_items = [
             _convert_schema_to_3_0(item, schemas, resolving, lossy) for item in prefix_items
         ]
-        if isinstance(additional_items, dict):
+        # A tail schema only matters when an array can hold more items than the prefix
+        # covers; beyond a ``maxItems`` at or below the prefix length it is unreachable
+        # and must not widen the positions the prefix does constrain.
+        if isinstance(additional_items, dict) and (
+            max_items is None or max_items > len(prefix_items)
+        ):
             converted_items.append(additional_items)
         if converted_items and all(
             _json_schema_equal(item, converted_items[0]) for item in converted_items[1:]
