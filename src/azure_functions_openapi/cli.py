@@ -261,9 +261,12 @@ def handle_generate(args: argparse.Namespace) -> int:
         if getattr(args, "app", None):
             try:
                 resolved_app, variable_given = _import_app_module(args.app)
-            except (ImportError, ValueError, AttributeError) as e:
+            except Exception as e:
+                # Module-level user code runs on import and can raise anything, so
+                # report the failure with the --app target and the exception type.
                 print(
-                    f"Error: Could not import module from --app {args.app!r}: {e}",
+                    f"Error: Could not import module from --app {args.app!r}: "
+                    f"{type(e).__name__}: {e}",
                     file=sys.stderr,
                 )
                 return 1

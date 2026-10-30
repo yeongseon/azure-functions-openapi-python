@@ -88,7 +88,8 @@ class TestConvertSchemaTo30Scalars:
 
         assert result["nullable"] is True
         assert "type" not in result
-        assert result["anyOf"] == [{"type": "string"}, {"type": "integer"}]
+        # ``nullable`` only takes effect beside a ``type``, so the first branch carries it.
+        assert result["anyOf"] == [{"type": "string", "nullable": True}, {"type": "integer"}]
         assert not _has_null_type(result)
         assert not _has_type_array(result)
 
@@ -97,6 +98,8 @@ class TestConvertSchemaTo30Scalars:
 
         assert result["nullable"] is True
         assert "type" not in result
+        # A type-less ``nullable`` schema accepts every value, so it stays null-only.
+        assert result["enum"] == [None]
 
     def test_enum_with_null(self) -> None:
         # Regression (#782): ``None`` must stay IN the enum -- a sibling

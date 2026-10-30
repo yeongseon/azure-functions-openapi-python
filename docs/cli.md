@@ -130,6 +130,30 @@ azure-functions-openapi generate --app function_app:app --output openapi.json
     build-time-safe defaults, for example by guarding external initialization
     with an environment flag when generating a spec in CI.
 
+For example, guard the initialization that needs live credentials or network
+access behind a flag that only the spec-generation job sets:
+
+```python
+# function_app.py
+import os
+
+import azure.functions as func
+from azure.servicebus import ServiceBusClient
+
+app = func.FunctionApp()
+
+if not os.environ.get("SKIP_EXTERNAL_INIT"):
+    service_bus = ServiceBusClient.from_connection_string(os.environ["SERVICE_BUS_CONNECTION"])
+```
+
+```bash
+SKIP_EXTERNAL_INIT=1 azure-functions-openapi generate --app function_app:app --output openapi.json
+```
+
+If the module still raises while it is imported, the CLI exits with code `1` and
+names the `--app` target and the exception type, for example
+`Error: Could not import module from --app 'function_app:app': KeyError: 'SERVICE_BUS_CONNECTION'`.
+
 Discovery semantics:
 
 - **`--app function_app`** (module only): decorators fire, but binding discovery
@@ -161,7 +185,7 @@ Discovery semantics:
 | `--description` | - | any string | library default | OpenAPI `info.description` (Markdown / CommonMark supported) |
 | `--output` | `-o` | file path | stdout | Write generated content to file |
 | `--format` | `-f` | `json`, `yaml` | `json` | Output serialization format |
-| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version |
+| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version. See [version selection guidance](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use). |
 | `--pretty` | `-p` | flag | `false` | Pretty-print JSON output (adds indentation); no effect on YAML |
 | `--route-prefix` | - | `auto`, any literal prefix (or `""`) | `/api` | Opt into app-setting / `host.json` resolution with `auto`; the file is beside the imported app module, otherwise cwd. Write `/auto` for a literal prefix named auto. See [Route Prefix](route-prefix.md). |
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
