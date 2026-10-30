@@ -35,6 +35,53 @@ TUPLE_LOSS = (
     [
         *[
             (
+                {"enum": enum, "const": const},
+                expected,
+                {"enum": enum, "const": const},
+                valid,
+                invalid,
+            )
+            for enum, const, expected, valid, invalid in [
+                (["x", "y"], "x", {"enum": ["x"]}, ["x"], ["y", None]),
+                (["y"], "x", {"enum": ["y"], "allOf": [{"enum": ["x"]}]}, [], ["x", "y", None]),
+                ([1], True, {"enum": [1], "allOf": [{"enum": [True]}]}, [], [True, 1, None]),
+                ([True], 1, {"enum": [True], "allOf": [{"enum": [1]}]}, [], [True, 1, None]),
+                ([1], 1.0, {"enum": [1.0]}, [1, 1.0], [True, 2]),
+                ([None, "x"], None, {"enum": [None], "nullable": True}, [None], ["x", 0]),
+                (
+                    ["x"],
+                    None,
+                    {"enum": ["x"], "allOf": [{"enum": [None], "nullable": True}]},
+                    [],
+                    ["x", None],
+                ),
+                ([[1]], [True], {"enum": [[1]], "allOf": [{"enum": [[True]]}]}, [], [[1], [True]]),
+                (
+                    [{"a": 1}],
+                    {"a": True},
+                    {"enum": [{"a": 1}], "allOf": [{"enum": [{"a": True}]}]},
+                    [],
+                    [{"a": 1}, {"a": True}],
+                ),
+                ([[1]], [1.0], {"enum": [[1.0]]}, [[1], [1.0]], [[], [True], [1, 2]]),
+                (
+                    [{"a": 1}],
+                    {"a": 1.0},
+                    {"enum": [{"a": 1.0}]},
+                    [{"a": 1}],
+                    [{}, {"b": 1}, {"a": True}],
+                ),
+            ]
+        ],
+        (
+            {"enum": ["y"], "const": "x", "allOf": [{"type": "string"}]},
+            {"enum": ["y"], "allOf": [{"type": "string"}, {"enum": ["x"]}]},
+            {"enum": ["y"], "const": "x", "allOf": [{"type": "string"}]},
+            [],
+            ["x", "y", None],
+        ),
+        *[
+            (
                 {"type": "number", bound: inclusive, exclusive: numeric},
                 {"type": "number", bound: kept, **({exclusive: True} if strict else {})},
                 {"type": "number", bound: inclusive, exclusive: numeric},
@@ -337,6 +384,18 @@ TUPLE_LOSS = (
         ),
     ],
     ids=[
+        "enum-const-intersection",
+        "enum-const-contradiction",
+        "enum-number-const-bool",
+        "enum-bool-const-number",
+        "enum-const-numeric-equality",
+        "enum-const-null",
+        "enum-const-null-contradiction",
+        "enum-const-nested-list-bool",
+        "enum-const-nested-object-bool",
+        "enum-const-list-equality",
+        "enum-const-object-equality",
+        "enum-const-keeps-all-of",
         "inclusive-lower-wins",
         "exclusive-lower-wins",
         "equal-lower-is-exclusive",

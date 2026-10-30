@@ -393,12 +393,32 @@ def _keep_null_only(schema: dict[str, Any]) -> None:
     excludes it can be met by no instance, so the null-only predicate joins ``allOf`` and
     the two together still accept nothing.
     """
+    _intersect_enum(schema, None)
+
+
+def _json_schema_equal(first: Any, second: Any) -> bool:
+    """Compare JSON values without Python's boolean/number equivalence, including nested values."""
+    if isinstance(first, bool) or isinstance(second, bool):
+        return type(first) is type(second) and first == second
+    if isinstance(first, list) and isinstance(second, list):
+        return len(first) == len(second) and all(
+            _json_schema_equal(a, b) for a, b in zip(first, second)
+        )
+    if isinstance(first, dict) and isinstance(second, dict):
+        return first.keys() == second.keys() and all(
+            _json_schema_equal(value, second[key]) for key, value in first.items()
+        )
+    return bool(first == second)
+
+
+def _intersect_enum(schema: dict[str, Any], value: Any) -> None:
+    """Intersect a singleton with an existing enum, keeping contradictions as conjuncts."""
     enum = schema.get("enum")
-    if isinstance(enum, list) and None not in enum:
+    if isinstance(enum, list) and not any(_json_schema_equal(value, member) for member in enum):
         all_of = schema.get("allOf")
-        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"enum": [None]}]
+        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"enum": [value]}]
     else:
-        schema["enum"] = [None]
+        schema["enum"] = [value]
 
 
 def _convert_schema_to_3_0(
@@ -437,7 +457,7 @@ def _convert_schema_to_3_0(
     result = dict(schema)
 
     if "const" in result:
-        result["enum"] = [result.pop("const")]
+        _intersect_enum(result, result.pop("const"))
 
     examples = result.pop("examples", None)
     if isinstance(examples, list) and examples:
