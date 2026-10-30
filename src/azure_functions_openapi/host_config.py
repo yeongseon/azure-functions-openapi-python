@@ -10,7 +10,7 @@ from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route
 
 def _read_route_prefix(path: Path) -> tuple[str | None, str | None]:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        document = json.loads(path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return None, None
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:

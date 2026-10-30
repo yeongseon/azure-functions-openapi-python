@@ -40,6 +40,19 @@ def test_host_json_prefix_is_normalized(tmp_path: Path, case: tuple[str, str]) -
     assert result == expected
 
 
+def test_utf8_byte_order_mark_is_ignored(tmp_path: Path) -> None:
+    # Given
+    path = tmp_path / "host.json"
+    path.write_bytes(b"\xef\xbb\xbf" + b'{"extensions":{"http":{"routePrefix":"v1"}}}')
+    # When
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        result = resolve_route_prefix(path)
+    # Then
+    assert result == "/v1"
+    assert captured == []
+
+
 @pytest.mark.parametrize("content", [None, "{}", '{"extensions":{"http":{}}}', "[]"])
 def test_absent_configuration_silently_uses_default(tmp_path: Path, content: str | None) -> None:
     # Given

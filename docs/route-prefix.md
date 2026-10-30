@@ -46,6 +46,8 @@ environment variable. Values are normalized: `api` becomes `/api`, `/v1/`
 becomes `/v1`, and `""` stays empty. Missing files and missing keys silently
 fall back. Unreadable files, invalid JSON, and non-string `routePrefix` values
 emit a `RuntimeWarning` naming the file and reason, then fall back to `/api`.
+The file is parsed as strict JSON with an optional UTF-8 byte order mark, so a
+`host.json` that contains comments or trailing commas is reported as unreadable.
 The helper only reads configuration; it never imports or executes application code.
 
 In `function_app.py`, explicitly locate the file beside your module:
