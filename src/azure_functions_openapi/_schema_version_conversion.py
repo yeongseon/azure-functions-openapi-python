@@ -337,6 +337,48 @@ def _tighter_bound(key: str, first: Any, second: Any) -> Any:
     return first
 
 
+def _expand_type_union(schema: dict[str, Any], types: list[str]) -> None:
+    """Replace the multi-type ``type`` array of *schema* with an ``anyOf`` of single-type schemas.
+
+    Sibling keywords stay where they are: type-specific ones (``minLength``, ``items``,
+    ...) only constrain instances of their own type, so the result accepts the same
+    values. Three details keep each branch valid and faithful under OpenAPI 3.0:
+
+    * ``nullable`` only takes effect beside the ``type`` it exempts, so a nullable
+      *schema* hands it to the first branch, the idiom the nullable-union collapse
+      already uses.
+    * Every ``array`` schema needs ``items``, so an ``array`` branch gets an empty one;
+      the sibling ``items`` of *schema* still applies as before.
+    * An ``anyOf`` that *schema* already carries is kept by adding the new union to its
+      ``allOf``.
+    """
+    del schema["type"]
+    nullable = schema.get("nullable") is True
+    union: list[dict[str, Any]] = []
+    for index, name in enumerate(types):
+        branch: dict[str, Any] = {"type": name}
+        if name == "array":
+            branch["items"] = {}
+        if nullable and index == 0:
+            branch["nullable"] = True
+        union.append(branch)
+    if "anyOf" in schema:
+        all_of = schema.get("allOf")
+        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+    else:
+        schema["anyOf"] = union
+
+
+def _wrap_ref_siblings(schema: dict[str, Any]) -> None:
+    """Move the ``$ref`` of *schema* into ``allOf``.
+
+    OpenAPI 3.0 ignores every sibling of a Reference Object, so keywords that conversion
+    just wrote beside a ``$ref`` would silently stop constraining anything.
+    """
+    all_of = schema.get("allOf")
+    schema["allOf"] = [{"$ref": schema.pop("$ref")}, *(all_of if isinstance(all_of, list) else [])]
+
+
 def _convert_schema_to_3_0(
     schema: dict[str, Any],
     schemas: dict[str, Any] | None = None,
@@ -404,6 +446,7 @@ def _convert_schema_to_3_0(
     # requires ``type`` to be a single string, so a multi-type union is expressed
     # as ``anyOf`` of single-type schemas rather than a (3.0-invalid) type array.
     type_val = result.get("type")
+    type_array_rewritten = False
     if isinstance(type_val, list) and "null" in type_val:
         non_null_types = [t for t in type_val if t != "null"]
         result["nullable"] = True
@@ -412,29 +455,23 @@ def _convert_schema_to_3_0(
         elif not non_null_types:
             del result["type"]
         else:
-            del result["type"]
-            result["anyOf"] = [{"type": t} for t in non_null_types]
-    elif (
-        isinstance(type_val, list)
-        and type_val
-        and all(isinstance(t, str) for t in type_val)
-        and "discriminator" not in result
-    ):
+            _expand_type_union(result, non_null_types)
+        type_array_rewritten = True
+    elif isinstance(type_val, list) and type_val and all(isinstance(t, str) for t in type_val):
         # A type array without ``null`` takes the same shape. Type-specific keywords
         # (minLength, items, properties, ...) only constrain instances of their own
         # type, so leaving them beside the ``anyOf`` accepts exactly the same values.
         # A sibling ``discriminator`` would start constraining instances once a
-        # combinator appears, so that node is left for the audit to report instead.
+        # combinator appears, so a multi-type array there is left for the audit to
+        # report; a single type adds no combinator and converts regardless.
         if len(type_val) == 1:
             result["type"] = type_val[0]
-        else:
-            del result["type"]
-            union = [{"type": t} for t in type_val]
-            if "anyOf" in result:
-                all_of = result.get("allOf")
-                result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
-            else:
-                result["anyOf"] = union
+            type_array_rewritten = True
+        elif "discriminator" not in result:
+            _expand_type_union(result, type_val)
+            type_array_rewritten = True
+    if type_array_rewritten and "$ref" in result:
+        _wrap_ref_siblings(result)
 
     # ``enum: [None, ...]`` -> keep ``null`` IN the enum (``nullable: true``
     # alone does not exempt a sibling ``enum`` from its own closed-list check,

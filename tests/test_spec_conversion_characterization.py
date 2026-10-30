@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
+from openapi_spec_validator import validate
 from pydantic import JsonValue
 import pytest
 
@@ -153,6 +154,64 @@ TUPLE_LOSS = (
             [[1], None, 1.5],
             ["x", 5],
         ),
+        (
+            {"type": ["string", "integer", "null"]},
+            {
+                "nullable": True,
+                "anyOf": [{"type": "string", "nullable": True}, {"type": "integer"}],
+            },
+            {"type": ["string", "integer", "null"]},
+            [None, "yes", 42],
+            [1.5, [1]],
+        ),
+        (
+            {"anyOf": [{"type": ["string", "integer"]}, {"type": "object"}, {"type": "null"}]},
+            {
+                "nullable": True,
+                "anyOf": [
+                    {
+                        "nullable": True,
+                        "anyOf": [{"type": "string", "nullable": True}, {"type": "integer"}],
+                    },
+                    {"type": "object"},
+                ],
+            },
+            {"anyOf": [{"type": ["string", "integer"]}, {"type": "object"}, {"type": "null"}]},
+            [None, "yes", 42, {}],
+            [1.5, [1]],
+        ),
+        (
+            {"type": ["array", "string"], "items": {"type": "integer"}},
+            {
+                "anyOf": [{"type": "array", "items": {}}, {"type": "string"}],
+                "items": {"type": "integer"},
+            },
+            {"type": ["array", "string"], "items": {"type": "integer"}},
+            [[1], "yes"],
+            [["a"], 1, None],
+        ),
+        (
+            {
+                "type": ["object"],
+                "discriminator": {"propertyName": "kind"},
+                "properties": {"kind": {"type": "string"}},
+                "required": ["kind"],
+            },
+            {
+                "type": "object",
+                "discriminator": {"propertyName": "kind"},
+                "properties": {"kind": {"type": "string"}},
+                "required": ["kind"],
+            },
+            {
+                "type": ["object"],
+                "discriminator": {"propertyName": "kind"},
+                "properties": {"kind": {"type": "string"}},
+                "required": ["kind"],
+            },
+            [{"kind": "a"}],
+            [{}, "a"],
+        ),
     ],
     ids=[
         "legacy-nullable",
@@ -164,6 +223,10 @@ TUPLE_LOSS = (
         "type-array-beside-any-of",
         "nested-type-array",
         "negated-type-array",
+        "nullable-type-array",
+        "nullable-union-of-type-array",
+        "type-array-with-array-member",
+        "single-type-array-beside-discriminator",
     ],
 )
 def test_schema_conversion_at_every_operation_position(
@@ -412,6 +475,46 @@ def test_unconvertible_construct_is_reported_through_the_downgrade_channel(
     assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
     assert warning.message.startswith(f"{subject} contains OpenAPI 3.1-only constructs")
     assert '(a "type" array)' in warning.message
+
+
+@pytest.mark.parametrize(
+    ("original", "expected"),
+    [
+        (
+            {"$ref": "#/$defs/Num", "type": ["string", "integer"]},
+            {
+                "allOf": [{"$ref": "#/components/schemas/Num"}],
+                "anyOf": [{"type": "string"}, {"type": "integer"}],
+            },
+        ),
+        (
+            {"$ref": "#/$defs/Num", "type": ["integer", "null"]},
+            {"allOf": [{"$ref": "#/components/schemas/Num"}], "type": "integer", "nullable": True},
+        ),
+    ],
+    ids=["multi-type", "nullable-single-type"],
+)
+def test_type_array_beside_a_reference_moves_the_reference_into_all_of(
+    original: dict[str, JsonValue], expected: dict[str, JsonValue]
+) -> None:
+    # Given: OpenAPI 3.0 ignores every sibling of a ``$ref``, so a converted ``type``
+    # must not be left beside one where it would silently stop constraining anything.
+    body = {"$ref": "#/$defs/Holder", "$defs": {"Holder": original, "Num": {"type": "number"}}}
+    registry = OpenAPIRegistry()
+    registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: the reference and the converted type constrain the value together.
+    assert spec["components"]["schemas"]["Holder"] == expected
+    validate(spec)
+    validator = OAS30Validator(
+        {"$ref": "#/components/schemas/Holder", "components": spec["components"]}
+    )
+    assert validator.is_valid(1)
+    assert not any(validator.is_valid(instance) for instance in (1.5, "x", None))
+    assert collect_spec_warnings(spec, registry) == ()
 
 
 def test_has_3_1_only_constructs_stays_importable_from_spec() -> None:

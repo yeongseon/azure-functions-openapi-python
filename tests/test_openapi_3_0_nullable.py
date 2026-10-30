@@ -88,7 +88,8 @@ class TestConvertSchemaTo30Scalars:
 
         assert result["nullable"] is True
         assert "type" not in result
-        assert result["anyOf"] == [{"type": "string"}, {"type": "integer"}]
+        # ``nullable`` only takes effect beside a ``type``, so the first branch carries it.
+        assert result["anyOf"] == [{"type": "string", "nullable": True}, {"type": "integer"}]
         assert not _has_null_type(result)
         assert not _has_type_array(result)
 
