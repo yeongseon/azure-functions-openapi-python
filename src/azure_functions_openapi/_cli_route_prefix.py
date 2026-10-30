@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shlex
 import sys
 
 from azure_functions_openapi._warnings import SpecWarning, WarningCode
-from azure_functions_openapi.host_config import _read_route_prefix, resolve_route_prefix
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
+from azure_functions_openapi.host_config import _read_route_prefix
 from azure_functions_openapi.routes import DEFAULT_ROUTE_PREFIX, normalize_route_prefix
 
 
@@ -23,7 +25,16 @@ def _resolve_cli_route_prefix(args: argparse.Namespace) -> tuple[str, tuple[Spec
     if not isinstance(requested, str):
         requested = DEFAULT_ROUTE_PREFIX
     if requested == "auto":
-        return resolve_route_prefix(path), ()
+        setting = "AzureFunctionsJobHost__extensions__http__routePrefix"
+        if setting in os.environ:
+            return normalize_route_prefix(os.environ[setting]), ()
+        configured, reason = _read_route_prefix(path)
+        if reason is not None:
+            raise OpenAPISpecConfigError(
+                f"Cannot use {path} for --route-prefix auto: {reason}. "
+                "Fix the file or pass --route-prefix explicitly."
+            )
+        return DEFAULT_ROUTE_PREFIX if configured is None else configured, ()
 
     prefix = normalize_route_prefix(requested)
     configured, _ = _read_route_prefix(path)

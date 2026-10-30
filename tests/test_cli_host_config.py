@@ -141,18 +141,87 @@ def test_auto_honors_environment(run_cli: RunCLI, monkeypatch: pytest.MonkeyPatc
     assert error == ""
 
 
-@pytest.mark.parametrize("host", ["{", '{"extensions":{"http":{"routePrefix":17}}}'])
-def test_auto_with_unreadable_host_json_falls_back_without_gating(
-    run_cli: RunCLI, host: str
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("{", "Expecting property name"),
+        ("{// comment\n}", "Expecting property name"),
+        ("{/* comment */}", "Expecting property name"),
+        ('{"version":"2.0",}', "Expecting property name"),
+        ('{"extensions":{"http":{"routePrefix":17}}}', "must be a string"),
+        ('{"extensions":{"http":{"routePrefix":null}}}', "must be a string"),
+        ('{"extensions":{"http":{"routePrefix":[]}}}', "must be a string"),
+    ],
+)
+def test_auto_rejects_unusable_host_json(run_cli: RunCLI, case: tuple[str, str]) -> None:
+    # Given
+    host, reason = case
+    path = Path.cwd() / "host.json"
+    # When
+    code, output, error = run_cli(["--route-prefix", "auto", "--output", "blocked.json"], host)
+    # Then
+    assert code == 1
+    assert output == ""
+    assert not Path("blocked.json").exists()
+    assert f"Cannot use {path} for --route-prefix auto:" in error
+    assert reason in error
+    assert "Fix the file or pass --route-prefix explicitly." in error
+
+
+def test_auto_rejects_directory_host_json(run_cli: RunCLI) -> None:
+    # Given
+    path = Path.cwd() / "host.json"
+    path.mkdir()
+    # When
+    code, output, error = run_cli(
+        ["--route-prefix", "auto", "--fail-on-warnings", "--output", "blocked.json"], None
+    )
+    # Then
+    assert code == 1
+    assert output == ""
+    assert not Path("blocked.json").exists()
+    assert f"Cannot use {path} for --route-prefix auto:" in error
+    assert "Is a directory" in error
+
+
+@pytest.mark.parametrize("host", [None, "{}", '{"extensions":{"http":{}}}'])
+def test_auto_silently_defaults_when_configuration_is_absent(
+    run_cli: RunCLI, host: str | None
 ) -> None:
     # Given
     options = ["--route-prefix", "auto", "--fail-on-warnings"]
     # When
-    with pytest.warns(RuntimeWarning, match="Could not read route prefix"):
-        code, output, error = run_cli(options, host)
+    code, output, error = run_cli(options, host)
     # Then
     assert code == 0
     assert set(json.loads(output)["paths"]) == {"/api/widgets"}
+    assert error == ""
+
+
+@pytest.mark.parametrize("prefix", ["override", ""])
+def test_auto_environment_bypasses_unusable_file(
+    run_cli: RunCLI, monkeypatch: pytest.MonkeyPatch, prefix: str
+) -> None:
+    # Given
+    Path("host.json").mkdir()
+    monkeypatch.setenv(SETTING, prefix)
+    # When
+    code, output, error = run_cli(["--route-prefix", "auto", "--fail-on-warnings"], None)
+    # Then
+    assert code == 0
+    assert set(json.loads(output)["paths"]) == {"/override/widgets" if prefix else "/widgets"}
+    assert error == ""
+
+
+@pytest.mark.parametrize("options", [[], ["--route-prefix", "/gateway"]])
+def test_literal_prefix_ignores_unreadable_file(run_cli: RunCLI, options: list[str]) -> None:
+    # Given
+    Path("host.json").mkdir()
+    # When
+    code, output, error = run_cli([*options, "--fail-on-warnings"], None)
+    # Then
+    assert code == 0
+    assert set(json.loads(output)["paths"]) == {"/gateway/widgets" if options else "/api/widgets"}
     assert error == ""
 
 
