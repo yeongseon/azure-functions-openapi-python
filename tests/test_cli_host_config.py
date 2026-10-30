@@ -141,6 +141,21 @@ def test_auto_honors_environment(run_cli: RunCLI, monkeypatch: pytest.MonkeyPatc
     assert error == ""
 
 
+@pytest.mark.parametrize("host", ["{", '{"extensions":{"http":{"routePrefix":17}}}'])
+def test_auto_with_unreadable_host_json_falls_back_without_gating(
+    run_cli: RunCLI, host: str
+) -> None:
+    # Given
+    options = ["--route-prefix", "auto", "--fail-on-warnings"]
+    # When
+    with pytest.warns(RuntimeWarning, match="Could not read route prefix"):
+        code, output, error = run_cli(options, host)
+    # Then
+    assert code == 0
+    assert set(json.loads(output)["paths"]) == {"/api/widgets"}
+    assert error == ""
+
+
 def test_auto_looks_beside_module_not_cwd(run_cli: RunCLI, monkeypatch: pytest.MonkeyPatch) -> None:
     # Given
     caller = Path("caller")

@@ -61,6 +61,7 @@ def test_absent_configuration_silently_uses_default(tmp_path: Path, content: str
         path.write_text(content, encoding="utf-8")
     # When
     with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
         result = resolve_route_prefix(path)
     # Then
     assert result == "/api"
