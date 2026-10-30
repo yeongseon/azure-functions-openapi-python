@@ -10,6 +10,7 @@ from pydantic import JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
+    _contains_bare_nullable,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -515,6 +516,111 @@ def test_type_array_beside_a_reference_moves_the_reference_into_all_of(
     assert validator.is_valid(1)
     assert not any(validator.is_valid(instance) for instance in (1.5, "x", None))
     assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize(
+    "negated",
+    [
+        {"type": "null"},
+        {"type": "null", "description": "never null"},
+        {"properties": {"a": {"type": "null"}}},
+        {"allOf": [{"type": "string"}, {"type": "null"}]},
+    ],
+    ids=["null-only", "annotated-null-only", "nested-property", "all-of-member"],
+)
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+def test_negated_null_only_schema_is_reported_instead_of_silently_inverted(
+    negated: dict[str, JsonValue], hoisted: bool, strict: bool
+) -> None:
+    # Given: a null-only schema OpenAPI 3.0 can only approximate as a type-less
+    # ``nullable`` schema, which accepts every value; under ``not`` that would make the
+    # schema reject every value without a word.
+    odd = {"not": negated}
+    body = {"$ref": "#/$defs/Odd", "$defs": {"Odd": odd}} if hoisted else odd
+    registry = OpenAPIRegistry()
+    registry.set("odd", {"route": "odd", "method": "post", "request_body": body})
+    message = "a 'not' schema contains a null-only schema"
+
+    # When / Then: strict mode refuses it, naming the problem.
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError, match=message):
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        return
+
+    # When: non-strict generation still produces a document.
+    spec = generate_openapi_spec(
+        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted
+    )
+
+    # Then: the loss is one structured warning that --fail-on-warnings can gate on.
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert message in warning.message
+
+
+@pytest.mark.parametrize(
+    ("negated", "valid", "invalid"),
+    [
+        ({"type": ["string", "null"]}, [1, {}], [None, "x"]),
+        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, [1, {}], [None, "x"]),
+        ({"enum": [None, "a"]}, [1, "b"], [None, "a"]),
+        ({"type": ["string", "integer", "null"]}, [1.5, {}], [None, "x", 1]),
+    ],
+    ids=["nullable-type", "nullable-union", "enum-with-null", "nullable-type-array"],
+)
+def test_negated_schema_that_stays_exact_is_not_reported(
+    negated: dict[str, JsonValue], valid: list[JsonValue], invalid: list[JsonValue]
+) -> None:
+    # Given: negated schemas whose 3.0 form accepts exactly the original values.
+    registry = OpenAPIRegistry()
+    registry.set("exact", {"route": "exact", "method": "post", "request_body": {"not": negated}})
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: nothing is reported, and the negation behaves like the original.
+    schema = spec["paths"]["/api/exact"]["post"]["requestBody"]["content"]["application/json"][
+        "schema"
+    ]
+    validator = OAS30Validator(schema)
+    assert all(validator.is_valid(instance) for instance in valid)
+    assert not any(validator.is_valid(instance) for instance in invalid)
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize(
+    ("schema", "bare"),
+    [
+        ({"nullable": True}, True),
+        ({"nullable": True, "description": "annotation only"}, True),
+        ({"nullable": True, "type": "string"}, False),
+        ({"nullable": True, "enum": [None]}, False),
+        ({"nullable": False}, False),
+        ({"properties": {"a": {"nullable": True}}}, True),
+        ({"allOf": ["junk", {"nullable": True}]}, True),
+        ({"allOf": ["junk"]}, False),
+        ({"not": {"nullable": True}}, False),
+        ("junk", False),
+    ],
+    ids=[
+        "bare",
+        "annotated",
+        "typed",
+        "enum",
+        "not-nullable",
+        "nested",
+        "beside-junk",
+        "only-junk",
+        "nested-negation-reports-for-itself",
+        "not-a-schema",
+    ],
+)
+def test_bare_nullable_detection_finds_type_less_nullable_schemas(
+    schema: JsonValue, bare: bool
+) -> None:
+    # Given / When / Then: only a schema that constrains nothing but ``null`` is bare.
+    assert _contains_bare_nullable(schema) is bare
 
 
 @pytest.mark.parametrize(

@@ -10,7 +10,7 @@ both nullable-collapse phases preserve output and loss-message encounter order.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -538,7 +538,14 @@ def _convert_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
     if "not" in result and isinstance(result["not"], dict):
-        result["not"] = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
+        negated = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
+        if lossy is not None and _contains_bare_nullable(negated):
+            lossy.append(
+                "a 'not' schema contains a null-only schema, which OpenAPI 3.0 can only "
+                "approximate as a type-less 'nullable' schema that accepts every value, so "
+                "the negation rejects every value"
+            )
+        result["not"] = negated
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
             k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
@@ -576,6 +583,50 @@ _NESTED_SCHEMA_KEYS = (
     "$defs",
 )
 
+# Keywords that describe a schema without constraining any instance.
+_ANNOTATION_KEYS = frozenset(
+    {
+        "title",
+        "description",
+        "default",
+        "example",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+        "externalDocs",
+        "xml",
+    }
+)
+
+
+def _nested_schemas(schema: dict[str, Any], *, skip: frozenset[str] = frozenset()) -> Iterator[Any]:
+    """Yield what sits directly under the schema-bearing keywords of *schema*."""
+    for key in _NESTED_SCHEMA_KEYS:
+        if key in skip:
+            continue
+        val = schema.get(key)
+        if isinstance(val, dict):
+            yield from val.values() if key in ("properties", "$defs") else [val]
+        elif isinstance(val, list):
+            yield from val
+
+
+def _contains_bare_nullable(schema: Any) -> bool:
+    """Whether *schema*, or a schema nested in it, is a bare ``nullable: true``.
+
+    Conversion approximates a null-only schema that way, and OpenAPI 3.0 reads it as
+    accepting every value. A nested ``not`` reports for itself, so it is not entered.
+    """
+    if not isinstance(schema, dict):
+        return False
+    if schema.get("nullable") is True and all(
+        key == "nullable" or key in _ANNOTATION_KEYS for key in schema
+    ):
+        return True
+    return any(
+        _contains_bare_nullable(child) for child in _nested_schemas(schema, skip=frozenset({"not"}))
+    )
+
 
 def _find_3_1_only_construct(schema: dict[str, Any]) -> str | None:
     """Name the first construct in *schema* that OpenAPI 3.0 cannot express, if any.
@@ -596,18 +647,9 @@ def _find_3_1_only_construct(schema: dict[str, Any]) -> str | None:
             if isinstance(item, dict) and item.get("type") == "null":
                 return 'an "anyOf" with a null type'
 
-    for key in _NESTED_SCHEMA_KEYS:
-        val = schema.get(key)
-        children: Iterable[Any]
-        if isinstance(val, dict):
-            children = val.values() if key in ("properties", "$defs") else [val]
-        elif isinstance(val, list):
-            children = val
-        else:
-            continue
-        for child in children:
-            if (found := _find_3_1_only_construct(child)) is not None:
-                return found
+    for child in _nested_schemas(schema):
+        if (found := _find_3_1_only_construct(child)) is not None:
+            return found
 
     return None
 
