@@ -95,9 +95,9 @@ The final call-flow is:
    construct and where it was found. Conversion rewrites non-null `type` arrays to
    `anyOf` except a multi-type array beside a `discriminator`, which a combinator
    would activate, and faithfully converted schemas must not trigger the audit.
-   Inline schemas include response header schemas. A null-only schema under `not`
-   cannot be expressed, so it joins the schema-loss findings below. Non-strict
-   findings join those schema-loss findings rather than being logged on their own.
+   Inline schemas include response header schemas. A null-only schema converts to
+   `enum: [null]` with `nullable`, which keeps it exact beneath `not`. Non-strict
+   findings join the schema-loss findings below rather than being logged on their own.
    Keywords OpenAPI 3.0 does not define are not audited.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops

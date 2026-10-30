@@ -243,14 +243,10 @@ These rewrites and the check cover every inline schema, including the schemas
 of response headers. Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does
 not define, for example `if`/`then`/`else` or `contains`, are not checked.
 
-A null-only schema (`type: "null"`, or a union of nothing but null members) has
-no exact OpenAPI 3.0 form either: it is approximated as a type-less `nullable`
-schema, which accepts every value. Beneath `not`, directly or through a `$ref`,
-that approximation makes the negation reject values the original accepts, so it
-is reported like a heterogeneous tuple: `strict=True` raises
-`OpenAPISpecConfigError` and non-strict generation emits a structured
-`version-downgrade-drop` warning. A `nullable` schema already written for 3.0 is
-exact and is not reported.
+A schema that accepts only `null` (`type: "null"`, or a union of nothing but null
+members) becomes `enum: [null]` with `nullable: true`. A type-less `nullable`
+schema would accept every value in OpenAPI 3.0, and a `not` over it would then
+reject every value.
 
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as

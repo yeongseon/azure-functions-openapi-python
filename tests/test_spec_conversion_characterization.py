@@ -10,7 +10,6 @@ from pydantic import JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
-    _contains_null_only,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -213,6 +212,55 @@ TUPLE_LOSS = (
             [{"kind": "a"}],
             [{}, "a"],
         ),
+        (
+            {"type": "null"},
+            {"enum": [None], "nullable": True},
+            {"type": "null"},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"type": "null", "minLength": 1, "x-label": "a"},
+            {"enum": [None], "nullable": True, "minLength": 1, "x-label": "a"},
+            {"type": "null", "minLength": 1, "x-label": "a"},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"const": None, "type": "null"},
+            {"enum": [None], "nullable": True},
+            {"const": None, "type": "null"},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"anyOf": [{"type": "null"}]},
+            {"enum": [None], "nullable": True},
+            {"anyOf": [{"type": "null"}]},
+            [None],
+            ["x", 1, {}],
+        ),
+        (
+            {"properties": {"a": {"type": "null"}}},
+            {"properties": {"a": {"enum": [None], "nullable": True}}},
+            {"properties": {"a": {"type": "null"}}},
+            [{}, {"a": None}],
+            [{"a": 1}],
+        ),
+        (
+            {"not": {"type": "null"}},
+            {"not": {"enum": [None], "nullable": True}},
+            {"not": {"type": "null"}},
+            ["x", 1, {}],
+            [None],
+        ),
+        (
+            {"not": {"anyOf": [{"type": ["null"]}, {"type": "string"}]}},
+            {"not": {"anyOf": [{"enum": [None], "nullable": True}, {"type": "string"}]}},
+            {"not": {"anyOf": [{"type": ["null"]}, {"type": "string"}]}},
+            [1, {}, [1]],
+            [None, "x"],
+        ),
     ],
     ids=[
         "legacy-nullable",
@@ -228,6 +276,13 @@ TUPLE_LOSS = (
         "nullable-union-of-type-array",
         "type-array-with-array-member",
         "single-type-array-beside-discriminator",
+        "null-only",
+        "null-only-with-sibling-keywords",
+        "null-literal",
+        "only-null-member",
+        "null-only-in-a-property",
+        "negated-null-only",
+        "negated-null-list-member",
     ],
 )
 def test_schema_conversion_at_every_operation_position(
@@ -518,242 +573,75 @@ def test_type_array_beside_a_reference_moves_the_reference_into_all_of(
     assert collect_spec_warnings(spec, registry) == ()
 
 
-@pytest.mark.parametrize(
-    ("negated", "emitted", "lost"),
-    [
-        ({"type": "null"}, {"nullable": True}, ["x", 1, {}]),
-        (
-            {"type": "null", "description": "never null"},
-            {"description": "never null", "nullable": True},
-            ["x", 1, {}],
-        ),
-        ({"type": "null", "minLength": 1}, {"minLength": 1, "nullable": True}, ["x", 1, {}]),
-        ({"type": "null", "x-label": "a"}, {"x-label": "a", "nullable": True}, ["x", 1, {}]),
-        ({"type": ["null"]}, {"nullable": True}, ["x", 1, {}]),
-        ({"anyOf": [{"type": "null"}]}, {"nullable": True}, ["x", 1, {}]),
-        (
-            {"properties": {"a": {"type": "null"}}},
-            {"properties": {"a": {"nullable": True}}},
-            [{"a": 1}],
-        ),
-        (
-            {"allOf": [{"type": "string"}, {"type": "null"}]},
-            {"allOf": [{"type": "string"}, {"nullable": True}]},
-            ["x"],
-        ),
-    ],
-    ids=[
-        "null-only",
-        "annotated-null-only",
-        "null-only-with-constraint",
-        "null-only-with-extension",
-        "null-only-type-list",
-        "only-null-member",
-        "nested-property",
-        "all-of-member",
-    ],
-)
 @pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
-@pytest.mark.parametrize("strict", [False, True])
-def test_negated_null_only_schema_is_reported_instead_of_silently_inverted(
-    negated: dict[str, JsonValue],
-    emitted: dict[str, JsonValue],
-    lost: list[JsonValue],
-    hoisted: bool,
-    strict: bool,
+@pytest.mark.parametrize(
+    "negated",
+    [
+        {"type": "null"},
+        {"type": "null", "minLength": 1},
+        {"const": None, "type": "null"},
+        {"anyOf": [{"type": ["null"]}, {"type": "string"}]},
+        {"type": "string", "properties": {"a": {"type": "null"}}},
+        {"allOf": [{"type": "string"}, {"type": "null"}]},
+    ],
+    ids=["null-only", "constrained", "null-literal", "null-list-member", "inapplicable", "all-of"],
+)
+def test_negation_of_a_null_only_schema_accepts_what_the_original_accepts(
+    negated: dict[str, JsonValue], hoisted: bool
 ) -> None:
-    # Given: a null-only schema OpenAPI 3.0 can only approximate as a type-less
-    # ``nullable`` schema, which accepts every value; under ``not`` that approximation
-    # rejects values the original accepts, whatever keywords sit beside ``type: null``.
+    # Given: schemas an OpenAPI 3.0 reader could only get right if a null-only schema stays
+    # null-only; as a type-less ``nullable`` schema it would accept every value and the
+    # negation would reject every value.
     odd = {"not": negated}
     body = {"$ref": "#/$defs/Odd", "$defs": {"Odd": odd}} if hoisted else odd
     registry = OpenAPIRegistry()
     registry.set("odd", {"route": "odd", "method": "post", "request_body": body})
-    message = "a 'not' schema contains a null-only schema"
-
-    # When / Then: strict mode refuses it, naming the problem.
-    if strict:
-        with pytest.raises(OpenAPISpecConfigError, match=message):
-            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
-        return
-
-    # When: non-strict generation still produces a document.
-    spec = generate_openapi_spec(
-        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted
-    )
-
-    # Then: the loss is one structured warning that --fail-on-warnings can gate on, and
-    # the document really is the reported approximation.
-    (warning,) = collect_spec_warnings(spec, registry)
-    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
-    assert message in warning.message
-    if hoisted:
-        converted = spec["components"]["schemas"]["Odd"]
-        root = {"$ref": "#/components/schemas/Odd", "components": spec["components"]}
-    else:
-        converted = spec["paths"]["/api/odd"]["post"]["requestBody"]["content"]["application/json"][
-            "schema"
-        ]
-        root = converted
-    assert converted == {"not": emitted}
-    original = OAS31Validator(odd)
-    approximation = OAS30Validator(root)
-    assert all(original.is_valid(instance) for instance in lost)
-    assert not any(approximation.is_valid(instance) for instance in lost)
-
-
-@pytest.mark.parametrize(
-    ("negated", "emitted", "valid", "invalid"),
-    [
-        ({"type": ["string", "null"]}, {"type": "string", "nullable": True}, [1, {}], [None, "x"]),
-        (
-            {"anyOf": [{"type": "string"}, {"type": "null"}]},
-            {"type": "string", "nullable": True},
-            [1, {}],
-            [None, "x"],
-        ),
-        (
-            {"enum": [None, "a"]},
-            {"enum": [None, "a"], "nullable": True},
-            [1, "b"],
-            [None, "a"],
-        ),
-        (
-            {"type": ["string", "integer", "null"]},
-            {
-                "nullable": True,
-                "anyOf": [{"type": "string", "nullable": True}, {"type": "integer"}],
-            },
-            [1.5, {}],
-            [None, "x", 1],
-        ),
-        ({"nullable": True}, {"nullable": True}, [], ["x", 1, None]),
-        (
-            {"nullable": True, "x-label": "a"},
-            {"nullable": True, "x-label": "a"},
-            [],
-            ["x", 1, None],
-        ),
-    ],
-    ids=[
-        "nullable-type",
-        "nullable-union",
-        "enum-with-null",
-        "nullable-type-array",
-        "nullable-written-for-3-0",
-        "nullable-written-for-3-0-with-extension",
-    ],
-)
-def test_negated_schema_that_stays_exact_is_not_reported(
-    negated: dict[str, JsonValue],
-    emitted: dict[str, JsonValue],
-    valid: list[JsonValue],
-    invalid: list[JsonValue],
-) -> None:
-    # Given: negated schemas whose 3.0 form accepts exactly the original values, among
-    # them a ``nullable`` schema already written for 3.0, which conversion leaves alone.
-    registry = OpenAPIRegistry()
-    registry.set("exact", {"route": "exact", "method": "post", "request_body": {"not": negated}})
 
     # When
-    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+    spec = generate_openapi_spec(
+        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted, strict=True
+    )
 
-    # Then: nothing is reported, and the negation behaves like the original.
-    schema = spec["paths"]["/api/exact"]["post"]["requestBody"]["content"]["application/json"][
-        "schema"
-    ]
-    assert schema == {"not": emitted}
-    validate(spec)
-    validator = OAS30Validator(schema)
-    assert all(validator.is_valid(instance) for instance in valid)
-    assert not any(validator.is_valid(instance) for instance in invalid)
+    # Then: nothing is reported, and both versions accept exactly the same instances.
     assert collect_spec_warnings(spec, registry) == ()
+    validate(spec)
+    if hoisted:
+        root = {"$ref": "#/components/schemas/Odd", "components": spec["components"]}
+    else:
+        root = spec["paths"]["/api/odd"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    original = OAS31Validator(odd)
+    converted = OAS30Validator(root)
+    probes: list[JsonValue] = [None, "", "x", 0, 1.5, [], [None], {}, {"a": None}, {"a": 1}]
+    assert [converted.is_valid(probe) for probe in probes] == [
+        original.is_valid(probe) for probe in probes
+    ]
 
 
 @pytest.mark.parametrize("strict", [False, True])
-def test_negated_reference_to_a_null_only_component_is_reported(strict: bool) -> None:
-    # Given: the null-only schema sits behind a ``$ref``, so the negated schema never
-    # says ``type: null`` itself.
+def test_reference_to_a_null_only_component_stays_null_only(strict: bool) -> None:
+    # Given: the null-only schema is a component, reached through a ``$ref`` under ``not``.
     body = {
         "$ref": "#/$defs/Odd",
         "$defs": {"Odd": {"not": {"$ref": "#/$defs/Nothing"}}, "Nothing": {"type": "null"}},
     }
     registry = OpenAPIRegistry()
     registry.set("odd", {"route": "odd", "method": "post", "request_body": body})
-    message = "Schema 'Odd': a 'not' schema contains a null-only schema"
 
-    # When / Then: strict mode refuses it; non-strict generation reports it once.
-    if strict:
-        with pytest.raises(OpenAPISpecConfigError, match=message):
-            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
-        return
-    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
-    (warning,) = collect_spec_warnings(spec, registry)
-    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
-    assert message in warning.message
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=strict)
 
-
-@pytest.mark.parametrize(
-    ("schema", "components", "null_only"),
-    [
-        ({"type": "null"}, None, True),
-        ({"type": ["null"]}, None, True),
-        ({"type": "null", "minLength": 1}, None, True),
-        ({"type": "null", "x-label": "a"}, None, True),
-        ({"anyOf": [{"type": "null"}, {"type": ["null"]}]}, None, True),
-        ({"oneOf": [{"type": "null"}]}, None, True),
-        ({"properties": {"a": {"type": "null"}}}, None, True),
-        ({"allOf": ["junk", {"type": "null"}]}, None, True),
-        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, None, False),
-        ({"type": ["string", "null"]}, None, False),
-        ({"nullable": True}, None, False),
-        ({"nullable": True, "x-label": "a"}, None, False),
-        ({"enum": [None]}, None, False),
-        ({"const": None}, None, False),
-        ({"allOf": ["junk"]}, None, False),
-        ({"not": {"type": "null"}}, None, False),
-        ("junk", None, False),
-        ({"$ref": "#/components/schemas/Nothing"}, {"Nothing": {"type": "null"}}, True),
-        (
-            {"$ref": "#/components/schemas/Loop"},
-            {"Loop": {"items": {"$ref": "#/components/schemas/Loop"}}},
-            False,
-        ),
-        ({"$ref": "#/components/schemas/Missing"}, {}, False),
-        ({"$ref": "#/components/schemas/Nothing"}, None, False),
-        ({"$ref": "#/$defs/Nothing"}, {"Nothing": {"type": "null"}}, False),
-    ],
-    ids=[
-        "null-type",
-        "null-type-list",
-        "with-constraint",
-        "with-extension",
-        "all-null-any-of",
-        "single-null-one-of",
-        "nested-property",
-        "beside-junk",
-        "exact-union",
-        "exact-nullable-type",
-        "nullable-written-for-3-0",
-        "nullable-with-extension",
-        "enum-with-null",
-        "const-null",
-        "only-junk",
-        "nested-negation-reports-for-itself",
-        "not-a-schema",
-        "reference-to-null-only",
-        "reference-cycle",
-        "unknown-reference",
-        "no-components",
-        "not-a-component-reference",
-    ],
-)
-def test_null_only_detection_reads_the_schema_as_written(
-    schema: JsonValue, components: dict[str, JsonValue] | None, null_only: bool
-) -> None:
-    # Given / When / Then: only a schema that accepts nothing but ``null`` by its own
-    # ``type`` counts, however many other keywords sit beside it.
-    assert _contains_null_only(schema, components) is null_only
+    # Then: the component keeps accepting only ``null``, so the negation accepts the rest.
+    assert spec["components"]["schemas"]["Nothing"] == {"enum": [None], "nullable": True}
+    validate(spec)
+    validator = OAS30Validator(
+        {"$ref": "#/components/schemas/Odd", "components": spec["components"]}
+    )
+    rest: list[JsonValue] = ["x", 1, {}]
+    assert all(validator.is_valid(instance) for instance in rest)
+    assert not validator.is_valid(None)
+    assert collect_spec_warnings(spec, registry) == ()
 
 
 @pytest.mark.parametrize(

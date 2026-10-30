@@ -10,7 +10,7 @@ both nullable-collapse phases preserve output and loss-message encounter order.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -292,6 +292,8 @@ def _collapse_nullable_combinator(
                         result.setdefault(k, v)
             else:
                 result[key] = non_null
+        elif not non_null:
+            result.setdefault("enum", [None])
         elif len(non_null) > 1:
             patched_members: list[Any] = []
             patched_one = False
@@ -454,6 +456,7 @@ def _convert_schema_to_3_0(
             result["type"] = non_null_types[0]
         elif not non_null_types:
             del result["type"]
+            result.setdefault("enum", [None])
         else:
             _expand_type_union(result, non_null_types)
         type_array_rewritten = True
@@ -481,8 +484,11 @@ def _convert_schema_to_3_0(
         result["nullable"] = True
 
     if result.get("type") == "null":
+        # Without ``type``, ``nullable`` alone accepts every value, so a null-only schema
+        # keeps an ``enum`` of ``null``; a ``not`` over it would otherwise reject everything.
         del result["type"]
         result["nullable"] = True
+        result.setdefault("enum", [None])
 
     result = _collapse_nullable_combinator(result, schemas, resolving, lossy)
 
@@ -538,14 +544,7 @@ def _convert_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
     if "not" in result and isinstance(result["not"], dict):
-        negated = result["not"]
-        result["not"] = _convert_schema_to_3_0(negated, schemas, resolving, lossy)
-        if lossy is not None and _contains_null_only(negated, schemas):
-            lossy.append(
-                "a 'not' schema contains a null-only schema, which OpenAPI 3.0 can only "
-                "approximate as a type-less 'nullable' schema that accepts every value, so "
-                "the negation rejects values the original accepts"
-            )
+        result["not"] = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
             k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
@@ -584,57 +583,6 @@ _NESTED_SCHEMA_KEYS = (
 )
 
 
-def _nested_schemas(schema: dict[str, Any], *, skip: frozenset[str] = frozenset()) -> Iterator[Any]:
-    """Yield what sits directly under the schema-bearing keywords of *schema*."""
-    for key in _NESTED_SCHEMA_KEYS:
-        if key in skip:
-            continue
-        val = schema.get(key)
-        if isinstance(val, dict):
-            yield from val.values() if key in ("properties", "$defs") else [val]
-        elif isinstance(val, list):
-            yield from val
-
-
-def _is_null_type(schema: Any) -> bool:
-    return isinstance(schema, dict) and schema.get("type") in ("null", ["null"])
-
-
-def _contains_null_only(
-    schema: Any, schemas: dict[str, Any] | None, seen: frozenset[str] = frozenset()
-) -> bool:
-    """Whether *schema*, or a schema nested in it, accepts nothing but ``null`` by its own type.
-
-    Conversion can only approximate that as a type-less ``nullable`` schema, which accepts
-    every value. The schema is read as written, not as converted: a ``nullable`` schema
-    already authored for 3.0 is exact, and keywords beside ``type: null`` change nothing
-    about the approximation. A null member beside other ``anyOf``/``oneOf`` members
-    collapses exactly into ``nullable``, so only a union made of null members alone counts.
-    A ``$ref`` into *schemas* is followed once per name. A nested ``not`` reports for
-    itself, so it is not entered.
-    """
-    if not isinstance(schema, dict):
-        return False
-    if _is_null_type(schema):
-        return True
-    scanned = schema
-    for key in ("anyOf", "oneOf"):
-        members = schema.get(key)
-        if isinstance(members, list) and members:
-            if all(_is_null_type(m) for m in members):
-                return True
-            scanned = {**scanned, key: [m for m in members if not _is_null_type(m)]}
-    ref = schema.get("$ref")
-    if isinstance(ref, str) and schemas is not None and ref.startswith("#/components/schemas/"):
-        name = ref.rsplit("/", 1)[-1]
-        if name not in seen and _contains_null_only(schemas.get(name), schemas, seen | {name}):
-            return True
-    return any(
-        _contains_null_only(child, schemas, seen)
-        for child in _nested_schemas(scanned, skip=frozenset({"not"}))
-    )
-
-
 def _find_3_1_only_construct(schema: dict[str, Any]) -> str | None:
     """Name the first construct in *schema* that OpenAPI 3.0 cannot express, if any.
 
@@ -654,9 +602,18 @@ def _find_3_1_only_construct(schema: dict[str, Any]) -> str | None:
             if isinstance(item, dict) and item.get("type") == "null":
                 return 'an "anyOf" with a null type'
 
-    for child in _nested_schemas(schema):
-        if (found := _find_3_1_only_construct(child)) is not None:
-            return found
+    for key in _NESTED_SCHEMA_KEYS:
+        val = schema.get(key)
+        children: Iterable[Any]
+        if isinstance(val, dict):
+            children = val.values() if key in ("properties", "$defs") else [val]
+        elif isinstance(val, list):
+            children = val
+        else:
+            continue
+        for child in children:
+            if (found := _find_3_1_only_construct(child)) is not None:
+                return found
 
     return None
 
