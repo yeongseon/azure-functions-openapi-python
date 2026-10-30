@@ -472,6 +472,17 @@ def _generate_openapi_result(
                                 media_obj = new_media_obj
                             hoisted_content[media] = media_obj
                         resp["content"] = hoisted_content
+                    resp_headers = resp.get("headers")
+                    if isinstance(resp_headers, dict):
+                        hoisted_headers: dict[str, Any] = {}
+                        for name, header in resp_headers.items():
+                            if isinstance(header, dict) and "schema" in header:
+                                header = dict(header)
+                                header["schema"] = _resolve_media_schema(
+                                    header["schema"], components, hoist_flat_schemas
+                                )
+                            hoisted_headers[name] = header
+                        resp["headers"] = hoisted_headers
                     responses[str(status)] = resp
 
                 if meta.get("response_model"):

@@ -63,11 +63,60 @@ not `azure-functions-langgraph`.
 
 | Key | Meaning |
 | --- | --- |
-| `version` | Contract version. Currently `1`. |
+| `version` | Contract version. This consumer accepts `1` and `2`. |
 | `request_body` | Raw JSON Schema for the request body. |
 | `request_body_required` | Whether the request body is required. |
 | `parameters` | List of OpenAPI parameter objects (query / path / header / cookie). |
-| `responses` | Map of status code (string) → `{"description"?, "schema"}`. Include non-success statuses (e.g. `"422"`) here too. |
+| `responses` | In v1, status string → `{"description"?, "schema"}`. In v2, use the representation below. Include non-success statuses too. |
+
+### V2 response representations
+
+Use `version: 2` for response media types, header schemas or explicit body absence.
+Request-body and parameter fields retain their v1 shape:
+
+```python
+payload = {
+    "version": 2,
+    "responses": {
+        "201": {
+            "description": "Created",
+            "content": {"application/json": {"schema": {"type": "object"}}},
+            "headers": {"Location": {"schema": {"type": "string"}}},
+        },
+        "400": {
+            "content": {"application/problem+json": {"schema": {"type": "object"}}},
+        },
+        "204": {"content": {}},
+    },
+}
+```
+
+- Status keys must be three-digit **strings** from `"200"` to `"599"`.
+- Every response requires a `content` mapping. Each media object requires a
+  dictionary `schema`; response-level legacy `schema` is forbidden in v2.
+- Empty `content` means no body: the OpenAPI response omits `content` entirely.
+  A media schema `{"type": "null"}` describes a real null body, not body absence.
+  Statuses 204, 205 and 304 require empty content.
+- `description` defaults to `""`. Optional `headers` maps HTTP token names to
+  dictionary `schema` objects and optional string descriptions. Names compare
+  case-insensitively; duplicate case variants and `Content-Type` are rejected.
+  These schemas are not literal header values or duplicate-wire-line guarantees.
+- Media types use a `type/subtype` name without whitespace or parameters.
+  `text/event-stream` may carry `{"schema": {"type": "string"}}`; this documents
+  the representation, not event-item streaming semantics. V2 does not consume
+  `itemSchema`.
+- The consumer copies only allowlisted response/media/header fields. Unknown
+  fields are ignored with structured `discovery-skipped` diagnostics naming v2,
+  the status and the field; `x-*` fields are silently ignored, not forwarded.
+  Schema dictionaries themselves are preserved for the existing schema compiler.
+- A malformed response is skipped as a unit, with actionable diagnostics. Valid
+  sibling responses and request/parameter hints survive. Missing content never
+  becomes inferred JSON or inferred body absence.
+
+Response media and header schemas may contain nested `$defs`. The same compiler
+hoists both, resolves component-name collisions, and converts schemas for the
+selected OpenAPI 3.0, 3.1 or 3.2 target. Endpoint payload versions and OpenAPI
+document versions are independent.
 
 ## Design principle: embed raw JSON Schema, do not pre-normalize
 
@@ -89,18 +138,41 @@ normalization (see `utils.hoist_inline_defs`).
 
 ## Version policy (as it behaves today)
 
-- Every payload carries `version: 1`.
+- Every payload carries an integer `version`, not a boolean or string.
 - The consumer accepts the versions in `SUPPORTED_ENDPOINT_VERSIONS`
-  (currently `frozenset({1})`).
+  (currently `frozenset({1, 2})`).
 - On an **unknown or malformed** version the consumer **warns and skips** that
   handler's endpoint metadata (it does not raise) and continues.
-- **Additive** changes (e.g. adding a new non-success response like `"422"`)
-  keep `version` at `1`. A **breaking** change bumps the version.
+- V1 behavior is unchanged: every status gets `application/json`, including a
+  missing/null schema and `"204": {}`. Do not use v1 to imply body absence.
+- Adding another v1 status keeps version 1. Richer response representations need
+  version 2: older consumers would misread a v1 `content` field as JSON with a
+  missing schema, so this is not a safely ignorable additive v1 field.
+- Unknown versions produce `version-skew` diagnostics and degraded binding-based
+  discovery, never legacy `validation` namespace fallback. The wrapper chain may
+  still provide a supported inner payload. Rejected response hints are never
+  fabricated; the generator's ordinary fallback response is not a producer claim.
 
 There is intentionally **no** promised "consumer supports version `N` and
 `N-1`" policy — the consumer accepts exactly the versions in
 `SUPPORTED_ENDPOINT_VERSIONS` and warns on anything else. Do not rely on more
 than that.
+
+### Independently versioned producer and consumer
+
+A producer release A can continue emitting `{"version": 1, "responses": {"200":
+{"schema": {"type": "object"}}}}` to both an older v1-only consumer and this
+consumer. A later producer release B may opt into the v2 payload above only for
+richer contracts. A v1-only consumer rejects that v2 payload with a version
+warning; this consumer consumes it. Upgrading the consumer first also works:
+producer A's v1 output is unchanged. Neither package imports the other's contract
+model, and neither release waits for or pins the other's release. Ensure the
+selected consumer explicitly supports the emitted version, or supply explicit
+`@openapi` metadata instead; never relabel v2 content as v1 for compatibility.
+
+This is the written compatibility policy for the internal convention: accepted
+versions retain their meanings; a semantic change needs a distinct version and
+documented consumer support. It is not a new public third-party extension API.
 
 ## How the payload reaches the spec
 
