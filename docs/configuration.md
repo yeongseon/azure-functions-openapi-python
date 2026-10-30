@@ -322,15 +322,38 @@ non-strict generation emits the best-effort schema plus a structured
 `version-downgrade-drop` warning (visible via `generate_openapi_report()` or
 the CLI's `--fail-on-warnings`). A tuple whose positions all share the
 identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
-schema already describes it faithfully.
+schema already describes it faithfully. A tuple with a reachable open tail is
+the exception described below: its tail is unconstrained, so a constrained
+prefix is approximated as `items: {}` and reported.
 
 For `prefixItems` with `items: false`, conversion caps `maxItems` at the prefix
 length, retaining a tighter existing cap. When `items` is a schema, it also
 constrains additional positions: plain `items` is exact when every prefix schema
 matches that tail schema. Otherwise, the tail joins `items.anyOf` and the same
 positional-loss warning (or strict error) applies. A tail that a `maxItems` at or
-below the prefix length makes unreachable is ignored. Absent or `true` tail
-handling is unchanged.
+below the prefix length makes unreachable is ignored. An absent or `true` tail is
+open: when reachable, it contributes an unconstrained schema. If any prefix
+position is constrained, conversion emits `items: {}` and reports the same
+positional loss (or raises in strict mode), because retaining a uniform prefix
+schema would incorrectly restrict the tail. An empty prefix, or one whose schemas
+constrain nothing (`true`, `{}`, or only annotations such as `title`), with an open
+tail remains unconstrained without a positional-loss warning.
+
+Boolean `items: true` becomes `items: {}`. Without a prefix, `items: false`
+becomes `items: {not: {}}`, preserving its rejection of every array element;
+closed prefixes retain the cap logic above. Every converted schema with
+`type: array` and no `items` gains `items: {}`, including nullable arrays and
+arrays left item-less after dropping `contains`. Filling a missing `items` adds
+no restriction and no warning; dropping `contains` still reports its own loss.
+These rules apply recursively to inline operation schemas and components.
+Non-array schemas do not gain `items`, and an `items` schema that is already
+present is kept, apart from the tuple conversions above (a typed tail still joins
+`items.anyOf`). When a nullable union refers to an array, an `items` that this
+conversion would synthesize for it (the fill for a missing `items`, or an open tuple
+tail) never displaces an `items` that the surrounding schema declares; an `items`
+that the referenced schema itself declares, including `true`, keeps following the
+existing merge of the two schemas' keys.
+OpenAPI 3.1 and 3.2 output is unchanged.
 
 Legacy array-valued `items` is normalized to `prefixItems` before this same tuple
 conversion runs. Its sibling `additionalItems`, when present, becomes `items`:

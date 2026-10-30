@@ -636,6 +636,7 @@ def test_heterogeneous_tuple_strict_exception_is_repeatable() -> None:
             "request_body": {
                 "type": "array",
                 "prefixItems": [{"type": "integer"}, {"type": "number"}],
+                "maxItems": 2,
             },
         },
     )
@@ -1084,7 +1085,7 @@ def test_empty_prefix_without_a_tail_stays_unconstrained() -> None:
     # When
     converted = _convert_schema_to_3_0(schema)
     # Then
-    assert converted == {"type": "array"}
+    assert converted == {"type": "array", "items": {}}
 
 
 @pytest.mark.parametrize(
@@ -1602,7 +1603,7 @@ def test_legacy_tuple_items_match_equivalent_prefix_items(
     messages = [("Schema 'Pair': " if hoisted else "") + loss for loss in expected_losses]
 
     # When / Then: normalization reuses the established strict-mode tuple decision.
-    if strict and heterogeneous and version == "3.0.0":
+    if strict and expected_losses and version == "3.0.0":
         with pytest.raises(OpenAPISpecConfigError) as caught:
             generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
         assert (
