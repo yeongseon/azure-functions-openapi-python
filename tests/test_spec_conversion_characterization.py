@@ -517,6 +517,81 @@ def test_type_array_beside_a_reference_moves_the_reference_into_all_of(
     assert collect_spec_warnings(spec, registry) == ()
 
 
+@pytest.mark.parametrize(
+    ("version", "header", "expected"),
+    [
+        (
+            "3.0.0",
+            {"type": ["string", "integer"]},
+            {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+        ),
+        ("3.1.0", {"type": "string", "nullable": True}, {"type": ["string", "null"]}),
+        ("3.2.0", {"type": "string", "nullable": True}, {"type": ["string", "null"]}),
+    ],
+)
+@pytest.mark.parametrize("through_content", [False, True], ids=["schema", "content"])
+def test_response_header_schemas_are_converted_for_every_version(
+    version: str,
+    header: dict[str, JsonValue],
+    expected: dict[str, JsonValue],
+    through_content: bool,
+) -> None:
+    # Given: a raw response whose header declares its schema directly or through ``content``.
+    declaration = (
+        {"content": {"application/json": {"schema": header}}}
+        if through_content
+        else {"schema": header}
+    )
+    registry = OpenAPIRegistry()
+    registry.set(
+        "headers",
+        {
+            "route": "headers",
+            "method": "get",
+            "response": {200: {"description": "ok", "headers": {"X-Rate": declaration}}},
+        },
+    )
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version=version, strict=True)
+
+    # Then: the header schema is converted like every other inline schema.
+    converted = spec["paths"]["/api/headers"]["get"]["responses"]["200"]["headers"]["X-Rate"]
+    if through_content:
+        assert converted == {"content": {"application/json": {"schema": expected}}}
+    else:
+        assert converted == {"schema": expected}
+    validate(spec)
+    assert collect_spec_warnings(spec, registry) == ()
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_unconvertible_response_header_schema_is_audited(strict: bool) -> None:
+    # Given: a header schema conversion cannot rewrite (a multi-type array beside a discriminator).
+    schema = {"type": ["string", "integer"], "discriminator": {"propertyName": "kind"}}
+    registry = OpenAPIRegistry()
+    registry.set(
+        "headers",
+        {
+            "route": "headers",
+            "method": "get",
+            "response": {200: {"description": "ok", "headers": {"X-Rate": {"schema": schema}}}},
+        },
+    )
+    subject = "GET /api/headers responses.200.headers.X-Rate.schema"
+
+    # When / Then: strict mode names the header; otherwise it is a structured warning.
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError, match="3.1-only constructs") as caught:
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        assert subject in str(caught.value)
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert warning.message.startswith(f"{subject} contains OpenAPI 3.1-only constructs")
+
+
 def test_has_3_1_only_constructs_stays_importable_from_spec() -> None:
     # Given / When: the compatibility re-export that predates the construct-naming audit.
     from azure_functions_openapi.spec import _has_3_1_only_constructs
@@ -533,7 +608,16 @@ def test_operation_schema_slots_label_each_schema_and_skip_malformed_entries() -
         "responses": {
             "200": "junk",
             "201": {"content": {"application/json": "junk"}},
-            "202": {"content": {"application/json": {"schema": {"type": "string"}}}},
+            "202": {
+                "content": {"application/json": {"schema": {"type": "string"}}},
+                "headers": {
+                    "X-Junk": "junk",
+                    "X-Plain": {"schema": {"type": "integer"}},
+                    "X-Wrapped": {"content": {"text/plain": {"schema": {"type": "string"}}}},
+                    "X-Empty": {"content": {"text/plain": "junk"}},
+                },
+            },
+            "203": {"headers": "junk"},
         },
         "parameters": [
             "junk",
@@ -553,6 +637,8 @@ def test_operation_schema_slots_label_each_schema_and_skip_malformed_entries() -
     assert locations == [
         "requestBody.content.application/json.schema",
         "responses.202.content.application/json.schema",
+        "responses.202.headers.X-Plain.schema",
+        "responses.202.headers.X-Wrapped.content.text/plain.schema",
         "parameters[1].schema",
         "parameters[2].content.application/x-www-form-urlencoded.schema",
     ]

@@ -655,6 +655,7 @@ def _operation_schema_slots(
     Covers:
     - requestBody.content.*.schema
     - responses.*.content.*.schema and .itemSchema
+    - responses.*.headers.*.schema and .content.*.schema
     - parameters[].schema (and querystring parameters' content.*.schema)
     """
     request_body = operation.get("requestBody")
@@ -682,6 +683,22 @@ def _operation_schema_slots(
                                 media_obj,
                                 schema_key,
                             )
+            headers = resp.get("headers")
+            if isinstance(headers, dict):
+                for name, header in headers.items():
+                    if not isinstance(header, dict):
+                        continue
+                    if "schema" in header:
+                        yield f"responses.{status}.headers.{name}.schema", header, "schema"
+                    header_content = header.get("content")
+                    if isinstance(header_content, dict):
+                        for media, media_obj in header_content.items():
+                            if isinstance(media_obj, dict) and "schema" in media_obj:
+                                yield (
+                                    f"responses.{status}.headers.{name}.content.{media}.schema",
+                                    media_obj,
+                                    "schema",
+                                )
 
     for index, param in enumerate(operation.get("parameters", [])):
         if not isinstance(param, dict):
