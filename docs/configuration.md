@@ -253,6 +253,13 @@ reject every value. An `enum` or `const` beside it is intersected with that: a
 list that includes `null` narrows to it, and one that excludes `null` leaves a
 schema that accepts nothing, as the original does.
 
+Numeric exclusive bounds become boolean modifiers of `minimum` or `maximum`.
+When both forms are present, conversion keeps the stricter bound; equal bounds
+stay exclusive. An `enum` beside `const` is intersected using JSON Schema equality
+(booleans are distinct from numbers). A conflicting pair remains unsatisfiable
+by retaining both predicates with `allOf`. When the `enum` it meets is empty, which
+OpenAPI 3.0 does not allow, the contradiction is written as `not: {}` instead.
+
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
 `items.anyOf`, which accepts the right set of values but can no longer
@@ -263,6 +270,14 @@ non-strict generation emits the best-effort schema plus a structured
 the CLI's `--fail-on-warnings`). A tuple whose positions all share the
 identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
 schema already describes it faithfully.
+
+For `prefixItems` with `items: false`, conversion caps `maxItems` at the prefix
+length, retaining a tighter existing cap. When `items` is a schema, it also
+constrains additional positions: plain `items` is exact when every prefix schema
+matches that tail schema. Otherwise, the tail joins `items.anyOf` and the same
+positional-loss warning (or strict error) applies. A tail that a `maxItems` at or
+below the prefix length makes unreachable is ignored. Absent or `true` tail
+handling is unchanged.
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is
