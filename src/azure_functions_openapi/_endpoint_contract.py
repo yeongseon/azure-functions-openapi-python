@@ -81,6 +81,11 @@ class EndpointMetadataV2(_EndpointMetadataRequired, total=False):
     responses: dict[str, EndpointResponseV2]
 
 
+_NAME_CHARS = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
+_HEADER_NAME = _NAME_CHARS
+_MEDIA_TYPE = f"{_NAME_CHARS}/{_NAME_CHARS}"
+
+
 def _unknown_fields(value: dict[str, Any], allowed: set[str], location: str) -> list[str]:
     return [
         f"endpoint v2 {location}: ignored unknown field {key!r}; "
@@ -102,9 +107,7 @@ def _read_schema_entries(
     for name, entry in entries.items():
         entry_location = f"{location}.{name}"
         valid_name = isinstance(name, str) and bool(
-            re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", name)
-            if headers
-            else re.fullmatch(r"[^\s/;]+/[^\s/;]+", name)
+            re.fullmatch(_HEADER_NAME if headers else _MEDIA_TYPE, name)
         )
         if not valid_name or (headers and (name.lower() in seen or name.lower() == "content-type")):
             return None, diagnostics + [

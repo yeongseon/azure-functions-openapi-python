@@ -65,6 +65,12 @@ def test_v2_representation_when_synthetic_producer_is_scanned() -> None:
         {"content": {"application/json": {}}},
         {"content": {"application/json": {"schema": None}}},
         {"content": {"bad": {"schema": {}}}},
+        {"content": {"application/json,garbage": {"schema": {}}}},
+        {"content": {'text/"plain"': {"schema": {}}}},
+        {"content": {"application/\u00fc": {"schema": {}}}},
+        {"content": {"application/json\n": {"schema": {}}}},
+        {"content": {"application/": {"schema": {}}}},
+        {"content": {"/json": {"schema": {}}}},
         {"content": {1: {"schema": {}}}},
         {"content": media(), "description": None},
         {"content": media(), "headers": None},
@@ -96,6 +102,19 @@ def test_malformed_response_when_valid_sibling_exists(detail: Any) -> None:
         w.code == WarningCode.DISCOVERY_SKIPPED and "v2 responses.201" in w.message
         for w in warnings
     )
+
+
+@pytest.mark.parametrize(
+    "media_type", ["application/*", "*/*", "application/vnd.api+json", "text/event-stream"]
+)
+def test_media_type_is_accepted_when_both_halves_are_tokens(media_type: str) -> None:
+    # Given
+    payload = {"version": 2, "responses": {"200": {"content": {media_type: {"schema": {}}}}}}
+    # When
+    operation = _discovered_operation_from_endpoint("handler", payload, "/users", "post")
+    # Then
+    assert list(operation["response"][200]["content"]) == [media_type]
+    assert operation["_endpoint_warnings"] == []
 
 
 @pytest.mark.parametrize("status", [200, True, "199", "600", "0200", "default"])

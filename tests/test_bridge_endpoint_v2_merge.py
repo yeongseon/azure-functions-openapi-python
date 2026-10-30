@@ -69,6 +69,17 @@ def test_union_when_shared_media_and_headers_match() -> None:
         ),
         ({"description": "empty"}, {"content": media()}, "body-less"),
         ({"content": media()}, {"content": {}}, "body-less"),
+        ({"content": {"application/json": {}}}, {"content": {}}, "body-less"),
+        (
+            {"content": {"Application/JSON": {"schema": {"type": "object"}}}},
+            {"content": media({"type": "string"})},
+            "media application/json",
+        ),
+        (
+            {"content": {"application/json": {}}},
+            {"content": {"text/plain": {"schema": {"type": "string"}}}},
+            "media types",
+        ),
         (
             {"content": media(), "headers": {"location": {"schema": {"type": "integer"}}}},
             {"content": media(), "headers": {"Location": {"schema": {"type": "string"}}}},
@@ -89,6 +100,83 @@ def test_conflict_when_runtime_response_contract_differs(
     with pytest.raises(OpenAPISpecConfigError) as exc:
         scan_endpoint_metadata(app, registry=reg)
     assert all(part in str(exc.value) for part in ("POST /api/users", "status 201", context))
+
+
+def test_media_types_merge_case_insensitively_and_keep_the_explicit_spelling() -> None:
+    # Given: the same media type spelled differently, with another media type on the explicit side.
+    explicit = {
+        "content": {
+            "Application/JSON": {"schema": {"type": "object"}, "example": {"id": 1}},
+            "text/plain": {"schema": {"type": "string"}},
+        }
+    }
+    discovered = {
+        "content": {
+            "application/json": {"schema": {"type": "object"}},
+            "text/csv": {"schema": {"type": "string"}},
+        }
+    }
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users", method="post", response={200: explicit}, registry=reg
+    )
+
+    # When
+    scan_endpoint_metadata(make_app({"version": 2, "responses": {"200": discovered}}), registry=reg)
+    spec = generate_openapi_spec(registry=reg, strict=True)
+
+    # Then: one JSON representation under the explicit spelling, plus both other types.
+    content = spec["paths"]["/api/users"]["post"]["responses"]["200"]["content"]
+    assert set(content) == {"Application/JSON", "text/plain", "text/csv"}
+    assert content["Application/JSON"] == {"schema": {"type": "object"}, "example": {"id": 1}}
+
+
+def test_schema_less_media_takes_the_discovered_schema() -> None:
+    # Given: an explicit body-bearing media type that declares no schema yet.
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        response={200: {"content": {"application/json": {"example": {"id": 1}}}}},
+        registry=reg,
+    )
+
+    # When
+    scan_endpoint_metadata(
+        make_app({"version": 2, "responses": {"200": {"content": media()}}}), registry=reg
+    )
+    spec = generate_openapi_spec(registry=reg, strict=True)
+
+    # Then
+    content = spec["paths"]["/api/users"]["post"]["responses"]["200"]["content"]
+    assert content["application/json"] == {"example": {"id": 1}, "schema": {"type": "object"}}
+
+
+def test_response_model_json_survives_a_discovered_disjoint_status() -> None:
+    # Given: a model plus a description-only 200, and discovered metadata for a different status.
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        response_model=Result,
+        response={200: {"description": "ok"}},
+        registry=reg,
+    )
+    problem = {"application/problem+json": {"schema": {"type": "object"}}}
+
+    # When
+    scan_endpoint_metadata(
+        make_app({"version": 2, "responses": {"400": {"content": problem}}}), registry=reg
+    )
+    spec = generate_openapi_spec(registry=reg, strict=True)
+
+    # Then: the compiler still fills the model's JSON representation into the 200 response.
+    responses = spec["paths"]["/api/users"]["post"]["responses"]
+    assert responses["200"]["description"] == "ok"
+    assert responses["200"]["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/Result"
+    }
+    assert responses["400"]["content"] == problem
 
 
 def test_bodyless_merge_when_only_prose_differs() -> None:
@@ -119,7 +207,7 @@ class Result(BaseModel):
     id: int
 
 
-def test_response_model_keeps_json_when_discovered_media_fills_gap() -> None:
+def test_response_model_status_gets_the_discovered_media_and_headers() -> None:
     # Given
     reg = OpenAPIRegistry()
     register_openapi_metadata(path="/api/users", method="post", response_model=Result, registry=reg)
@@ -139,9 +227,7 @@ def test_response_model_keeps_json_when_discovered_media_fills_gap() -> None:
     # Then
     response = spec["paths"]["/api/users"]["post"]["responses"]["201"]
     assert set(response["content"]) == {"application/json", "text/plain"}
-    assert response["content"]["application/json"]["schema"] == {
-        "$ref": "#/components/schemas/Result"
-    }
+    assert response["content"]["application/json"]["schema"] == Result.model_json_schema()
     assert response["headers"]["Location"]["schema"] == {"type": "string"}
 
 

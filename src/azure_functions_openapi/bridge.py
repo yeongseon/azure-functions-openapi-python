@@ -193,6 +193,11 @@ def _resolved_schema(schema: Any) -> Any:
     return type_to_schema(schema)
 
 
+def _media_key(media_type: Any) -> str:
+    """Media types are case-insensitive, so compare and merge on the lower-cased name."""
+    return str(media_type).lower()
+
+
 def _response_details_conflict(existing: Any, discovered: Any) -> bool:
     return _response_conflict_location(existing, discovered) is not None
 
@@ -201,27 +206,30 @@ def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     if not isinstance(existing, dict) or not isinstance(discovered, dict):
         return "response" if existing != discovered else None
 
-    def _content_schemas(detail: dict[str, Any]) -> dict[str, Any]:
+    def _content_schemas(detail: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+        """Whether the response has a body, and the schema of each media type that has one."""
         schemas: dict[str, Any] = {}
         content = detail.get("content")
         if not isinstance(content, dict):
-            return schemas
+            return False, schemas
         for media_type, media in content.items():
             if isinstance(media, dict) and "schema" in media:
-                schemas[str(media_type)] = _resolved_schema(media["schema"])
-        return schemas
+                schemas[_media_key(media_type)] = _resolved_schema(media["schema"])
+        return bool(content), schemas
 
-    existing_schemas = _content_schemas(existing)
-    discovered_schemas = _content_schemas(discovered)
-    if bool(existing_schemas) != bool(discovered_schemas):
+    existing_body, existing_schemas = _content_schemas(existing)
+    discovered_body, discovered_schemas = _content_schemas(discovered)
+    if existing_body != discovered_body:
         return "body-less versus body-bearing response"
-    if not existing_schemas and not discovered_schemas:
-        if any(key not in {"description", "headers", "content"} for key in existing | discovered):
-            return "response" if existing != discovered else None
-    shared_media_types = set(existing_schemas) & set(discovered_schemas)
-    if existing_schemas and not shared_media_types:
-        return f"media types {sorted(existing_schemas)} versus {sorted(discovered_schemas)}"
-    for media_type in sorted(shared_media_types):
+    if not existing_body and any(
+        key not in {"description", "headers", "content"} for key in existing | discovered
+    ):
+        return "response" if existing != discovered else None
+    existing_media = {_media_key(name) for name in existing.get("content") or {}}
+    discovered_media = {_media_key(name) for name in discovered.get("content") or {}}
+    if existing_media and not existing_media & discovered_media:
+        return f"media types {sorted(existing_media)} versus {sorted(discovered_media)}"
+    for media_type in sorted(set(existing_schemas) & set(discovered_schemas)):
         if existing_schemas[media_type] != discovered_schemas[media_type]:
             return f"media {media_type}"
     existing_headers = existing.get("headers", {})
@@ -243,10 +251,9 @@ def _merge_response_detail(existing: dict[str, Any], discovered: dict[str, Any])
     for field in ("content", "headers"):
         incoming = discovered.get(field, {})
         current = merged.get(field, {})
-        names = {name.lower() if field == "headers" else name: name for name in current}
+        names = {name.lower(): name for name in current}
         for name, detail in incoming.items():
-            normalized = name.lower() if field == "headers" else name
-            target_name = names.get(normalized, name)
+            target_name = names.get(name.lower(), name)
             if target_name in current:
                 for key, value in detail.items():
                     current[target_name].setdefault(key, copy.deepcopy(value))
@@ -425,13 +432,6 @@ def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -
         existing_response = existing.get("response")
         if not isinstance(existing_response, dict):
             existing_response = {}
-        if existing.get("response_model") is not None:
-            statuses = [*_response_status_keys(existing), *_response_status_keys(discovered)]
-            effective = _effective_response_details(existing, statuses)
-            for status, detail in effective.items():
-                if not any(str(key) == status for key in existing_response):
-                    existing_response[int(status)] = detail
-            existing["response_model"] = None
         for status, detail in discovered_response.items():
             target_status = next(
                 (key for key in existing_response if str(key) == str(status)), status
