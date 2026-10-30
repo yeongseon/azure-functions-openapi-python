@@ -181,6 +181,12 @@ def _accepts_null(
             target_accepts = assume_unknown
         if not target_accepts or not ref_siblings_apply:
             return target_accepts
+    if (
+        not ref_siblings_apply
+        and "discriminator" in schema
+        and any(composition in schema for composition in ("allOf", "anyOf", "oneOf"))
+    ):
+        return False
     types = schema.get("type")
     if types is not None:
         names = types if isinstance(types, list) else [types]
@@ -246,18 +252,18 @@ def _exact_nullable_union(
     members = [_hoist_reference_siblings(member) for member in non_null]
     discriminator = base.get("discriminator")
     rest = {k: v for k, v in base.items() if k != "discriminator"}
-    if not _accepts_null(rest, schemas, ref_siblings_apply=True, assume_unknown=True):
-        carried = {"discriminator": discriminator} if discriminator and len(members) > 1 else {}
-        return {**rest, **carried, key: members}
-    null_only = {"nullable": True, "enum": [None]}
-    if (
+    scoped = (
         discriminator is not None
         and len(members) > 1
         and not any(
             _accepts_null(member, schemas, ref_siblings_apply=True, assume_unknown=True)
             for member in non_null
         )
-    ):
+    )
+    if not _accepts_null(rest, schemas, ref_siblings_apply=True, assume_unknown=True):
+        return {**rest, **({"discriminator": discriminator} if scoped else {}), key: members}
+    null_only = {"nullable": True, "enum": [None]}
+    if scoped:
         union = [{key: members, "discriminator": discriminator}, null_only]
         if "anyOf" in rest:
             all_of = rest.get("allOf")
@@ -479,37 +485,47 @@ def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]
 
     Every key keeps doing its job. A key only one side declares is kept. When both
     declare it: an annotation (or ``x-`` extension) takes the wrapper's value, since the
-    wrapper describes this field; two ``allOf`` lists are concatenated; a size bound
-    keeps the tighter value; numeric bounds retain their exclusivity in one conjunct;
-    any other constraint is added to ``allOf`` so both still
-    apply. ``nullable`` is the caller's to set.
+    wrapper describes this field; a size bound keeps the tighter value; numeric bounds
+    retain their exclusivity in one conjunct; any other constraint, and the wrapper's
+    own ``allOf``, become ``allOf`` conjuncts so both sides still apply. ``nullable`` is
+    the caller's to set.
+
+    3.0 validators enforce a ``discriminator`` beside an ``allOf``, while the inlined
+    schema's own discriminator may be inert beside plain keys (or active beside its own
+    union), so when it carries one the conjuncts go in an outer ``allOf`` that holds the
+    merged schema as its first member.
     """
     merged = dict(inlined)
+    conjuncts: list[Any] = []
     coupled_keys: set[str] = set()
     for bound, exclusive in (("minimum", "exclusiveMinimum"), ("maximum", "exclusiveMaximum")):
         family = (bound, exclusive)
         if any(k in inlined for k in family) and any(k in wrapper for k in family):
-            all_of = merged.get("allOf")
-            merged["allOf"] = [
-                *(all_of if isinstance(all_of, list) else []),
-                {k: wrapper[k] for k in family if k in wrapper},
-            ]
+            conjuncts.append({k: wrapper[k] for k in family if k in wrapper})
             coupled_keys.update(family)
     for key, value in wrapper.items():
         if key == "nullable" or key in coupled_keys:
             continue
-        if key not in merged or merged[key] == value:
+        if key == "allOf" and isinstance(value, list):
+            if merged.get("allOf") != value:
+                conjuncts.extend(value)
+        elif key not in merged or merged[key] == value:
             merged[key] = value
         elif key in _ANNOTATION_KEYS or key.startswith("x-"):
             merged[key] = value
-        elif key == "allOf" and isinstance(merged[key], list) and isinstance(value, list):
-            merged[key] = [*merged[key], *value]
         elif key in _BOUND_KEYS:
             merged[key] = _tighter_bound(key, value, merged[key])
         else:
-            all_of = merged.get("allOf")
-            merged["allOf"] = [*(all_of if isinstance(all_of, list) else []), {key: value}]
-    return merged
+            conjuncts.append({key: value})
+    if not conjuncts:
+        return merged
+    if "discriminator" not in merged:
+        all_of = merged.get("allOf")
+        merged["allOf"] = [*(all_of if isinstance(all_of, list) else []), *conjuncts]
+        return merged
+    annotations = {k: v for k, v in merged.items() if k in _ANNOTATION_KEYS or k.startswith("x-")}
+    inner = {k: v for k, v in merged.items() if k not in annotations}
+    return {**annotations, "allOf": [inner, *conjuncts]}
 
 
 def _tighter_bound(key: str, first: Any, second: Any) -> Any:

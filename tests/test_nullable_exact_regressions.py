@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from openapi_schema_validator import OAS30Validator, OAS31Validator
@@ -12,6 +13,9 @@ import pytest
 from azure_functions_openapi._schema_version_conversion import (
     _accepts_null,
     _convert_schema_to_3_0,
+    _convert_schema_to_3_1,
+    _convert_schemas_to_3_0,
+    _merge_wrapper_into_inlined,
 )
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -21,7 +25,9 @@ PROBES: list[JsonValue] = [
     None,
     "x",
     "a",
+    "b",
     "",
+    5,
     -1,
     0,
     1,
@@ -37,6 +43,22 @@ PROBES: list[JsonValue] = [
     {"kind": "Dog"},
     {"kind": "fish"},
     {"a": 1},
+    {"a": 1, "b": 2},
+]
+TARGETS_WITH_DISCRIMINATOR: list[tuple[str, dict[str, Any]]] = [
+    ("min", {"type": "number", "minimum": 0}),
+    ("exclusive", {"type": "number", "exclusiveMinimum": 2}),
+    ("max", {"type": "number", "maximum": 10}),
+    ("required", {"type": "object", "required": ["a"]}),
+    ("enum", {"type": "string", "enum": ["a", "b"]}),
+]
+FIELD_CONSTRAINTS: list[tuple[str, dict[str, Any]]] = [
+    ("min1", {"minimum": 1}),
+    ("exclusive1", {"exclusiveMinimum": 1}),
+    ("max5", {"maximum": 5}),
+    ("required-b", {"required": ["b"]}),
+    ("enum-a", {"enum": ["a", 3]}),
+    ("all-of", {"allOf": [{"minimum": 3}]}),
 ]
 CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     (
@@ -131,6 +153,28 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         {"discriminator": {"propertyName": "kind"}, "allOf": [{}], "anyOf": [{"type": "null"}]},
         {},
     ),
+    *[
+        (
+            f"target-discriminator-{target_name}-{wrap_name}-{key}",
+            {**wrap, key: [REF, {"type": "null"}]},
+            {"T": {**target, "discriminator": {"propertyName": "kind"}}},
+        )
+        for key in ("anyOf", "oneOf")
+        for target_name, target in TARGETS_WITH_DISCRIMINATOR
+        for wrap_name, wrap in FIELD_CONSTRAINTS
+    ],
+    *[
+        (
+            f"discriminator-collision-ruled-out-{key}",
+            {
+                "type": "object",
+                "discriminator": {"propertyName": "kind"},
+                key: [{"$ref": "#/$defs/T"}, {"$ref": "#/$defs/U"}, {"type": "null"}],
+            },
+            {"T": {"enum": [None, "a"]}, "U": {"type": "object"}},
+        )
+        for key in ("oneOf", "anyOf")
+    ],
     *[
         (
             f"single-discriminator-null-ruled-out-{key}",
@@ -269,6 +313,10 @@ def test_nullable_fallback_preserves_instance_acceptance(
         assert root["anyOf"][0]["allOf"][0] == {"$ref": "#/components/schemas/T"}
     if name.startswith(("member-discriminator-", "discriminator-collision-")):
         assert "discriminator" not in str(spec["paths"]) + str(spec.get("components", {}))
+    if name.startswith("target-discriminator-"):
+        components = spec.get("components", {}).get("schemas", {})
+        holder = components["Holder"] if hoisted else schema
+        assert "allOf" not in holder or "discriminator" not in holder
     if name.startswith("discriminator-") and not name.startswith("discriminator-collision-"):
         root = spec["components"]["schemas"]["Holder"] if hoisted else schema
         polymorphism = (
@@ -333,3 +381,92 @@ def test_reference_with_siblings_is_not_expanded_for_the_nullable_idiom(shape: s
     # Then: the reference stays a reference, and the component's own loss is not reported again.
     assert converted["anyOf"][0]["allOf"][0] == {"$ref": "#/components/schemas/T"}
     assert losses == []
+
+
+@pytest.mark.parametrize(
+    ("schema", "expected"),
+    [
+        ({"oneOf": [{"enum": [None, "a"]}, {"type": "string"}], "nullable": True}, True),
+        (
+            {
+                "oneOf": [{"enum": [None, "a"]}, {"type": "string"}],
+                "discriminator": {"propertyName": "kind"},
+                "nullable": True,
+            },
+            False,
+        ),
+        ({"allOf": [{"minimum": 1}], "discriminator": {"propertyName": "kind"}}, False),
+        ({"type": "number", "discriminator": {"propertyName": "kind"}, "nullable": True}, True),
+    ],
+    ids=["union", "union-with-discriminator", "all-of-with-discriminator", "discriminator-alone"],
+)
+def test_candidate_with_an_active_discriminator_rejects_null(schema: Any, expected: bool) -> None:
+    # Given / When / Then: 3.0 validators reject null where a discriminator is active.
+    assert _accepts_null(schema, None, ref_siblings_apply=False, assume_unknown=False) is expected
+    assert _accepts_null(
+        {k: v for k, v in schema.items() if k != "discriminator"},
+        None,
+        ref_siblings_apply=False,
+        assume_unknown=False,
+    ) is (expected or "discriminator" in schema)
+
+
+@pytest.mark.parametrize("key", ["anyOf", "oneOf"])
+@pytest.mark.parametrize(
+    "members",
+    [
+        [{"type": "string", "nullable": True}],
+        [{"type": "string", "nullable": True}, {"type": "integer"}],
+        [{"$ref": "#/$defs/NullableString"}],
+        [{"$ref": "#/$defs/NullableString"}, {"type": "integer"}],
+        [{"type": "string", "nullable": True}, {"enum": [None, "a"]}],
+    ],
+    ids=["inline", "inline-and-integer", "reference", "reference-and-integer", "two-nullable"],
+)
+def test_nullable_in_the_input_is_read_like_the_3_1_conversion(
+    key: str, members: list[dict[str, Any]]
+) -> None:
+    # Given: an input whose members say ``nullable: true`` beside an explicit null member.
+    definitions = {"NullableString": {"type": "string", "nullable": True}}
+    node = {key: [*members, {"type": "null"}]}
+    probes: list[JsonValue] = [None, "a", "x", 1, 2.5, {}, []]
+    components_node = json.loads(json.dumps(node).replace("#/$defs/", "#/components/schemas/"))
+
+    # When
+    converted_3_0 = _convert_schema_to_3_0(components_node, definitions)
+    converted_3_1 = _convert_schema_to_3_1(node)
+
+    # Then: the library's own 3.1 conversion and its 3.0 conversion accept the same instances.
+    components_3_0 = _convert_schemas_to_3_0(definitions)[0]
+    components_3_1 = {name: _convert_schema_to_3_1(value) for name, value in definitions.items()}
+    in_3_0 = OAS30Validator({**converted_3_0, "components": {"schemas": components_3_0}})
+    in_3_1 = OAS31Validator({**converted_3_1, "$defs": components_3_1})
+    assert [in_3_0.is_valid(p) for p in probes] == [in_3_1.is_valid(p) for p in probes]
+
+
+def test_conjuncts_beside_an_inlined_discriminator_go_in_an_outer_all_of() -> None:
+    # Given: an inlined schema with an inert discriminator and a field that tightens a bound.
+    discriminator = {"propertyName": "kind"}
+    inlined = {"type": "number", "minimum": 0, "discriminator": discriminator, "nullable": True}
+
+    # When
+    merged = _merge_wrapper_into_inlined(inlined, {"minimum": 1, "description": "field"})
+
+    # Then: the discriminator stays beside plain keys, and the annotation describes the field.
+    assert merged == {
+        "description": "field",
+        "allOf": [
+            {"type": "number", "minimum": 0, "discriminator": discriminator, "nullable": True},
+            {"minimum": 1},
+        ],
+    }
+
+
+def test_wrapper_all_of_equal_to_the_inlined_one_is_not_repeated() -> None:
+    # Given / When
+    merged = _merge_wrapper_into_inlined(
+        {"type": "object", "allOf": [{"minProperties": 1}]}, {"allOf": [{"minProperties": 1}]}
+    )
+
+    # Then
+    assert merged == {"type": "object", "allOf": [{"minProperties": 1}]}

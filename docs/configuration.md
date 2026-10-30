@@ -250,6 +250,14 @@ as `description` describe the field, size bounds keep the tighter value, and oth
 shared constraints are kept in `allOf`. Numeric bounds and their exclusivity flags
 are kept together: when both sides declare a lower or upper bound family, the
 field's family is retained as a separate `allOf` conjunct, so neither side is lost.
+If the referenced schema carries a `discriminator`, those conjuncts go in an outer
+`allOf` beside the merged schema, because 3.0 validators enforce a discriminator that
+sits beside an `allOf`.
+
+A `nullable: true` in an input schema is read the way the 3.1 conversion reads it, as
+accepting `null`, not the way a 3.1 validator ignores an unknown keyword; the
+conversion keeps what that reading accepts, so a `oneOf` of a `nullable` member and
+an explicit null member rejects `null` in every version.
 
 A `type` array without `null` (for example `type: [string, integer]`, which
 validation producers use for error locations) is rewritten to an `anyOf` of

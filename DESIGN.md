@@ -93,7 +93,10 @@ The final call-flow is:
    `allOf`. Keys beside the union that reject null make the null branch dead.
    Numeric bounds and their exclusivity flags are kept together when merging
    inlined content with field constraints, using separate `allOf` conjuncts when
-   both sides declare a bound family.
+   both sides declare a bound family; if the inlined schema carries a `discriminator`,
+   the conjuncts sit in an outer `allOf` so that 3.0 validators do not start
+   enforcing it. An input `nullable: true` is read as the 3.1 conversion reads it
+   (accepting `null`), and the acceptance of that reading is what is preserved.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
