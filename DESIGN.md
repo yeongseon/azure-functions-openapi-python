@@ -113,6 +113,13 @@ The final call-flow is:
    caps. The preparation covers properties, items, prefix items, additional and
    pattern-property schemas, combinators, `not` and `$defs`; 3.1/3.2 bypass it.
    Keywords outside this list are not generally audited.
+   Reachable open tuple tails contribute an unconstrained schema: constrained
+   prefixes then become `items: {}` with the existing positional-loss channel,
+   while a tail excluded by `maxItems` does not widen prefix positions. The
+   recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
+   to `{}`, standalone `false` to `{not: {}}`) and fills missing `items` only on
+   converted `type: array` nodes, including nullable arrays. Existing closed-prefix
+   caps and valid item schemas remain intact; 3.1/3.2 bypass these rules.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
    before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
