@@ -78,11 +78,12 @@ The final call-flow is:
 1. Snapshot metadata and scan-lifetime warnings; assemble operations and hoist
    definitions into the complete component map. Compilation events accumulate
    locally rather than updating the registry during the walk.
-2. Convert inline request, response (including `itemSchema`), and parameter schemas:
-   3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy nullable/example
-   syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable unions, refs,
-   and other downgrade forms, recording losses in encounter order. Inline nullable
-   refs resolve against the **original complete component map**, before replacement.
+2. Convert inline request, response (including `itemSchema` and headers), and
+   parameter schemas: 3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy
+   nullable/example syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable
+   unions, refs, and other downgrade forms, recording losses in encounter order.
+   Inline nullable refs resolve against the **original complete component map**,
+   before replacement.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
@@ -92,9 +93,11 @@ The final call-flow is:
    `_check_schemas_3_0_compatible` for components. Each rejects (strict) or reports
    a `type` array or null-`anyOf` that conversion could not normalize, naming the
    construct and where it was found. Conversion rewrites non-null `type` arrays to
-   `anyOf` except beside a `discriminator`, which a combinator would activate, and
-   faithfully converted schemas must not trigger the audit. Non-strict findings
-   join the schema-loss findings below rather than being logged on their own.
+   `anyOf` except a multi-type array beside a `discriminator`, which a combinator
+   would activate, and faithfully converted schemas must not trigger the audit.
+   Inline schemas include response header schemas. A null-only schema under `not`
+   cannot be expressed, so it joins the schema-loss findings below. Non-strict
+   findings join those schema-loss findings rather than being logged on their own.
    Keywords OpenAPI 3.0 does not define are not audited.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops

@@ -229,14 +229,26 @@ value under real OpenAPI 3.0 tooling.
 
 A `type` array without `null` (for example `type: [string, integer]`, which
 validation producers use for error locations) is rewritten to an `anyOf` of
-single-type schemas, and sibling keywords stay on the schema. A `type` array
-that conversion cannot rewrite faithfully, such as one beside a `discriminator`,
-stays in the document. Like an `anyOf` with a `null` branch that conversion
-could not normalize, it is reported as a structured `version-downgrade-drop`
+single-type schemas, and sibling keywords stay on the schema. An `array` branch
+gains an empty `items`, because OpenAPI 3.0 requires one; a nullable union
+carries `nullable` on its first branch, so `null` is still accepted; and a
+`$ref` beside the array moves into `allOf`, because OpenAPI 3.0 ignores the
+siblings of a reference. A multi-type `type` array that conversion cannot
+rewrite faithfully, such as one beside a `discriminator`, stays in the document.
+Like an `anyOf` with a `null` branch that conversion could not normalize, it is
+reported as a structured `version-downgrade-drop`
 warning (visible via `generate_openapi_report()` or the CLI's
 `--fail-on-warnings`) and raises `OpenAPISpecConfigError` under `strict=True`.
-Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does not define, for
-example `if`/`then`/`else` or `contains`, are not checked.
+These rewrites and the check cover every inline schema, including the schemas
+of response headers. Other JSON Schema 2020-12 keywords that OpenAPI 3.0 does
+not define, for example `if`/`then`/`else` or `contains`, are not checked.
+
+A null-only schema has no exact OpenAPI 3.0 form either: it is approximated as a
+type-less `nullable` schema, which accepts every value. Beneath `not` that
+approximation would turn the negation into a schema that rejects every value, so
+it is reported like a heterogeneous tuple: `strict=True` raises
+`OpenAPISpecConfigError` and non-strict generation emits a structured
+`version-downgrade-drop` warning.
 
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
