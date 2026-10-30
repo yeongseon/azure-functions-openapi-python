@@ -282,6 +282,63 @@ def test_explicit_response_map_shared_by_two_registries_is_not_written_through()
         assert response["content"]["application/problem+json"]["schema"] == {"type": schema_type}
 
 
+@pytest.mark.parametrize("reverse", [False, True], ids=["declared-order", "reversed-order"])
+def test_media_entries_sharing_one_dictionary_are_filled_independently(reverse: bool) -> None:
+    # Given: an explicit declaration that reuses one empty media template for two media types.
+    shared: dict[str, Any] = {}
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        response={200: {"content": {"application/json": shared, "text/plain": shared}}},
+        registry=reg,
+    )
+    content = {**media(), "text/plain": {"schema": {"type": "string"}}}
+    if reverse:
+        content = dict(reversed(content.items()))
+    app = make_app({"version": 2, "responses": {"200": {"content": content}}})
+
+    # When / Then: every scan gives each media type the schema its producer declared.
+    for _ in range(3):
+        scan_endpoint_metadata(app, registry=reg)
+        spec = generate_openapi_spec(registry=reg, strict=True)
+        response = spec["paths"]["/api/users"]["post"]["responses"]["200"]
+        assert {name: entry["schema"] for name, entry in response["content"].items()} == {
+            "application/json": {"type": "object"},
+            "text/plain": {"type": "string"},
+        }
+    assert shared == {}
+
+
+def test_header_entries_sharing_one_dictionary_are_filled_independently() -> None:
+    # Given
+    shared: dict[str, Any] = {}
+    existing = {"headers": {"X-A": shared, "X-B": shared}}
+    discovered = {
+        "headers": {"X-A": {"schema": {"type": "string"}}, "X-B": {"schema": {"type": "integer"}}}
+    }
+
+    # When
+    merged = _merge_response_detail(existing, discovered)
+
+    # Then
+    assert merged["headers"] == discovered["headers"]
+    assert shared == {}
+
+
+def test_discovered_detail_for_a_new_status_is_copied() -> None:
+    # Given
+    existing: dict[str, Any] = {"response": {}}
+    discovered = {"response": {201: {"content": media()}}}
+
+    # When
+    _merge_into_existing(existing, discovered)
+    existing["response"][201]["content"]["application/json"]["schema"]["type"] = "array"
+
+    # Then
+    assert discovered["response"][201]["content"] == media()
+
+
 def test_merge_ignores_discovered_headers_and_content_that_are_not_mappings() -> None:
     # Given
     existing: dict[str, Any] = {

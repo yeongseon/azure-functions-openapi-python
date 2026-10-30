@@ -274,9 +274,15 @@ def _merge_response_detail(existing: dict[str, Any], discovered: dict[str, Any])
         incoming = discovered.get(field)
         if not isinstance(incoming, dict):
             continue
-        current = merged.get(field)
-        if not isinstance(current, dict):
-            current = {}
+        existing_entries = merged.get(field)
+        current = (
+            {
+                name: dict(entry) if isinstance(entry, dict) else entry
+                for name, entry in existing_entries.items()
+            }
+            if isinstance(existing_entries, dict)
+            else {}
+        )
         names = {str(name).lower(): name for name in current}
         for name, detail in incoming.items():
             target_name = names.get(str(name).lower(), name)

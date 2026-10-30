@@ -6,6 +6,7 @@ from typing import Any
 import azure.functions as func
 import pytest
 
+from azure_functions_openapi._endpoint_contract import read_v2_responses
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.bridge import (
     _discovered_operation_from_endpoint,
@@ -52,6 +53,30 @@ def test_v2_representation_when_synthetic_producer_is_scanned() -> None:
     assert responses["400"]["content"] == payload["responses"]["400"]["content"]
     assert responses["204"] == {"description": ""}
     assert responses["200"]["content"] == payload["responses"]["200"]["content"]
+    assert payload == original
+
+
+def test_read_v2_responses_hands_back_copies_of_the_producer_schemas() -> None:
+    # Given
+    payload: dict[str, Any] = {
+        "version": 2,
+        "responses": {
+            "200": {
+                "content": media({"type": "object", "properties": {"a": {"type": "string"}}}),
+                "headers": {"X-Id": {"schema": {"type": "string", "enum": ["a"]}}},
+            }
+        },
+    }
+    original = copy.deepcopy(payload)
+
+    # When
+    responses, diagnostics = read_v2_responses(payload)
+    detail = responses[200]
+    detail["content"]["application/json"]["schema"]["properties"]["a"]["type"] = "integer"
+    detail["headers"]["X-Id"]["schema"]["enum"].append("b")
+
+    # Then
+    assert diagnostics == []
     assert payload == original
 
 
