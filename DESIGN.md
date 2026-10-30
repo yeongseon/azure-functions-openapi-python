@@ -215,10 +215,19 @@ Route-prefix configuration detection is opt-in: existing Python parameters and
 the CLI's effective default remain `/api`. `resolve_route_prefix` reads only the
 explicitly located host file (cwd by default), with a present Azure app-setting
 override taking precedence, and returns a normalized string for existing APIs.
-The CLI's `auto` mode locates the file beside the imported app module. Non-auto
-CLI generation diagnoses file-prefix mismatches through structured warnings that
-gate `--fail-on-warnings`; Python APIs do not infer caller intent or warn about
-mismatches. Invalid host configuration warns and falls back without execution.
+The Python helper deliberately retains its `RuntimeWarning` and `/api` fallback
+for unusable files. The CLI's `auto` mode locates the file beside the imported
+app module (cwd when no module file is available). A present app-setting override,
+even empty, short-circuits before any file is read. Without that override, an
+unreadable file, invalid strict JSON (including comments or trailing commas), or
+a non-string `extensions.http.routePrefix` raises a configuration error: exit `1`,
+file path and reason on stderr, no specification written, independent of
+`--fail-on-warnings`. Missing files or keys silently use `/api` in both APIs.
+Non-auto CLI generation still diagnoses file-prefix mismatches through structured
+warnings that gate `--fail-on-warnings`; unusable files produce no mismatch
+warning. Python APIs do not infer caller intent or warn about mismatches.
+Reading the file never executes application code, but the CLI imports the app module
+before it resolves the prefix, so import-time side effects precede a configuration error.
 
 - Minimum supported Python version: `3.11`
 - Supported runtime target: Azure Functions Python v2 programming model
