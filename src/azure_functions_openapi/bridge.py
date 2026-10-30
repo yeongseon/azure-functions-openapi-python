@@ -202,23 +202,47 @@ def _response_details_conflict(existing: Any, discovered: Any) -> bool:
     return _response_conflict_location(existing, discovered) is not None
 
 
+def _header_map(detail: dict[str, Any]) -> dict[str, Any]:
+    headers = detail.get("headers")
+    if not isinstance(headers, dict):
+        return {}
+    return {str(name).lower(): header for name, header in headers.items()}
+
+
+def _header_schema(header: Any) -> Any:
+    return _resolved_schema(header.get("schema")) if isinstance(header, dict) else None
+
+
+def _content_schemas(detail: dict[str, Any]) -> tuple[bool, dict[str, Any], str | None]:
+    """Whether a response has a body, the schema of each media type that has one, and a defect.
+
+    The defect names a declaration that cannot be reconciled: a media entry that is not
+    a mapping, or one media type declared with different schemas under case variants.
+    """
+    schemas: dict[str, Any] = {}
+    content = detail.get("content")
+    if not isinstance(content, dict):
+        return False, schemas, None
+    for media_type, media in content.items():
+        if not isinstance(media, dict):
+            return True, schemas, f"malformed media entry {media_type!r}"
+        if "schema" in media:
+            key = _media_key(media_type)
+            resolved = _resolved_schema(media["schema"])
+            if key in schemas and schemas[key] != resolved:
+                return True, schemas, f"media {key} declared with different schemas"
+            schemas[key] = resolved
+    return bool(content), schemas, None
+
+
 def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     if not isinstance(existing, dict) or not isinstance(discovered, dict):
         return "response" if existing != discovered else None
 
-    def _content_schemas(detail: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
-        """Whether the response has a body, and the schema of each media type that has one."""
-        schemas: dict[str, Any] = {}
-        content = detail.get("content")
-        if not isinstance(content, dict):
-            return False, schemas
-        for media_type, media in content.items():
-            if isinstance(media, dict) and "schema" in media:
-                schemas[_media_key(media_type)] = _resolved_schema(media["schema"])
-        return bool(content), schemas
-
-    existing_body, existing_schemas = _content_schemas(existing)
-    discovered_body, discovered_schemas = _content_schemas(discovered)
+    existing_body, existing_schemas, existing_defect = _content_schemas(existing)
+    discovered_body, discovered_schemas, discovered_defect = _content_schemas(discovered)
+    if existing_defect or discovered_defect:
+        return existing_defect or discovered_defect
     if existing_body != discovered_body:
         return "body-less versus body-bearing response"
     if not existing_body and any(
@@ -232,14 +256,12 @@ def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     for media_type in sorted(set(existing_schemas) & set(discovered_schemas)):
         if existing_schemas[media_type] != discovered_schemas[media_type]:
             return f"media {media_type}"
-    existing_headers = existing.get("headers", {})
-    discovered_headers = discovered.get("headers", {})
-    by_name = {name.lower(): header for name, header in existing_headers.items()}
-    for name, header in discovered_headers.items():
-        if name.lower() in by_name:
-            current = by_name[name.lower()]
-            if _resolved_schema(current.get("schema")) != _resolved_schema(header.get("schema")):
-                return f"header {name}"
+    existing_headers = _header_map(existing)
+    discovered_headers = discovered.get("headers")
+    for name, header in discovered_headers.items() if isinstance(discovered_headers, dict) else ():
+        current = existing_headers.get(str(name).lower())
+        if current is not None and _header_schema(current) != _header_schema(header):
+            return f"header {name}"
     return None
 
 
@@ -249,16 +271,20 @@ def _merge_response_detail(existing: dict[str, Any], discovered: dict[str, Any])
     for key, value in discovered.items():
         merged.setdefault(key, copy.deepcopy(value))
     for field in ("content", "headers"):
-        incoming = discovered.get(field, {})
-        current = merged.get(field, {})
-        names = {name.lower(): name for name in current}
+        incoming = discovered.get(field)
+        if not isinstance(incoming, dict):
+            continue
+        current = merged.get(field)
+        if not isinstance(current, dict):
+            current = {}
+        names = {str(name).lower(): name for name in current}
         for name, detail in incoming.items():
-            target_name = names.get(name.lower(), name)
-            if target_name in current:
+            target_name = names.get(str(name).lower(), name)
+            if target_name not in current:
+                current[target_name] = copy.deepcopy(detail)
+            elif isinstance(current[target_name], dict) and isinstance(detail, dict):
                 for key, value in detail.items():
                     current[target_name].setdefault(key, copy.deepcopy(value))
-            else:
-                current[target_name] = copy.deepcopy(detail)
         if current:
             merged[field] = current
     return merged

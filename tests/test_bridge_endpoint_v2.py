@@ -71,6 +71,12 @@ def test_v2_representation_when_synthetic_producer_is_scanned() -> None:
         {"content": {"application/json\n": {"schema": {}}}},
         {"content": {"application/": {"schema": {}}}},
         {"content": {"/json": {"schema": {}}}},
+        {
+            "content": {
+                "application/json": {"schema": {"type": "string"}},
+                "Application/JSON": {"schema": {"type": "object"}},
+            }
+        },
         {"content": {1: {"schema": {}}}},
         {"content": media(), "description": None},
         {"content": media(), "headers": None},

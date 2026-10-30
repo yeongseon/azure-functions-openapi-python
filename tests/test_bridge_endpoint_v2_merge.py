@@ -131,6 +131,93 @@ def test_media_types_merge_case_insensitively_and_keep_the_explicit_spelling() -
     assert content["Application/JSON"] == {"schema": {"type": "object"}, "example": {"id": 1}}
 
 
+@pytest.mark.parametrize("reverse", [False, True], ids=["declared-order", "reversed-order"])
+def test_producer_case_variants_with_different_schemas_never_win_silently(reverse: bool) -> None:
+    # Given: a producer declaring one media type twice, spelled differently, with two schemas.
+    variants = [
+        ("application/json", {"schema": {"type": "string"}}),
+        ("Application/JSON", {"schema": {"type": "object"}}),
+    ]
+    content = dict(reversed(variants) if reverse else variants)
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users", method="post", response={200: {"content": media()}}, registry=reg
+    )
+
+    # When
+    scan_endpoint_metadata(
+        make_app({"version": 2, "responses": {"200": {"content": content}}}), registry=reg
+    )
+    spec = generate_openapi_spec(registry=reg, strict=True)
+
+    # Then: the contradictory response is skipped with a diagnostic and the explicit one stays.
+    response = spec["paths"]["/api/users"]["post"]["responses"]["200"]
+    assert response["content"] == media()
+    assert any("v2 responses.200" in reason for _, reason in reg.discovery_warnings)
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["declared-order", "reversed-order"])
+def test_explicit_case_variants_with_different_schemas_conflict(reverse: bool) -> None:
+    # Given: an explicit declaration that spells one media type two ways with two schemas.
+    variants = [
+        ("application/json", {"schema": {"type": "string"}}),
+        ("Application/JSON", {"schema": {"type": "object"}}),
+    ]
+    explicit = {"content": dict(reversed(variants) if reverse else variants)}
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users", method="post", response={200: explicit}, registry=reg
+    )
+
+    # When / Then
+    with pytest.raises(OpenAPISpecConfigError, match="declared with different schemas"):
+        scan_endpoint_metadata(
+            make_app({"version": 2, "responses": {"200": {"content": media()}}}), registry=reg
+        )
+
+
+@pytest.mark.parametrize(
+    "detail",
+    [
+        {"content": media(), "headers": None},
+        {"content": media(), "headers": {1: {"schema": {}}}},
+        {"content": media(), "headers": {"X-Id": None}},
+        {"content": media(), "headers": "x"},
+    ],
+    ids=["headers-none", "header-key-int", "header-entry-none", "headers-string"],
+)
+def test_malformed_explicit_headers_are_ignored_like_before(detail: dict[str, Any]) -> None:
+    # Given
+    existing = {"response": {200: detail}}
+    # When
+    _merge_into_existing(existing, {"response": {200: {"content": media()}}})
+    # Then: reconciliation neither crashes nor invents headers.
+    assert existing["response"][200]["content"] == media()
+
+
+@pytest.mark.parametrize("headers", [None, "x", []], ids=["none", "string", "list"])
+def test_discovered_headers_replace_malformed_explicit_headers(headers: Any) -> None:
+    # Given: an explicit response whose headers entry is not a mapping.
+    existing = {"response": {200: {"content": media(), "headers": headers}}}
+    discovered = {
+        "response": {
+            200: {"content": media(), "headers": {"X-Id": {"schema": {"type": "integer"}}}}
+        }
+    }
+    # When
+    _merge_into_existing(existing, discovered)
+    # Then
+    assert existing["response"][200]["headers"] == {"X-Id": {"schema": {"type": "integer"}}}
+
+
+def test_malformed_explicit_media_entry_is_a_configuration_error() -> None:
+    # Given
+    existing = {"response": {200: {"content": {"application/json": None}}}}
+    # When / Then
+    with pytest.raises(OpenAPISpecConfigError, match="malformed media entry"):
+        _merge_into_existing(existing, {"response": {200: {"content": media()}}})
+
+
 def test_schema_less_media_takes_the_discovered_schema() -> None:
     # Given: an explicit body-bearing media type that declares no schema yet.
     reg = OpenAPIRegistry()

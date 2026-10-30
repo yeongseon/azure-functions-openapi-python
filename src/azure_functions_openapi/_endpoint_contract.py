@@ -109,7 +109,7 @@ def _read_schema_entries(
         valid_name = isinstance(name, str) and bool(
             re.fullmatch(_HEADER_NAME if headers else _MEDIA_TYPE, name)
         )
-        if not valid_name or (headers and (name.lower() in seen or name.lower() == "content-type")):
+        if not valid_name or name.lower() in seen or (headers and name.lower() == "content-type"):
             return None, diagnostics + [
                 f"endpoint v2 {entry_location}: invalid or duplicate name; response skipped"
             ]
