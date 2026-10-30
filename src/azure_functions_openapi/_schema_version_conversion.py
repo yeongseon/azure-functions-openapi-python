@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
+from azure_functions_openapi._schema_3_0_preparation import _prepare_schema_for_3_0
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 
 # Media Type Object keys shared with document assembly (3.2 adds itemSchema).
@@ -139,6 +140,10 @@ def _ensure_null_accepting(schema: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+class _PreparedSchemas(dict[str, Any]):
+    """A component map whose schemas already went through the 3.0 preparation step."""
+
+
 def _inline_ref_nullable(
     ref: str,
     extra_keys: dict[str, Any],
@@ -173,7 +178,15 @@ def _inline_ref_nullable(
     target = schemas.get(name)
     if not isinstance(target, dict):
         return None
-    inlined = _convert_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
+    if not isinstance(schemas, _PreparedSchemas):
+        # A caller outside the batch conversions handed over a raw component map: prepare
+        # the target being expanded, and report what that drops, once.
+        target_losses: list[str] = []
+        target = _prepare_schema_for_3_0(target, target_losses)
+        if lossy is not None:
+            messages = (f"Schema '{name}': {message}" for message in target_losses)
+            lossy.extend(message for message in messages if message not in lossy)
+    inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
     inlined = _ensure_null_accepting(inlined)
     for k, v in extra_keys.items():
         inlined.setdefault(k, v)
@@ -436,6 +449,18 @@ def _convert_schema_to_3_0(
     resolving: frozenset[str] = frozenset(),
     lossy: list[str] | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(schema, dict):
+        return schema
+    prepared = _prepare_schema_for_3_0(schema, lossy)
+    return _convert_prepared_schema_to_3_0(prepared, schemas, resolving, lossy)
+
+
+def _convert_prepared_schema_to_3_0(
+    schema: dict[str, Any],
+    schemas: dict[str, Any] | None = None,
+    resolving: frozenset[str] = frozenset(),
+    lossy: list[str] | None = None,
+) -> dict[str, Any]:
     """Recursively down-convert a JSON-Schema-2020-12 schema to OpenAPI 3.0.
 
     Mirrors :func:`_convert_schema_to_3_1` in reverse: the 3.1/Pydantic
@@ -475,7 +500,7 @@ def _convert_schema_to_3_0(
     pattern_properties = result.pop("patternProperties", None)
     if "additionalProperties" not in result and isinstance(pattern_properties, dict):
         pattern_schemas = [
-            _convert_schema_to_3_0(value, schemas, resolving, lossy)
+            _convert_prepared_schema_to_3_0(value, schemas, resolving, lossy)
             for value in pattern_properties.values()
             if isinstance(value, dict)
         ]
@@ -550,11 +575,13 @@ def _convert_schema_to_3_0(
     # the combinator at this level is collapsed.
     if "properties" in result and isinstance(result["properties"], dict):
         result["properties"] = {
-            k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
+            k: _convert_prepared_schema_to_3_0(v, schemas, resolving, lossy)
             for k, v in result["properties"].items()
         }
     if "items" in result:
-        result["items"] = _convert_schema_to_3_0(result["items"], schemas, resolving, lossy)
+        result["items"] = _convert_prepared_schema_to_3_0(
+            result["items"], schemas, resolving, lossy
+        )
     prefix_items = result.pop("prefixItems", None)
     if isinstance(prefix_items, list):
         additional_items = result.get("items")
@@ -570,7 +597,8 @@ def _convert_schema_to_3_0(
             )
             result["items"] = {}
         converted_items = [
-            _convert_schema_to_3_0(item, schemas, resolving, lossy) for item in prefix_items
+            _convert_prepared_schema_to_3_0(item, schemas, resolving, lossy)
+            for item in prefix_items
         ]
         # A tail schema only matters when an array can hold more items than the prefix
         # covers; beyond a ``maxItems`` at or below the prefix length it is unreachable
@@ -612,17 +640,18 @@ def _convert_schema_to_3_0(
     for combinator in ("allOf", "anyOf", "oneOf"):
         if combinator in result and isinstance(result[combinator], list):
             result[combinator] = [
-                _convert_schema_to_3_0(s, schemas, resolving, lossy) for s in result[combinator]
+                _convert_prepared_schema_to_3_0(s, schemas, resolving, lossy)
+                for s in result[combinator]
             ]
     if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
-        result["additionalProperties"] = _convert_schema_to_3_0(
+        result["additionalProperties"] = _convert_prepared_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
     if "not" in result and isinstance(result["not"], dict):
-        result["not"] = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
+        result["not"] = _convert_prepared_schema_to_3_0(result["not"], schemas, resolving, lossy)
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
-            k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
+            k: _convert_prepared_schema_to_3_0(v, schemas, resolving, lossy)
             for k, v in result["$defs"].items()
         }
 
@@ -639,9 +668,20 @@ def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], li
     """
     converted: dict[str, Any] = {}
     lossy_messages: list[str] = []
+    prepared_schemas = _PreparedSchemas()
+    preparation_losses: dict[str, list[str]] = {}
     for name, schema in schemas.items():
-        schema_lossy: list[str] = []
-        converted[name] = _convert_schema_to_3_0(schema, schemas, frozenset(), schema_lossy)
+        preparation_losses[name] = []
+        prepared_schemas[name] = (
+            _prepare_schema_for_3_0(schema, preparation_losses[name])
+            if isinstance(schema, dict)
+            else schema
+        )
+    for name, schema in prepared_schemas.items():
+        schema_lossy = preparation_losses[name]
+        converted[name] = _convert_prepared_schema_to_3_0(
+            schema, prepared_schemas, frozenset(), schema_lossy
+        )
         lossy_messages.extend(f"Schema '{name}': {message}" for message in schema_lossy)
     return converted, lossy_messages
 
@@ -846,7 +886,25 @@ def _convert_operation_schemas_to_3_0(
     same shape :func:`_convert_schemas_to_3_0` returns for named components.
     """
     lossy: list[str] = []
-    _convert_operation_schemas(
-        paths, lambda s: _convert_schema_to_3_0(s, schemas, frozenset(), lossy)
+    prepared_schemas = (
+        _PreparedSchemas(
+            (name, _prepare_schema_for_3_0(value, None) if isinstance(value, dict) else value)
+            for name, value in schemas.items()
+        )
+        if schemas is not None
+        else None
     )
+    for path, methods in paths.items():
+        for method, operation in methods.items():
+            if not isinstance(operation, dict):
+                continue
+            for location, container, key in _operation_schema_slots(operation):
+                schema = container[key]
+                if isinstance(schema, dict):
+                    schema = _prepare_schema_for_3_0(
+                        schema, lossy, f"{method.upper()} {path} {location}"
+                    )
+                container[key] = _convert_prepared_schema_to_3_0(
+                    schema, prepared_schemas, frozenset(), lossy
+                )
     return lossy
