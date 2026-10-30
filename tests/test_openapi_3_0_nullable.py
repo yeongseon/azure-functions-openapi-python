@@ -538,7 +538,7 @@ class TestNullableInstanceValidation:
         # inlining branch used to fully replace the wrapper's own content,
         # silently dropping every one of these (#782 follow-up finding 1).
         openapi_schema_validator = pytest.importorskip("openapi_schema_validator")
-        schemas = {
+        schemas: dict[str, Any] = {
             "Address": {
                 "type": "object",
                 "properties": {"city": {"type": "string"}, "zip": {"type": "string"}},
@@ -563,11 +563,11 @@ class TestNullableInstanceValidation:
         converted, lossy = _convert_schemas_to_3_0(schemas)
         address_field = converted["Account"]["properties"]["address"]
 
-        # Then: both sibling keys survive onto the merged schema object...
-        assert address_field["description"] == "primary address"
-        assert address_field["maxProperties"] == 1
-        assert address_field["nullable"] is True
-        assert address_field["type"] == "object"
+        # Then: ref siblings stay together, without merging raw and converted dialects.
+        branch = address_field["anyOf"][0]
+        assert branch["description"] == "primary address"
+        assert branch["maxProperties"] == 1
+        assert branch["allOf"] == [{"$ref": "#/components/schemas/Address"}]
         assert lossy == []
 
         # ...and the surviving document is itself valid OpenAPI 3.0...
@@ -588,6 +588,11 @@ class TestNullableInstanceValidation:
         assert list(validator.iter_errors(None)) == []
         assert list(validator.iter_errors({"city": "Seoul"})) == []
         assert list(validator.iter_errors({"city": "Seoul", "zip": "04524"})) != []
+        original = openapi_schema_validator.OAS31Validator(
+            {**schemas["Account"]["properties"]["address"], "components": {"schemas": schemas}}
+        )
+        probes = [None, {}, {"city": "Seoul"}, {"city": "Seoul", "zip": "04524"}, "x"]
+        assert [validator.is_valid(p) for p in probes] == [original.is_valid(p) for p in probes]
 
     def test_nullable_ref_to_nested_union_accepts_every_branch(self) -> None:
         # Given: a nullable $ref that resolves to a schema which ITSELF

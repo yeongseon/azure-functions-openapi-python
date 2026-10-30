@@ -212,7 +212,7 @@ def _accepts_null(
 
 
 def _exact_nullable_union(
-    base: dict[str, Any], key: str, non_null: list[Any], accepts_null: bool
+    base: dict[str, Any], key: str, non_null: list[Any], schemas: dict[str, Any] | None
 ) -> dict[str, Any]:
     """The nullable union ``base`` + ``key: non_null + [null]``, written so it is exact.
 
@@ -221,33 +221,40 @@ def _exact_nullable_union(
     and accepts exactly the non-null members plus ``null``. The keys beside the union stay
     beside it, where they keep the meaning they had. A reference that carries sibling
     keywords moves into ``allOf``, because 3.0 ignores the siblings of a reference. When
-    the original rejected ``null`` (the keys beside the union ruled it out), no ``null``
+    the keys beside the union reject ``null``, no ``null``
     branch is added.
     """
     members = [
-        {"allOf": [{"$ref": member["$ref"]}], **{k: v for k, v in member.items() if k != "$ref"}}
+        {
+            **{k: v for k, v in member.items() if k not in ("$ref", "allOf")},
+            "allOf": [{"$ref": member["$ref"]}, *member.get("allOf", [])],
+        }
         if isinstance(member, dict) and "$ref" in member and len(member) > 1
         else member
         for member in non_null
     ]
-    if not accepts_null:
-        return {**base, key: members}
-    union = [
-        members[0] if len(members) == 1 else {key: members},
-        {"nullable": True, "enum": [None]},
-    ]
     result = dict(base)
-    if "anyOf" in result:
-        all_of = result.get("allOf")
-        result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+    discriminator = result.get("discriminator")
+    if len(members) <= 1:
+        result.pop("discriminator", None)
+    if not _accepts_null(base, schemas, ref_siblings_apply=True, assume_unknown=True):
+        return {**result, key: members}
+    null_only = {"nullable": True, "enum": [None]}
+    if discriminator is not None and len(members) > 1:
+        result.pop("discriminator")
+        union = [{key: members, "discriminator": discriminator}, null_only]
+        if "anyOf" in result:
+            all_of = result.get("allOf")
+            result["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"anyOf": union}]
+        else:
+            result["anyOf"] = union
     else:
-        result["anyOf"] = union
+        result[key] = [*members, null_only]
     return result
 
 
 def _inline_ref_nullable(
     ref: str,
-    extra_keys: dict[str, Any],
     schemas: dict[str, Any] | None,
     resolving: frozenset[str],
     lossy: list[str] | None = None,
@@ -277,7 +284,7 @@ def _inline_ref_nullable(
             messages = (f"Schema '{name}': {message}" for message in target_losses)
             lossy.extend(message for message in messages if message not in lossy)
     inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
-    return _merge_wrapper_into_inlined(_ensure_null_accepting(inlined), extra_keys)
+    return _ensure_null_accepting(inlined)
 
 
 def _collapse_nullable_combinator(
@@ -305,7 +312,7 @@ def _collapse_nullable_combinator(
     actually accepts null once it is there (#782, and #782's own follow-up
     review): an inlined ``enum``/``const`` gains an explicit ``null`` member,
     and an inlined schema that itself carries a nested ``anyOf``/``oneOf``
-    gains its own ``{"type": "null"}`` branch -- see
+    has its existing inline branches made nullable -- see
     :func:`_ensure_null_accepting`.
 
     * single ``$ref`` member, resolvable against *schemas* and not already
@@ -348,12 +355,17 @@ def _collapse_nullable_combinator(
         )
         base = {k: v for k, v in result.items() if k != key}
         result = {**base, "nullable": True}
-        exact = False
+        exact = any(
+            isinstance(member, dict) and "$ref" in member and len(member) > 1 for member in non_null
+        )
         if len(non_null) == 1:
             sole = non_null[0]
             if isinstance(sole, dict) and "$ref" in sole:
-                extra_keys = {k: v for k, v in sole.items() if k != "$ref"}
-                inlined = _inline_ref_nullable(sole["$ref"], extra_keys, schemas, resolving, lossy)
+                inlined = (
+                    _inline_ref_nullable(sole["$ref"], schemas, resolving, lossy)
+                    if len(sole) == 1
+                    else None
+                )
                 if inlined is None:
                     exact = True
                 else:
@@ -379,6 +391,7 @@ def _collapse_nullable_combinator(
             else:
                 result[key] = non_null
         elif not non_null:
+            result.pop("discriminator", None)
             _keep_null_only(result)
         elif len(non_null) > 1:
             patched_members: list[Any] = []
@@ -388,9 +401,10 @@ def _collapse_nullable_combinator(
                     patched_members.append(member)
                     continue
                 if "$ref" in member:
-                    extra_keys = {k: v for k, v in member.items() if k != "$ref"}
-                    inlined = _inline_ref_nullable(
-                        member["$ref"], extra_keys, schemas, resolving, lossy
+                    inlined = (
+                        _inline_ref_nullable(member["$ref"], schemas, resolving, lossy)
+                        if len(member) == 1
+                        else None
                     )
                     if inlined is not None:
                         patched_members.append(inlined)
@@ -409,10 +423,11 @@ def _collapse_nullable_combinator(
         # union with a ``null`` branch, which is exact by construction.
         if non_null and (
             exact
+            or "discriminator" in base
             or _accepts_null(result, schemas, ref_siblings_apply=False, assume_unknown=False)
             != original_accepts_null
         ):
-            result = _exact_nullable_union(base, key, non_null, original_accepts_null)
+            result = _exact_nullable_union(base, key, non_null, schemas)
     return result
 
 
@@ -436,11 +451,9 @@ _BOUND_KEYS = frozenset(
     {
         "maxProperties",
         "maxLength",
-        "maximum",
         "maxItems",
         "minProperties",
         "minLength",
-        "minimum",
         "minItems",
     }
 )
@@ -451,13 +464,24 @@ def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]
 
     Every key keeps doing its job. A key only one side declares is kept. When both
     declare it: an annotation (or ``x-`` extension) takes the wrapper's value, since the
-    wrapper describes this field; two ``allOf`` lists are concatenated; a numeric bound
-    keeps the tighter value; any other constraint is added to ``allOf`` so both still
+    wrapper describes this field; two ``allOf`` lists are concatenated; a size bound
+    keeps the tighter value; numeric bounds retain their exclusivity in one conjunct;
+    any other constraint is added to ``allOf`` so both still
     apply. ``nullable`` is the caller's to set.
     """
     merged = dict(inlined)
+    coupled_keys: set[str] = set()
+    for bound, exclusive in (("minimum", "exclusiveMinimum"), ("maximum", "exclusiveMaximum")):
+        family = (bound, exclusive)
+        if any(k in inlined for k in family) and any(k in wrapper for k in family):
+            all_of = merged.get("allOf")
+            merged["allOf"] = [
+                *(all_of if isinstance(all_of, list) else []),
+                {k: wrapper[k] for k in family if k in wrapper},
+            ]
+            coupled_keys.update(family)
     for key, value in wrapper.items():
-        if key == "nullable":
+        if key == "nullable" or key in coupled_keys:
             continue
         if key not in merged or merged[key] == value:
             merged[key] = value
