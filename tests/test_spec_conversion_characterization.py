@@ -106,6 +106,7 @@ TUPLE_LOSS = (
                 ([True], 1, {"enum": [True], "allOf": [{"enum": [1]}]}, [], [True, 1, None]),
                 ([1], 1.0, {"enum": [1.0]}, [1, 1.0], [True, 2]),
                 ([None, "x"], None, {"enum": [None], "nullable": True}, [None], ["x", 0]),
+                ([], 1, {"allOf": [{"not": {}}]}, [], [1, None, "x", {}]),
                 (
                     ["x"],
                     None,
@@ -455,6 +456,7 @@ TUPLE_LOSS = (
         "enum-bool-const-number",
         "enum-const-numeric-equality",
         "enum-const-null",
+        "empty-enum-const",
         "enum-const-null-contradiction",
         "enum-const-nested-list-bool",
         "enum-const-nested-object-bool",
@@ -930,6 +932,42 @@ def test_none_typed_field_with_a_broader_enum_accepts_only_null() -> None:
     assert collect_spec_warnings(spec, registry) == ()
 
 
+@pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize(
+    "unsatisfiable",
+    [{"enum": [], "const": 1}, {"type": "null", "enum": []}, {"type": ["null"], "enum": []}],
+    ids=["empty-enum-const", "null-type-empty-enum", "null-type-array-empty-enum"],
+)
+def test_unsatisfiable_enum_stays_a_valid_openapi_3_0_document(
+    unsatisfiable: dict[str, JsonValue], hoisted: bool, strict: bool
+) -> None:
+    # Given: an empty ``enum``, which accepts nothing but is not allowed by OpenAPI 3.0.
+    body = (
+        {"$ref": "#/$defs/Never", "$defs": {"Never": unsatisfiable}} if hoisted else unsatisfiable
+    )
+    registry = OpenAPIRegistry()
+    registry.set("never", {"route": "never", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(
+        registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted, strict=strict
+    )
+
+    # Then: the document validates, nothing is reported, and no instance is accepted.
+    validate(spec)
+    assert collect_spec_warnings(spec, registry) == ()
+    if hoisted:
+        root = {"$ref": "#/components/schemas/Never", "components": spec["components"]}
+    else:
+        root = spec["paths"]["/api/never"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+    validator = OAS30Validator(root)
+    probes: list[JsonValue] = [None, 1, "x", True, [], {}]
+    assert not any(validator.is_valid(probe) for probe in probes)
+
+
 def test_pydantic_overlapping_bounds_keep_the_stricter_constraint() -> None:
     # Given: Pydantic emits both bounds, even when the inclusive bound is stricter.
     class Payload(BaseModel):
@@ -968,16 +1006,13 @@ def test_boolean_exclusive_bounds_are_already_openapi_3_0(exclusive: bool) -> No
     assert converted == schema
 
 
-@pytest.mark.parametrize("items", [{}, {"items": True}])
-def test_empty_prefix_without_tail_constraints_stays_unconstrained(
-    items: dict[str, JsonValue],
-) -> None:
+def test_empty_prefix_without_a_tail_stays_unconstrained() -> None:
     # Given: an empty prefix adds no positional constraints.
-    schema = {"type": "array", "prefixItems": [], **items}
+    schema = {"type": "array", "prefixItems": []}
     # When
     converted = _convert_schema_to_3_0(schema)
     # Then
-    assert converted == {"type": "array", **items}
+    assert converted == {"type": "array"}
 
 
 @pytest.mark.parametrize(

@@ -412,13 +412,22 @@ def _json_schema_equal(first: Any, second: Any) -> bool:
 
 
 def _intersect_enum(schema: dict[str, Any], value: Any) -> None:
-    """Intersect a singleton with an existing enum, keeping contradictions as conjuncts."""
+    """Intersect a singleton with an existing enum, keeping contradictions as conjuncts.
+
+    OpenAPI 3.0 requires a non-empty ``enum``, so an empty one, which accepts nothing, is
+    replaced by ``not: {}``, the 3.0 schema that rejects every instance.
+    """
     enum = schema.get("enum")
-    if isinstance(enum, list) and not any(_json_schema_equal(value, member) for member in enum):
-        all_of = schema.get("allOf")
-        schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"enum": [value]}]
-    else:
+    if not isinstance(enum, list) or any(_json_schema_equal(value, member) for member in enum):
         schema["enum"] = [value]
+        return
+    if enum:
+        conjunct: dict[str, Any] = {"enum": [value]}
+    else:
+        del schema["enum"]
+        conjunct = {"not": {}}
+    all_of = schema.get("allOf")
+    schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), conjunct]
 
 
 def _convert_schema_to_3_0(
