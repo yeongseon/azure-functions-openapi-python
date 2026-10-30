@@ -538,14 +538,14 @@ def _convert_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
     if "not" in result and isinstance(result["not"], dict):
-        negated = _convert_schema_to_3_0(result["not"], schemas, resolving, lossy)
-        if lossy is not None and _contains_bare_nullable(negated):
+        negated = result["not"]
+        result["not"] = _convert_schema_to_3_0(negated, schemas, resolving, lossy)
+        if lossy is not None and _contains_null_only(negated, schemas):
             lossy.append(
                 "a 'not' schema contains a null-only schema, which OpenAPI 3.0 can only "
                 "approximate as a type-less 'nullable' schema that accepts every value, so "
-                "the negation rejects every value"
+                "the negation rejects values the original accepts"
             )
-        result["not"] = negated
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
             k: _convert_schema_to_3_0(v, schemas, resolving, lossy)
@@ -583,21 +583,6 @@ _NESTED_SCHEMA_KEYS = (
     "$defs",
 )
 
-# Keywords that describe a schema without constraining any instance.
-_ANNOTATION_KEYS = frozenset(
-    {
-        "title",
-        "description",
-        "default",
-        "example",
-        "deprecated",
-        "readOnly",
-        "writeOnly",
-        "externalDocs",
-        "xml",
-    }
-)
-
 
 def _nested_schemas(schema: dict[str, Any], *, skip: frozenset[str] = frozenset()) -> Iterator[Any]:
     """Yield what sits directly under the schema-bearing keywords of *schema*."""
@@ -611,20 +596,42 @@ def _nested_schemas(schema: dict[str, Any], *, skip: frozenset[str] = frozenset(
             yield from val
 
 
-def _contains_bare_nullable(schema: Any) -> bool:
-    """Whether *schema*, or a schema nested in it, is a bare ``nullable: true``.
+def _is_null_type(schema: Any) -> bool:
+    return isinstance(schema, dict) and schema.get("type") in ("null", ["null"])
 
-    Conversion approximates a null-only schema that way, and OpenAPI 3.0 reads it as
-    accepting every value. A nested ``not`` reports for itself, so it is not entered.
+
+def _contains_null_only(
+    schema: Any, schemas: dict[str, Any] | None, seen: frozenset[str] = frozenset()
+) -> bool:
+    """Whether *schema*, or a schema nested in it, accepts nothing but ``null`` by its own type.
+
+    Conversion can only approximate that as a type-less ``nullable`` schema, which accepts
+    every value. The schema is read as written, not as converted: a ``nullable`` schema
+    already authored for 3.0 is exact, and keywords beside ``type: null`` change nothing
+    about the approximation. A null member beside other ``anyOf``/``oneOf`` members
+    collapses exactly into ``nullable``, so only a union made of null members alone counts.
+    A ``$ref`` into *schemas* is followed once per name. A nested ``not`` reports for
+    itself, so it is not entered.
     """
     if not isinstance(schema, dict):
         return False
-    if schema.get("nullable") is True and all(
-        key == "nullable" or key in _ANNOTATION_KEYS for key in schema
-    ):
+    if _is_null_type(schema):
         return True
+    scanned = schema
+    for key in ("anyOf", "oneOf"):
+        members = schema.get(key)
+        if isinstance(members, list) and members:
+            if all(_is_null_type(m) for m in members):
+                return True
+            scanned = {**scanned, key: [m for m in members if not _is_null_type(m)]}
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and schemas is not None and ref.startswith("#/components/schemas/"):
+        name = ref.rsplit("/", 1)[-1]
+        if name not in seen and _contains_null_only(schemas.get(name), schemas, seen | {name}):
+            return True
     return any(
-        _contains_bare_nullable(child) for child in _nested_schemas(schema, skip=frozenset({"not"}))
+        _contains_null_only(child, schemas, seen)
+        for child in _nested_schemas(scanned, skip=frozenset({"not"}))
     )
 
 

@@ -10,7 +10,7 @@ from pydantic import JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
-    _contains_bare_nullable,
+    _contains_null_only,
     _find_3_1_only_construct,
     _operation_schema_slots,
 )
@@ -519,23 +519,52 @@ def test_type_array_beside_a_reference_moves_the_reference_into_all_of(
 
 
 @pytest.mark.parametrize(
-    "negated",
+    ("negated", "emitted", "lost"),
     [
-        {"type": "null"},
-        {"type": "null", "description": "never null"},
-        {"properties": {"a": {"type": "null"}}},
-        {"allOf": [{"type": "string"}, {"type": "null"}]},
+        ({"type": "null"}, {"nullable": True}, ["x", 1, {}]),
+        (
+            {"type": "null", "description": "never null"},
+            {"description": "never null", "nullable": True},
+            ["x", 1, {}],
+        ),
+        ({"type": "null", "minLength": 1}, {"minLength": 1, "nullable": True}, ["x", 1, {}]),
+        ({"type": "null", "x-label": "a"}, {"x-label": "a", "nullable": True}, ["x", 1, {}]),
+        ({"type": ["null"]}, {"nullable": True}, ["x", 1, {}]),
+        ({"anyOf": [{"type": "null"}]}, {"nullable": True}, ["x", 1, {}]),
+        (
+            {"properties": {"a": {"type": "null"}}},
+            {"properties": {"a": {"nullable": True}}},
+            [{"a": 1}],
+        ),
+        (
+            {"allOf": [{"type": "string"}, {"type": "null"}]},
+            {"allOf": [{"type": "string"}, {"nullable": True}]},
+            ["x"],
+        ),
     ],
-    ids=["null-only", "annotated-null-only", "nested-property", "all-of-member"],
+    ids=[
+        "null-only",
+        "annotated-null-only",
+        "null-only-with-constraint",
+        "null-only-with-extension",
+        "null-only-type-list",
+        "only-null-member",
+        "nested-property",
+        "all-of-member",
+    ],
 )
 @pytest.mark.parametrize("hoisted", [False, True], ids=["inline", "component"])
 @pytest.mark.parametrize("strict", [False, True])
 def test_negated_null_only_schema_is_reported_instead_of_silently_inverted(
-    negated: dict[str, JsonValue], hoisted: bool, strict: bool
+    negated: dict[str, JsonValue],
+    emitted: dict[str, JsonValue],
+    lost: list[JsonValue],
+    hoisted: bool,
+    strict: bool,
 ) -> None:
     # Given: a null-only schema OpenAPI 3.0 can only approximate as a type-less
-    # ``nullable`` schema, which accepts every value; under ``not`` that would make the
-    # schema reject every value without a word.
+    # ``nullable`` schema, which accepts every value; under ``not`` that approximation
+    # rejects values the original accepts, whatever keywords sit beside ``type: null``.
     odd = {"not": negated}
     body = {"$ref": "#/$defs/Odd", "$defs": {"Odd": odd}} if hoisted else odd
     registry = OpenAPIRegistry()
@@ -553,26 +582,76 @@ def test_negated_null_only_schema_is_reported_instead_of_silently_inverted(
         registry=registry, openapi_version="3.0.0", hoist_flat_schemas=hoisted
     )
 
-    # Then: the loss is one structured warning that --fail-on-warnings can gate on.
+    # Then: the loss is one structured warning that --fail-on-warnings can gate on, and
+    # the document really is the reported approximation.
     (warning,) = collect_spec_warnings(spec, registry)
     assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
     assert message in warning.message
+    if hoisted:
+        converted = spec["components"]["schemas"]["Odd"]
+        root = {"$ref": "#/components/schemas/Odd", "components": spec["components"]}
+    else:
+        converted = spec["paths"]["/api/odd"]["post"]["requestBody"]["content"]["application/json"][
+            "schema"
+        ]
+        root = converted
+    assert converted == {"not": emitted}
+    original = OAS31Validator(odd)
+    approximation = OAS30Validator(root)
+    assert all(original.is_valid(instance) for instance in lost)
+    assert not any(approximation.is_valid(instance) for instance in lost)
 
 
 @pytest.mark.parametrize(
-    ("negated", "valid", "invalid"),
+    ("negated", "emitted", "valid", "invalid"),
     [
-        ({"type": ["string", "null"]}, [1, {}], [None, "x"]),
-        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, [1, {}], [None, "x"]),
-        ({"enum": [None, "a"]}, [1, "b"], [None, "a"]),
-        ({"type": ["string", "integer", "null"]}, [1.5, {}], [None, "x", 1]),
+        ({"type": ["string", "null"]}, {"type": "string", "nullable": True}, [1, {}], [None, "x"]),
+        (
+            {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            {"type": "string", "nullable": True},
+            [1, {}],
+            [None, "x"],
+        ),
+        (
+            {"enum": [None, "a"]},
+            {"enum": [None, "a"], "nullable": True},
+            [1, "b"],
+            [None, "a"],
+        ),
+        (
+            {"type": ["string", "integer", "null"]},
+            {
+                "nullable": True,
+                "anyOf": [{"type": "string", "nullable": True}, {"type": "integer"}],
+            },
+            [1.5, {}],
+            [None, "x", 1],
+        ),
+        ({"nullable": True}, {"nullable": True}, [], ["x", 1, None]),
+        (
+            {"nullable": True, "x-label": "a"},
+            {"nullable": True, "x-label": "a"},
+            [],
+            ["x", 1, None],
+        ),
     ],
-    ids=["nullable-type", "nullable-union", "enum-with-null", "nullable-type-array"],
+    ids=[
+        "nullable-type",
+        "nullable-union",
+        "enum-with-null",
+        "nullable-type-array",
+        "nullable-written-for-3-0",
+        "nullable-written-for-3-0-with-extension",
+    ],
 )
 def test_negated_schema_that_stays_exact_is_not_reported(
-    negated: dict[str, JsonValue], valid: list[JsonValue], invalid: list[JsonValue]
+    negated: dict[str, JsonValue],
+    emitted: dict[str, JsonValue],
+    valid: list[JsonValue],
+    invalid: list[JsonValue],
 ) -> None:
-    # Given: negated schemas whose 3.0 form accepts exactly the original values.
+    # Given: negated schemas whose 3.0 form accepts exactly the original values, among
+    # them a ``nullable`` schema already written for 3.0, which conversion leaves alone.
     registry = OpenAPIRegistry()
     registry.set("exact", {"route": "exact", "method": "post", "request_body": {"not": negated}})
 
@@ -583,44 +662,98 @@ def test_negated_schema_that_stays_exact_is_not_reported(
     schema = spec["paths"]["/api/exact"]["post"]["requestBody"]["content"]["application/json"][
         "schema"
     ]
+    assert schema == {"not": emitted}
+    validate(spec)
     validator = OAS30Validator(schema)
     assert all(validator.is_valid(instance) for instance in valid)
     assert not any(validator.is_valid(instance) for instance in invalid)
     assert collect_spec_warnings(spec, registry) == ()
 
 
+@pytest.mark.parametrize("strict", [False, True])
+def test_negated_reference_to_a_null_only_component_is_reported(strict: bool) -> None:
+    # Given: the null-only schema sits behind a ``$ref``, so the negated schema never
+    # says ``type: null`` itself.
+    body = {
+        "$ref": "#/$defs/Odd",
+        "$defs": {"Odd": {"not": {"$ref": "#/$defs/Nothing"}}, "Nothing": {"type": "null"}},
+    }
+    registry = OpenAPIRegistry()
+    registry.set("odd", {"route": "odd", "method": "post", "request_body": body})
+    message = "Schema 'Odd': a 'not' schema contains a null-only schema"
+
+    # When / Then: strict mode refuses it; non-strict generation reports it once.
+    if strict:
+        with pytest.raises(OpenAPISpecConfigError, match=message):
+            generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+        return
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+    (warning,) = collect_spec_warnings(spec, registry)
+    assert warning.code is WarningCode.VERSION_DOWNGRADE_DROP
+    assert message in warning.message
+
+
 @pytest.mark.parametrize(
-    ("schema", "bare"),
+    ("schema", "components", "null_only"),
     [
-        ({"nullable": True}, True),
-        ({"nullable": True, "description": "annotation only"}, True),
-        ({"nullable": True, "type": "string"}, False),
-        ({"nullable": True, "enum": [None]}, False),
-        ({"nullable": False}, False),
-        ({"properties": {"a": {"nullable": True}}}, True),
-        ({"allOf": ["junk", {"nullable": True}]}, True),
-        ({"allOf": ["junk"]}, False),
-        ({"not": {"nullable": True}}, False),
-        ("junk", False),
+        ({"type": "null"}, None, True),
+        ({"type": ["null"]}, None, True),
+        ({"type": "null", "minLength": 1}, None, True),
+        ({"type": "null", "x-label": "a"}, None, True),
+        ({"anyOf": [{"type": "null"}, {"type": ["null"]}]}, None, True),
+        ({"oneOf": [{"type": "null"}]}, None, True),
+        ({"properties": {"a": {"type": "null"}}}, None, True),
+        ({"allOf": ["junk", {"type": "null"}]}, None, True),
+        ({"anyOf": [{"type": "string"}, {"type": "null"}]}, None, False),
+        ({"type": ["string", "null"]}, None, False),
+        ({"nullable": True}, None, False),
+        ({"nullable": True, "x-label": "a"}, None, False),
+        ({"enum": [None]}, None, False),
+        ({"const": None}, None, False),
+        ({"allOf": ["junk"]}, None, False),
+        ({"not": {"type": "null"}}, None, False),
+        ("junk", None, False),
+        ({"$ref": "#/components/schemas/Nothing"}, {"Nothing": {"type": "null"}}, True),
+        (
+            {"$ref": "#/components/schemas/Loop"},
+            {"Loop": {"items": {"$ref": "#/components/schemas/Loop"}}},
+            False,
+        ),
+        ({"$ref": "#/components/schemas/Missing"}, {}, False),
+        ({"$ref": "#/components/schemas/Nothing"}, None, False),
+        ({"$ref": "#/$defs/Nothing"}, {"Nothing": {"type": "null"}}, False),
     ],
     ids=[
-        "bare",
-        "annotated",
-        "typed",
-        "enum",
-        "not-nullable",
-        "nested",
+        "null-type",
+        "null-type-list",
+        "with-constraint",
+        "with-extension",
+        "all-null-any-of",
+        "single-null-one-of",
+        "nested-property",
         "beside-junk",
+        "exact-union",
+        "exact-nullable-type",
+        "nullable-written-for-3-0",
+        "nullable-with-extension",
+        "enum-with-null",
+        "const-null",
         "only-junk",
         "nested-negation-reports-for-itself",
         "not-a-schema",
+        "reference-to-null-only",
+        "reference-cycle",
+        "unknown-reference",
+        "no-components",
+        "not-a-component-reference",
     ],
 )
-def test_bare_nullable_detection_finds_type_less_nullable_schemas(
-    schema: JsonValue, bare: bool
+def test_null_only_detection_reads_the_schema_as_written(
+    schema: JsonValue, components: dict[str, JsonValue] | None, null_only: bool
 ) -> None:
-    # Given / When / Then: only a schema that constrains nothing but ``null`` is bare.
-    assert _contains_bare_nullable(schema) is bare
+    # Given / When / Then: only a schema that accepts nothing but ``null`` by its own
+    # ``type`` counts, however many other keywords sit beside it.
+    assert _contains_null_only(schema, components) is null_only
 
 
 @pytest.mark.parametrize(
@@ -631,8 +764,16 @@ def test_bare_nullable_detection_finds_type_less_nullable_schemas(
             {"type": ["string", "integer"]},
             {"anyOf": [{"type": "string"}, {"type": "integer"}]},
         ),
-        ("3.1.0", {"type": "string", "nullable": True}, {"type": ["string", "null"]}),
-        ("3.2.0", {"type": "string", "nullable": True}, {"type": ["string", "null"]}),
+        (
+            "3.1.0",
+            {"type": "string", "nullable": True, "example": "abc"},
+            {"type": ["string", "null"], "examples": ["abc"]},
+        ),
+        (
+            "3.2.0",
+            {"type": "string", "nullable": True, "example": "abc"},
+            {"type": ["string", "null"], "examples": ["abc"]},
+        ),
     ],
 )
 @pytest.mark.parametrize("through_content", [False, True], ids=["schema", "content"])
