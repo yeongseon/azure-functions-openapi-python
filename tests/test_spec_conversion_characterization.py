@@ -1315,6 +1315,33 @@ def test_keywords_nested_in_a_dropped_keyword_are_reported_too(hoisted: bool, st
     validate(spec)
 
 
+@pytest.mark.parametrize(
+    "keyword",
+    [
+        "propertyNames",
+        "if",
+        "then",
+        "else",
+        "contains",
+        "unevaluatedProperties",
+        "unevaluatedItems",
+    ],
+)
+def test_every_schema_valued_dropped_keyword_reports_the_keywords_it_holds(keyword: str) -> None:
+    # Given: a dropped keyword whose value is a schema that carries another dropped keyword.
+    schemas = {"Nested": {"type": "object", keyword: {"contains": True}}}
+
+    # When
+    converted, messages = _convert_schemas_to_3_0(schemas)
+
+    # Then: both occurrences are reported, the outer one first, and neither is kept.
+    assert converted["Nested"] == {"type": "object"}
+    assert [message.split(" at ")[1].split(":")[0] for message in messages] == [
+        f"/{keyword}",
+        f"/{keyword}/contains",
+    ]
+
+
 def test_nested_dropped_keywords_are_reported_in_document_order() -> None:
     # Given
     schemas = {"Nested": NESTED_IN_DROPPED}

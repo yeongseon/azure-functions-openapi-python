@@ -60,7 +60,10 @@ def test_preparation_is_linear_when_generating_components_and_operations(
     # Then
     assert len(spec["components"]["schemas"]) == component_count
     assert len(spec["paths"]) == operation_count
-    assert calls <= 3 * (component_count + operation_count)
+    # Every component is prepared once per batch (components, then inline operation slots),
+    # and each operation has a request body and a response slot; expanding a nullable
+    # reference adds nothing.
+    assert calls == 2 * component_count + 2 * operation_count
 
 
 def test_component_batches_keep_preparation_and_conversion_message_order() -> None:
