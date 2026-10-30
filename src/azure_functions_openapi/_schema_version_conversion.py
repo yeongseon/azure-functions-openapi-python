@@ -228,6 +228,9 @@ def _collapse_nullable_combinator(
       one branch in the union actually accepts null, plus the same sibling
       ``nullable: true`` for discoverability (ignored by validation once a
       branch already accepts null, but documents the field's shape).
+    * null members alone -> the combinator is dropped and the schema stays
+      null-only (an ``enum`` of ``null`` plus ``nullable: true``), because
+      ``nullable`` without a ``type`` accepts every value.
 
     Nodes without a null-bearing ``anyOf``/``oneOf`` are returned unchanged.
     """
