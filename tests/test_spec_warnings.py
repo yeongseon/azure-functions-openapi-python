@@ -128,6 +128,14 @@ def _isolate_registry() -> Any:
 
 
 class TestSpecWarning:
+    def test_route_prefix_mismatch_code_is_stable(self) -> None:
+        # Given
+        warning = SpecWarning(code=WarningCode.ROUTE_PREFIX_MISMATCH, message="mismatch")
+        # When
+        payload = warning.to_dict()
+        # Then
+        assert payload["code"] == "route-prefix-mismatch"
+
     def test_warning_code_value_is_stable(self) -> None:
         assert WarningCode.VERSION_SKEW.value == "version-skew"
 
