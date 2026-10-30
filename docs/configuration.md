@@ -320,8 +320,10 @@ These rules apply recursively to inline operation schemas and components.
 Non-array schemas do not gain `items`, and an `items` schema that is already
 present is kept, apart from the tuple conversions above (a typed tail still joins
 `items.anyOf`). When a nullable union refers to an array, an `items` that this
-conversion would synthesize for it (the fill, boolean normalization or an open
-tuple tail) never displaces an `items` that the surrounding schema declares.
+conversion would synthesize for it (the fill for a missing `items`, or an open tuple
+tail) never displaces an `items` that the surrounding schema declares; an `items`
+that the referenced schema itself declares, including `true`, keeps following the
+existing merge of the two schemas' keys.
 OpenAPI 3.1 and 3.2 output is unchanged.
 
 Legacy array-valued `items` is normalized to `prefixItems` before this same tuple

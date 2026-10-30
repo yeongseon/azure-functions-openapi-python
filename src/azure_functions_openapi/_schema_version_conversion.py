@@ -498,9 +498,9 @@ def _convert_prepared_schema_to_3_0(
 
     *normalize_items* is cleared for a referenced schema that is about to be merged with the
     keys around its nullable union: an ``items`` synthesized beforehand (the fill for a missing
-    ``items``, boolean normalization, an open tuple tail) would displace an ``items`` that the
-    surrounding schema declares, so the merged result is normalized by the caller's own
-    conversion instead.
+    ``items`` or an open tuple tail) would displace an ``items`` that the surrounding schema
+    declares, so the merged result is normalized by the caller's own conversion instead. An
+    ``items`` the referenced schema declares itself still takes part in the merge as written.
 
     *lossy* is an optional accumulator for conversions that are not merely
     re-expressed but demonstrably weakened -- currently, a heterogeneous
