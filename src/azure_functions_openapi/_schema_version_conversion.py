@@ -174,7 +174,7 @@ def _inline_ref_nullable(
     target = schemas.get(name)
     if not isinstance(target, dict):
         return None
-    inlined = _convert_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
+    inlined = _convert_prepared_schema_to_3_0(dict(target), schemas, resolving | {name}, lossy)
     inlined = _ensure_null_accepting(inlined)
     for k, v in extra_keys.items():
         inlined.setdefault(k, v)
@@ -664,9 +664,20 @@ def _convert_schemas_to_3_0(schemas: dict[str, Any]) -> tuple[dict[str, Any], li
     """
     converted: dict[str, Any] = {}
     lossy_messages: list[str] = []
+    prepared_schemas: dict[str, Any] = {}
+    preparation_losses: dict[str, list[str]] = {}
     for name, schema in schemas.items():
-        schema_lossy: list[str] = []
-        converted[name] = _convert_schema_to_3_0(schema, schemas, frozenset(), schema_lossy)
+        preparation_losses[name] = []
+        prepared_schemas[name] = (
+            _prepare_schema_for_3_0(schema, preparation_losses[name])
+            if isinstance(schema, dict)
+            else schema
+        )
+    for name, schema in prepared_schemas.items():
+        schema_lossy = preparation_losses[name]
+        converted[name] = _convert_prepared_schema_to_3_0(
+            schema, prepared_schemas, frozenset(), schema_lossy
+        )
         lossy_messages.extend(f"Schema '{name}': {message}" for message in schema_lossy)
     return converted, lossy_messages
 
@@ -871,6 +882,14 @@ def _convert_operation_schemas_to_3_0(
     same shape :func:`_convert_schemas_to_3_0` returns for named components.
     """
     lossy: list[str] = []
+    prepared_schemas = (
+        {
+            name: _prepare_schema_for_3_0(value, None) if isinstance(value, dict) else value
+            for name, value in schemas.items()
+        }
+        if schemas is not None
+        else None
+    )
     for path, methods in paths.items():
         for method, operation in methods.items():
             if not isinstance(operation, dict):
@@ -881,5 +900,7 @@ def _convert_operation_schemas_to_3_0(
                     schema = _prepare_schema_for_3_0(
                         schema, lossy, f"{method.upper()} {path} {location}"
                     )
-                container[key] = _convert_schema_to_3_0(schema, schemas, frozenset(), lossy)
+                container[key] = _convert_prepared_schema_to_3_0(
+                    schema, prepared_schemas, frozenset(), lossy
+                )
     return lossy
