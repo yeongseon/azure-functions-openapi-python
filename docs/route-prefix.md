@@ -77,10 +77,10 @@ azure-functions-openapi generate --app function_app:app --route-prefix auto
 
 The CLI reads `host.json` beside the imported `--app` module, falling back to
 the current working directory if there is no app or the module has no `__file__`.
-The app-setting override above still wins in `auto` mode. If the file cannot be
-read, `auto` falls back to `/api` and prints the same `RuntimeWarning` on stderr;
-that warning does not gate `--fail-on-warnings`. A **literal** prefix named
-`auto` must be written `--route-prefix /auto`.
+The app-setting override above still wins in `auto` mode. If the file is
+unreadable or malformed, `auto` falls back to `/api` and prints the same
+`RuntimeWarning` on stderr; that warning does not gate `--fail-on-warnings`. A
+**literal** prefix named `auto` must be written `--route-prefix /auto`.
 
 Without `auto`, a configured file prefix that differs from the effective
 prefix produces a structured `route-prefix-mismatch` warning as a JSON line on
