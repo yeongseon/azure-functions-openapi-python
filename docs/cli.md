@@ -161,7 +161,7 @@ Discovery semantics:
 | `--description` | - | any string | library default | OpenAPI `info.description` (Markdown / CommonMark supported) |
 | `--output` | `-o` | file path | stdout | Write generated content to file |
 | `--format` | `-f` | `json`, `yaml` | `json` | Output serialization format |
-| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version |
+| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version. See [version selection guidance](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use). |
 | `--pretty` | `-p` | flag | `false` | Pretty-print JSON output (adds indentation); no effect on YAML |
 | `--route-prefix` | - | any string (or `""`) | `/api` | HTTP route prefix from `host.json` `extensions.http.routePrefix`. See [Route Prefix](route-prefix.md). |
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
