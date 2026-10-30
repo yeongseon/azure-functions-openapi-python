@@ -207,6 +207,9 @@ Supported versions:
 - `OPENAPI_VERSION_3_1` (`"3.1.0"`)
 - `OPENAPI_VERSION_3_2` (`"3.2.0"`)
 
+For guidance on choosing a version for downstream consumers such as Azure API
+Management, see the [OpenAPI version FAQ](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use).
+
 ```python
 from azure_functions_openapi import OPENAPI_VERSION_3_1, get_openapi_json
 
