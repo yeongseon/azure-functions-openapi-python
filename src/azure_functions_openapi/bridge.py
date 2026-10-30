@@ -202,11 +202,18 @@ def _response_details_conflict(existing: Any, discovered: Any) -> bool:
     return _response_conflict_location(existing, discovered) is not None
 
 
-def _header_map(detail: dict[str, Any]) -> dict[str, Any]:
+def _header_map(detail: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """A response's headers by lower-cased name, and a defect when one name has two schemas."""
     headers = detail.get("headers")
     if not isinstance(headers, dict):
-        return {}
-    return {str(name).lower(): header for name, header in headers.items()}
+        return {}, None
+    by_name: dict[str, Any] = {}
+    for name, header in headers.items():
+        key = str(name).lower()
+        if key in by_name and _header_schema(by_name[key]) != _header_schema(header):
+            return by_name, f"header {key} declared with different schemas"
+        by_name[key] = header
+    return by_name, None
 
 
 def _header_schema(header: Any) -> Any:
@@ -256,7 +263,10 @@ def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     for media_type in sorted(set(existing_schemas) & set(discovered_schemas)):
         if existing_schemas[media_type] != discovered_schemas[media_type]:
             return f"media {media_type}"
-    existing_headers = _header_map(existing)
+    existing_headers, existing_header_defect = _header_map(existing)
+    _, discovered_header_defect = _header_map(discovered)
+    if existing_header_defect or discovered_header_defect:
+        return existing_header_defect or discovered_header_defect
     discovered_headers = discovered.get("headers")
     for name, header in discovered_headers.items() if isinstance(discovered_headers, dict) else ():
         current = existing_headers.get(str(name).lower())

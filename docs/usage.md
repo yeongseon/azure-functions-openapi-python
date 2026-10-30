@@ -783,8 +783,9 @@ back to the legacy `validation` namespace.
 Response maps are non-exhaustive: disjoint statuses merge. Within a shared status,
 compatible overlapping media schemas allow a union of additional media types;
 nonempty media maps with no overlap conflict. Headers compare case-insensitively
-and newly discovered headers fill gaps, preserving explicit spelling. Conflicting
-schemas or body-less versus body-bearing declarations raise configuration errors
+and newly discovered headers fill gaps, preserving explicit spelling; one header or
+media type declared under two spellings with different schemas is itself a conflict.
+Conflicting schemas or body-less versus body-bearing declarations raise configuration errors
 with endpoint/status/media/header context. Explicit descriptions and examples stay
 authoritative; return-type inference has lower precedence than discovered responses.
 

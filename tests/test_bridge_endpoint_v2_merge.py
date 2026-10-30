@@ -326,6 +326,95 @@ def test_header_entries_sharing_one_dictionary_are_filled_independently() -> Non
     assert shared == {}
 
 
+@pytest.mark.parametrize("reverse", [False, True], ids=["declared-order", "reversed-order"])
+def test_explicit_header_case_variants_with_different_schemas_conflict(reverse: bool) -> None:
+    # Given: one explicit header declared under two spellings with different schemas.
+    pairs = [("X-Id", {"schema": {"type": "integer"}}), ("x-id", {"schema": {"type": "string"}})]
+    if reverse:
+        pairs.reverse()
+    reg = OpenAPIRegistry()
+    register_openapi_metadata(
+        path="/api/users",
+        method="post",
+        response={200: {"content": media(), "headers": dict(pairs)}},
+        registry=reg,
+    )
+    app = make_app(
+        {
+            "version": 2,
+            "responses": {
+                "200": {"content": media(), "headers": {"x-id": {"schema": {"type": "string"}}}}
+            },
+        }
+    )
+
+    # When / Then: neither order silently selects one variant, on any scan.
+    for _ in range(3):
+        with pytest.raises(OpenAPISpecConfigError, match="header x-id declared with different"):
+            scan_endpoint_metadata(app, registry=reg)
+
+
+def test_explicit_header_case_variants_with_one_schema_are_accepted() -> None:
+    # Given
+    schema = {"schema": {"type": "string"}}
+    existing = {
+        "response": {200: {"content": media(), "headers": {"X-Id": schema, "x-id": schema}}}
+    }
+    discovered = {"response": {200: {"content": media(), "headers": {"x-id": schema}}}}
+
+    # When
+    _merge_into_existing(existing, discovered)
+
+    # Then
+    assert set(existing["response"][200]["headers"]) == {"X-Id", "x-id"}
+
+
+def test_merged_detail_does_not_share_nested_data_with_the_explicit_one() -> None:
+    # Given
+    existing = {"content": media(), "x-extra": {"a": 1}}
+
+    # When
+    merged = _merge_response_detail(existing, {"content": media()})
+    merged["x-extra"]["a"] = 2
+    merged["content"]["application/json"]["schema"]["type"] = "array"
+
+    # Then
+    assert existing == {"content": media(), "x-extra": {"a": 1}}
+
+
+@pytest.mark.parametrize("field", ["content", "headers"])
+@pytest.mark.parametrize("has_other_entry", [False, True], ids=["no-map", "other-entry"])
+def test_new_entries_are_copied_from_the_discovered_detail(
+    field: str, has_other_entry: bool
+) -> None:
+    # Given: discovery adds an entry to a response that has no such map, or has another entry.
+    entry = {"schema": {"type": "object", "properties": {"a": {"type": "string"}}}}
+    existing: dict[str, Any] = (
+        {field: {"X-Old": {"schema": {"type": "string"}}}} if has_other_entry else {}
+    )
+    discovered = {field: {"X-New": copy.deepcopy(entry)}}
+
+    # When
+    merged = _merge_response_detail(existing, discovered)
+    merged[field]["X-New"]["schema"]["properties"]["a"]["type"] = "integer"
+
+    # Then
+    assert discovered == {field: {"X-New": entry}}
+
+
+def test_gap_filled_values_are_copied_from_the_discovered_entry() -> None:
+    # Given: an explicit media entry without a schema, and a discovered schema for it.
+    discovered = {"content": media({"type": "object", "properties": {"a": {"type": "string"}}})}
+    original = copy.deepcopy(discovered)
+
+    # When
+    merged = _merge_response_detail({"content": {"application/json": {}}}, discovered)
+    merged["content"]["application/json"]["schema"]["properties"]["a"]["type"] = "integer"
+
+    # Then
+    assert discovered == original
+
+
 def test_discovered_detail_for_a_new_status_is_copied() -> None:
     # Given
     existing: dict[str, Any] = {"response": {}}
