@@ -771,6 +771,23 @@ when the discovered description is blank. Different schemas for the same
 status, request body, or parameter remain configuration errors; the exception
 identifies the endpoint, conflicting item, and both metadata sources.
 
+The bridge reads only `_azure_functions_metadata["endpoint"]`, using its own
+versioned read contract without importing a producer package. V1 responses remain
+JSON for every status. V2 adds per-status media schemas, header schemas and explicit
+body-less responses (`"content": {}`); see the
+[producer contract and compatibility policy](extending/producer-guide.md#v2-response-representations).
+Unsupported versions warn with `version-skew`; malformed v2 responses are skipped
+with `discovery-skipped` diagnostics while valid siblings survive. Neither falls
+back to the legacy `validation` namespace.
+
+Response maps are non-exhaustive: disjoint statuses merge. Within a shared status,
+compatible overlapping media schemas allow a union of additional media types;
+nonempty media maps with no overlap conflict. Headers compare case-insensitively
+and newly discovered headers fill gaps, preserving explicit spelling. Conflicting
+schemas or body-less versus body-bearing declarations raise configuration errors
+with endpoint/status/media/header context. Explicit descriptions and examples stay
+authoritative; return-type inference has lower precedence than discovered responses.
+
 `register_openapi_routes(app, ...)` and the `app=` argument of `generate_openapi_spec`,
 `get_openapi_json`, `get_openapi_yaml` and `generate_openapi_report` already scan the app, so a
 separate `scan_endpoint_metadata(app)` call is optional on that path. Call it yourself only when

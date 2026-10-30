@@ -166,6 +166,20 @@ URL after `history.replaceState`.
 
 ## Integration Boundaries
 
+- The bridge reads only the versioned plain-dictionary `endpoint` namespace using
+  this package's independent read-side mirror, without producer imports or runtime
+  dependencies. Producers and consumers release independently; there is no legacy
+  `validation` namespace fallback. Supported versions are explicitly `{1, 2}`.
+- V1 retains JSON-for-every-status semantics. V2 requires per-response `content`
+  mappings of media types to schema dictionaries, with optional header schemas;
+  empty content means body absence. Richer response semantics require a distinct
+  payload version because old consumers could not safely ignore them in v1.
+- Allowlisted v2 parsing deep-copies schemas, diagnoses ignored unknown fields and
+  skips malformed response entries while preserving valid siblings. Unsupported
+  versions retain observable degraded binding discovery. Neither path fabricates
+  producer response hints. Schema conversion remains a separate compiler concern.
+- Response headers use the same schema-resolution helper as response media for
+  definition hoisting and collision resolution before target-version conversion.
 - Runtime validation belongs to `azure-functions-validation`.
 - Diagnostics belong to `azure-functions-doctor`.
 - This repository owns OpenAPI metadata capture, document generation, and documentation UI helpers.
@@ -175,6 +189,11 @@ URL after `history.replaceState`.
   comparison, so duplicate declarations of the same model collapse to one
   response; incompatible response, request-body, or parameter schemas fail with
   endpoint- and source-aware diagnostics.
+- Compatible shared statuses union media and case-insensitive headers, preserving
+  explicit prose/examples and header spelling. Disjoint statuses merge; nonempty
+  media maps with no overlap, conflicting overlapping schemas, and body-less versus
+  body-bearing declarations fail with endpoint/status/media/header context.
+  Return-type inference remains lower precedence than discovered responses.
 
 ## Compatibility Policy
 

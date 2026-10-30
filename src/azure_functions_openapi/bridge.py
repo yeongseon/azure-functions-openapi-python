@@ -501,9 +501,8 @@ def _discovered_operation_from_endpoint(
 
     Every schema field here is already a
     JSON Schema dict authored by the producer, so no Pydantic model access is
-    needed. The producer's ``responses`` map is ``{"<status>": {"schema": ...}}``;
-    we wrap each entry into a full OpenAPI response object so the spec generator
-    can embed it verbatim.
+    needed. V1 response schemas become JSON media objects; v2 responses use
+    allowlisted content and header schema maps, with diagnostics for skipped hints.
     """
     raw_request_body = endpoint.get("request_body")
     request_body = raw_request_body if isinstance(raw_request_body, dict) else None
@@ -614,9 +613,8 @@ def _has_endpoint_namespace(handler: Any) -> bool:
 
     Unlike :func:`_read_endpoint_hints`, this ignores version validity: it reports
     mere *presence* of ``_azure_functions_metadata["endpoint"]`` as a dict. It lets
-    the scan loop distinguish "no endpoint contract at all" from "endpoint contract
-    present but rejected (e.g. unsupported version)", so a silent downgrade to the
-    ``validation`` namespace can be surfaced to the user.
+    the scan loop distinguish absent metadata from rejected metadata, so degraded
+    binding discovery remains observable without legacy namespace fallback.
     """
     current: Any = handler
     for _ in range(_MAX_WRAPPED_DEPTH):
@@ -687,8 +685,7 @@ def scan_endpoint_metadata(
     """Scan function builders for toolkit metadata and register OpenAPI operations.
 
     Reads the convention-based ``_azure_functions_metadata`` attribute from each
-    handler, preferring the self-contained ``"endpoint"`` namespace and falling
-    back to the ``"validation"`` namespace. No import from
+    handler, reading only the self-contained ``"endpoint"`` namespace. No import from
     ``azure-functions-validation`` is required.
 
     ``route_prefix`` mirrors ``host.json`` ``extensions.http.routePrefix``
@@ -1118,8 +1115,8 @@ def scan_validation_metadata(
 ) -> None:
     """Deprecated alias for :func:`scan_endpoint_metadata` (forwards ``infer_docstring``).
 
-    The scanner now primarily consumes the namespace-neutral ``"endpoint"``
-    contract (the ``"validation"`` namespace is only a fallback), so the
+    The scanner consumes only the namespace-neutral ``"endpoint"``
+    contract (there is no ``"validation"`` namespace fallback), so the
     ``scan_validation_metadata`` name is a misnomer. Use
     :func:`scan_endpoint_metadata` instead. This alias forwards unchanged and
     will be removed in a future minor release. The opt-in ``infer_docstring``
