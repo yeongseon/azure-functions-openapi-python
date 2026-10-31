@@ -153,6 +153,31 @@ def _component_name(ref: str) -> str | None:
     return name if name and "/" not in name else None
 
 
+_UNRESOLVED: Any = object()
+
+
+def _resolve_reference(ref: str, schemas: dict[str, Any] | None) -> Any:
+    """The schema a local reference leads to inside *schemas*, or :data:`_UNRESOLVED`.
+
+    Only ``#/components/schemas/<Name>`` and pointers into a component (``.../<Name>/properties/p``,
+    ``.../<Name>/allOf/0``) resolve, through objects and list indexes, with the JSON Pointer
+    escapes ``~0`` and ``~1``. Anything else is left unresolved: an external reference, a missing
+    component, or a location that does not hold a schema.
+    """
+    if schemas is None or not ref.startswith(_COMPONENT_PREFIX):
+        return _UNRESOLVED
+    node: Any = schemas
+    for part in ref[len(_COMPONENT_PREFIX) :].split("/"):
+        part = part.replace("~1", "/").replace("~0", "~")
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        elif isinstance(node, list) and part.isdecimal() and int(part) < len(node):
+            node = node[int(part)]
+        else:
+            return _UNRESOLVED
+    return node if isinstance(node, (dict, bool)) else _UNRESOLVED
+
+
 def _is_null_member(member: Any) -> bool:
     return isinstance(member, dict) and member.get("type") == "null"
 
@@ -192,10 +217,10 @@ def _accepts_null(
     below *schema* (a member, or a referenced component) is read as the original: conversion
     rewrites it, when it reaches it, so that it accepts ``null`` exactly as it did.
 
-    *assume_unknown* is the answer for a reference that cannot be resolved (a pointer into a
-    component, an external reference, a missing component), and each such reference is added to
-    *unresolved* when it is given, so that a caller can tell an answer that did not depend on one
-    from one that did: ``not`` and ``oneOf`` turn an assumption around.
+    *assume_unknown* is the answer for a reference that cannot be resolved (an external
+    reference, a missing component or a location that holds no schema), and each such reference
+    is added to *unresolved* when it is given, so that a caller can tell an answer that did not
+    depend on one from one that did: ``not`` and ``oneOf`` turn an assumption around.
     """
     if not isinstance(schema, dict):
         return schema is not False
@@ -225,12 +250,11 @@ def _accepts_null(
 
     ref = schema.get("$ref")
     if isinstance(ref, str):
-        name = _component_name(ref)
-        target = schemas.get(name) if schemas is not None and name is not None else None
-        if name is not None and name in seen:
+        target = _resolve_reference(ref, schemas)
+        if ref in seen:
             target_accepts = True
-        elif isinstance(target, dict) and name is not None:
-            target_accepts = below(target, siblings=True, inner_seen=seen | {name})
+        elif target is not _UNRESOLVED:
+            target_accepts = below(target, siblings=True, inner_seen=seen | {ref})
         else:
             if unresolved is not None:
                 unresolved.add(ref)
@@ -325,12 +349,22 @@ def _keep_null_verdict(member: Any, original: Any, schemas: dict[str, Any] | Non
     in the referenced schema is enforced there and rejects ``null``, and a reference's
     sibling keys are ignored there. A branch whose answer changed is joined with the
     ``null`` schema (it accepted ``null``) or with a conjunct that rules ``null`` out (it
-    did not), which changes nothing for any other instance.
+    did not), which changes nothing for any other instance. A branch whose answers depend on a
+    reference that cannot be resolved is left as it is, because restoring them would turn a
+    guess into acceptance.
     """
     if _has_null_member(member):
         return member
     before = _accepts_null(original, schemas, ref_siblings_apply=True, assume_unknown=True)
-    if before == _output_null_verdict(member, schemas, assume_unknown=True):
+    after = _output_null_verdict(member, schemas, assume_unknown=True)
+    if before == after:
+        return member
+    if (
+        _accepts_null(original, schemas, ref_siblings_apply=True, assume_unknown=False) != before
+        or _output_null_verdict(member, schemas, assume_unknown=False) != after
+    ):
+        # An answer that changes with the assumption for a reference that cannot be resolved is a
+        # guess, and a restored answer would turn it into real acceptance (or rejection).
         return member
     if before:
         return {"anyOf": [member, {"nullable": True, "enum": [None]}]}

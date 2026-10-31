@@ -248,8 +248,11 @@ discriminates nothing and 3.0 would enforce it. A nullable union that is the onl
 a nullable union stays a member, and is rewritten on its own, rather than being
 merged into the outer union. Keys beside the union that reject null make the null
 branches unreachable; a rejection that depends on a reference the conversion cannot
-resolve (a pointer into a component, an external reference) is not taken as proof,
-because `not` turns an assumption around, and the null branches stay.
+resolve (an external reference, a missing component) is not taken as proof, because
+`not` turns an assumption around, and the null branches stay. For the same reason a
+branch whose answer for null depends on such a reference is left as it is rather than
+joined with a null schema. Pointers into a component (`#/components/schemas/Meta/properties/p`)
+are followed.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts

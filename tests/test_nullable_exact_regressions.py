@@ -11,6 +11,7 @@ from pydantic import JsonValue
 import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
+    _UNRESOLVED,
     _accepts_null,
     _component_name,
     _convert_schema_to_3_0,
@@ -19,6 +20,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _keep_null_verdict,
     _merge_wrapper_into_inlined,
     _output_null_verdict,
+    _resolve_reference,
 )
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -433,6 +435,35 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ],
     *[
         (
+            f"pointer-discriminated-member-{key}-{target_name}-{member_name}",
+            {key: [member, {"type": "string"}, {"type": "null"}]},
+            {"Meta": {"type": "object", "properties": {"p": target}}},
+        )
+        for key, target_name, target in [
+            ("anyOf", "nothing", {"not": {}}),
+            ("anyOf", "string", {"type": "string"}),
+            ("anyOf", "enum-null", {"enum": [None]}),
+            ("anyOf", "nullable-string", {"type": ["string", "null"]}),
+            ("oneOf", "nothing", {"not": {}}),
+            ("oneOf", "enum-null", {"enum": [None]}),
+        ]
+        for member_name, member in [
+            (
+                "all-of",
+                {"allOf": [{"$ref": "#/$defs/Meta/properties/p"}], "discriminator": DISCRIMINATOR},
+            ),
+            (
+                "any-of",
+                {"anyOf": [{"$ref": "#/$defs/Meta/properties/p"}], "discriminator": DISCRIMINATOR},
+            ),
+            (
+                "one-of",
+                {"oneOf": [{"$ref": "#/$defs/Meta/properties/p"}], "discriminator": DISCRIMINATOR},
+            ),
+        ]
+    ],
+    *[
+        (
             f"object-scope-{key}-{name}",
             {**wrapper, key: [REF, {"type": "null"}]},
             {"T": {"type": "object", **target}},
@@ -744,10 +775,11 @@ def test_only_an_exact_component_reference_names_a_component(
     assert _component_name(ref) == expected
 
 
-def test_a_pointer_into_a_component_does_not_resolve_to_a_component_of_its_last_segment() -> None:
-    # Given: a pointer into Meta, and an unrelated component that happens to be called ``name``.
+def test_a_pointer_into_a_component_is_read_at_its_own_location() -> None:
+    # Given: a pointer into Meta, and an unrelated component that happens to be called ``name``
+    # and accepts null.
     schemas = {
-        "name": {"type": "integer"},
+        "name": {},
         "Meta": {"type": "object", "properties": {"name": {"type": "string"}}},
     }
     pointer = "#/components/schemas/Meta/properties/name"
@@ -759,14 +791,48 @@ def test_a_pointer_into_a_component_does_not_resolve_to_a_component_of_its_last_
         {"$ref": pointer},
         schemas,
         ref_siblings_apply=True,
-        assume_unknown=False,
+        assume_unknown=True,
         unresolved=unresolved,
     )
 
-    # Then: the unrelated component is neither inlined nor read for the pointer.
+    # Then: the unrelated component is neither inlined nor read for the pointer; the string
+    # schema the pointer leads to is, so nothing is left unresolved and null is rejected.
     assert converted == {"anyOf": [{"$ref": pointer}, {"nullable": True, "enum": [None]}]}
     assert accepts is False
-    assert unresolved == {pointer}
+    assert unresolved == set()
+
+
+@pytest.mark.parametrize(
+    ("ref", "found"),
+    [
+        ("#/components/schemas/Meta", True),
+        ("#/components/schemas/Meta/properties/p", True),
+        ("#/components/schemas/Meta/allOf/1", True),
+        ("#/components/schemas/Meta/properties/a~1b", True),
+        ("#/components/schemas/Meta/properties/missing", False),
+        ("#/components/schemas/Meta/allOf/9", False),
+        ("#/components/schemas/Meta/type", False),
+        ("#/components/schemas/Missing", False),
+        ("#/$defs/Meta", False),
+        ("https://example.com/schemas/meta.json", False),
+    ],
+)
+def test_a_local_reference_resolves_through_objects_and_list_indexes(ref: str, found: bool) -> None:
+    # Given: a component with properties (one of them named with an escaped slash) and an allOf.
+    schemas = {
+        "Meta": {
+            "type": "object",
+            "properties": {"p": {"type": "string"}, "a/b": {"type": "integer"}},
+            "allOf": [{"minProperties": 1}, {"maxProperties": 3}],
+        }
+    }
+
+    # When
+    resolved = _resolve_reference(ref, schemas)
+
+    # Then: a schema, or nothing: a value that is not a schema does not count.
+    assert (resolved is not _UNRESOLVED) is found
+    assert _resolve_reference(ref, None) is _UNRESOLVED
 
 
 def test_every_reference_that_cannot_be_resolved_is_reported_to_the_caller() -> None:
@@ -775,6 +841,7 @@ def test_every_reference_that_cannot_be_resolved_is_reported_to_the_caller() -> 
     schemas = {
         "Known": {"type": "string"},
         "Loop": {"anyOf": [{"$ref": "#/components/schemas/Loop"}]},
+        "Wrap": {"properties": {"p": {"type": "string"}}},
     }
     refs = [
         "#/components/schemas/Missing",
@@ -786,6 +853,7 @@ def test_every_reference_that_cannot_be_resolved_is_reported_to_the_caller() -> 
             *({"$ref": ref} for ref in refs),
             {"$ref": "#/components/schemas/Known"},
             {"$ref": "#/components/schemas/Loop"},
+            {"$ref": "#/components/schemas/Wrap/properties/p"},
         ]
     }
     unresolved: set[str] = set()
@@ -923,6 +991,57 @@ def test_the_output_verdict_is_the_one_both_readings_give() -> None:
     missing = {"$ref": "#/components/schemas/Missing"}
     assert _output_null_verdict(missing, schemas, assume_unknown=True) is True
     assert _output_null_verdict(missing, schemas, assume_unknown=False) is False
+
+
+def test_a_branch_that_depends_on_an_unresolved_reference_is_not_restored() -> None:
+    # Given: a oneOf branch with a discriminator beside an allOf that leads to a component that
+    # is not there, so whether it accepts null in the original is a guess.
+    gone = {"$ref": "#/components/schemas/Gone"}
+    branch = {"allOf": [gone], "discriminator": DISCRIMINATOR}
+    node = {"oneOf": [branch, {"type": "string"}, {"type": "null"}]}
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+
+    # Then: the branch is left as it is, not joined with a null schema that would make it match.
+    assert converted == {"oneOf": [branch, {"type": "string"}, {"nullable": True, "enum": [None]}]}
+
+
+def test_a_branch_whose_original_answer_turns_around_with_the_assumption_is_not_restored() -> None:
+    # Given: a ``not`` over a component that is not there turns the assumption around, so the
+    # original answer of the branch is a guess, and its discriminator is enforced in 3.0.
+    gone = {"$ref": "#/components/schemas/Gone"}
+    branch = {"allOf": [{"not": gone}], "discriminator": DISCRIMINATOR}
+    node = {"anyOf": [{"allOf": [gone]}, branch, {"type": "null"}]}
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+
+    # Then: the branch is left as it is.
+    assert converted == {"anyOf": [{"allOf": [gone]}, branch, {"nullable": True, "enum": [None]}]}
+
+
+def test_a_branch_whose_converted_answer_depends_on_an_unresolved_reference_is_not_restored() -> (
+    None
+):
+    # Given: a branch that requires a string through the sibling of a reference that is not
+    # there: the specification ignores that sibling (then the branch would accept whatever the
+    # reference does) and validators built on JSON Schema apply it.
+    branch = {"allOf": [{"$ref": "#/components/schemas/Gone", "type": "string"}]}
+    node = {
+        "oneOf": [
+            {"$ref": "#/components/schemas/T", "description": "member"},
+            branch,
+            {"type": "null"},
+        ]
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, {"T": {"type": "object"}})
+
+    # Then: the branch is left as it is; whether it takes null is not known, so no conjunct
+    # that rules null out is made up.
+    assert converted["oneOf"][1] == branch
 
 
 def test_a_nullable_union_below_the_schema_is_read_as_the_original_in_every_reading() -> None:

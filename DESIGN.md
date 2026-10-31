@@ -100,8 +100,9 @@ The final call-flow is:
    discriminates nothing and is not carried, including one beside a reference moved
    into an `allOf`. Keys beside the union that reject null make the null branches dead, but
    only when that rejection does not rest on a reference the evaluator cannot resolve
-   (the evaluator reports each one, and only an exact `#/components/schemas/<Name>`
-   reference counts as resolvable).
+   (the evaluator reports each one; `#/components/schemas/<Name>` and pointers into a
+   component resolve, an external reference or a missing target does not), and a branch
+   whose restored answer would rest on such a reference is not restored.
    Numeric bounds and their exclusivity flags, and the object keys `properties` and
    `additionalProperties`, are kept together when merging inlined content with field
    constraints, using separate `allOf` conjuncts when both sides declare a family; if the inlined schema carries a `discriminator`,
