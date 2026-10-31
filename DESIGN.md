@@ -101,8 +101,10 @@ The final call-flow is:
    into an `allOf`. Keys beside the union that reject null make the null branches dead, but
    only when that rejection does not rest on a reference the evaluator cannot resolve
    (the evaluator reports each one; `#/components/schemas/<Name>` and pointers into a
-   component resolve, an external reference or a missing target does not), and a branch
-   whose restored answer would rest on such a reference is not restored.
+   component resolve, percent-decoded like validators read them, an external reference or
+   a missing target does not). An answer that consulted one is a guess: the `nullable`
+   idiom is not trusted on it, a discriminator is not carried on it, and a branch is not
+   restored from it but loses its discriminators.
    Numeric bounds and their exclusivity flags, and the object keys `properties` and
    `additionalProperties`, are kept together when merging inlined content with field
    constraints, using separate `allOf` conjuncts when both sides declare a family; if the inlined schema carries a `discriminator`,

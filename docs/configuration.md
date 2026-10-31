@@ -247,12 +247,15 @@ A `discriminator` on a schema that accepts only `null` is dropped, because it
 discriminates nothing and 3.0 would enforce it. A nullable union that is the only other member of
 a nullable union stays a member, and is rewritten on its own, rather than being
 merged into the outer union. Keys beside the union that reject null make the null
-branches unreachable; a rejection that depends on a reference the conversion cannot
-resolve (an external reference, a missing component) is not taken as proof, because
-`not` turns an assumption around, and the null branches stay. For the same reason a
-branch whose answer for null depends on such a reference is left as it is rather than
-joined with a null schema. Pointers into a component (`#/components/schemas/Meta/properties/p`)
-are followed.
+branches unreachable. Pointers into a component (`#/components/schemas/Meta/properties/p`,
+percent-escapes and `~0`/`~1` included) are followed. An answer that depends on a
+reference the conversion cannot resolve (an external reference, a missing component) is
+a guess, because `not` and `oneOf` turn an assumption around, and the conversion never
+builds on one: a rejection that rests on it does not drop the null branches, a union that
+consulted it is written with every branch kept instead of with the `nullable` idiom, a
+discriminator is not carried on its strength, and a branch that consulted it is not
+joined with a null schema but loses the discriminators that 3.0 enforces and 2020-12
+ignores, so that it answers as the original does whatever the reference leads to.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts

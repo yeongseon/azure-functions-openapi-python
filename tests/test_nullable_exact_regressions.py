@@ -21,6 +21,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _merge_wrapper_into_inlined,
     _output_null_verdict,
     _resolve_reference,
+    _without_discriminators,
 )
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
@@ -435,6 +436,23 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ],
     *[
         (
+            f"percent-encoded-references-{key}",
+            {
+                key: [
+                    {"type": "string"},
+                    {
+                        "anyOf": [{"$ref": "#/$defs/%41"}, {"not": {"$ref": "#/$defs/%42"}}],
+                        "discriminator": DISCRIMINATOR,
+                    },
+                    {"type": "null"},
+                ]
+            },
+            {"A": {"not": {}}, "B": {}},
+        )
+        for key in ("anyOf", "oneOf")
+    ],
+    *[
+        (
             f"pointer-discriminated-member-{key}-{target_name}-{member_name}",
             {key: [member, {"type": "string"}, {"type": "null"}]},
             {"Meta": {"type": "object", "properties": {"p": target}}},
@@ -809,7 +827,11 @@ def test_a_pointer_into_a_component_is_read_at_its_own_location() -> None:
         ("#/components/schemas/Meta/properties/p", True),
         ("#/components/schemas/Meta/allOf/1", True),
         ("#/components/schemas/Meta/properties/a~1b", True),
+        ("#/components/schemas/%4Deta", True),
+        ("#/components/schemas/Meta/properties/a%7E1b", True),
+        ("#/components/schemas/Meta%2Fproperties%2Fp", True),
         ("#/components/schemas/Meta/properties/missing", False),
+        ("#/components/schemas/Met%61/properties/q", False),
         ("#/components/schemas/Meta/allOf/9", False),
         ("#/components/schemas/Meta/type", False),
         ("#/components/schemas/Missing", False),
@@ -993,7 +1015,7 @@ def test_the_output_verdict_is_the_one_both_readings_give() -> None:
     assert _output_null_verdict(missing, schemas, assume_unknown=False) is False
 
 
-def test_a_branch_that_depends_on_an_unresolved_reference_is_not_restored() -> None:
+def test_a_branch_that_depends_on_an_unresolved_reference_loses_its_discriminator() -> None:
     # Given: a oneOf branch with a discriminator beside an allOf that leads to a component that
     # is not there, so whether it accepts null in the original is a guess.
     gone = {"$ref": "#/components/schemas/Gone"}
@@ -1003,8 +1025,235 @@ def test_a_branch_that_depends_on_an_unresolved_reference_is_not_restored() -> N
     # When
     converted = _convert_schema_to_3_0(node, {})
 
-    # Then: the branch is left as it is, not joined with a null schema that would make it match.
-    assert converted == {"oneOf": [branch, {"type": "string"}, {"nullable": True, "enum": [None]}]}
+    # Then: it is not joined with a null schema that would make it match; without the
+    # discriminator that 3.0 enforces it answers as the original does, whatever the reference is.
+    assert converted == {
+        "oneOf": [{"allOf": [gone]}, {"type": "string"}, {"nullable": True, "enum": [None]}]
+    }
+
+
+def test_unresolved_references_that_agree_under_uniform_assumptions_prove_nothing() -> None:
+    # Given: a oneOf branch that leads to two different components that are not there, one of them
+    # under a not, so that every uniform assumption for both gives the same answer although the
+    # real ones may not (A rejecting null and B accepting it makes the branch reject it).
+    branch = {
+        "anyOf": [
+            {"$ref": "#/components/schemas/Gone1"},
+            {"not": {"$ref": "#/components/schemas/Gone2"}},
+        ],
+        "discriminator": DISCRIMINATOR,
+    }
+    node = {"oneOf": [{"type": "string"}, branch, {"type": "null"}]}
+    uniform = [
+        _accepts_null(branch, {}, ref_siblings_apply=True, assume_unknown=assumed, unresolved=set())
+        for assumed in (False, True)
+    ]
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+
+    # Then: both uniform assumptions agree, and the branch still loses its discriminator.
+    assert uniform == [True, True]
+    plain = {key: value for key, value in branch.items() if key != "discriminator"}
+    assert converted == {"oneOf": [{"type": "string"}, plain, {"nullable": True, "enum": [None]}]}
+
+
+def test_a_discriminator_is_not_scoped_on_the_strength_of_an_unresolved_reference() -> None:
+    # Given: two members that would not accept null if the missing component accepted it, under
+    # a discriminator that would then be carried with the null branch outside its scope.
+    gone = {"$ref": "#/components/schemas/Gone"}
+    node = {
+        "discriminator": DISCRIMINATOR,
+        "oneOf": [{"not": gone}, {"$ref": "#/components/schemas/Cat"}, {"type": "null"}],
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, {"Cat": {"type": "object"}})
+
+    # Then: whether the first member accepts null is a guess, so the discriminator is not carried
+    # and the null branch counts next to the members.
+    assert converted == {
+        "oneOf": [
+            {"not": gone},
+            {"$ref": "#/components/schemas/Cat"},
+            {"nullable": True, "enum": [None]},
+        ]
+    }
+
+
+def test_a_discriminator_is_not_carried_beside_members_that_lead_to_an_unresolved_reference() -> (
+    None
+):
+    # Given: members whose answer for null depends on a component that is not there, beside a key
+    # that rules null out, so that the null branch is left out and only the union remains.
+    gone = {"$ref": "#/components/schemas/Gone"}
+    node = {
+        "type": "object",
+        "discriminator": DISCRIMINATOR,
+        "oneOf": [{"not": gone}, {"$ref": "#/components/schemas/Cat"}, {"type": "null"}],
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, {"Cat": {"type": "object"}})
+
+    # Then: whether the members accept null is a guess, so the discriminator is not carried on it.
+    assert converted == {
+        "type": "object",
+        "oneOf": [{"not": gone}, {"$ref": "#/components/schemas/Cat"}],
+    }
+
+
+@pytest.mark.parametrize("key", ["anyOf", "oneOf"])
+@pytest.mark.parametrize(
+    "target", [{}, {"not": {}}, {"type": "string"}], ids=["open", "nothing", "string"]
+)
+def test_a_type_beside_the_union_still_rejects_null_whatever_an_unresolved_member_leads_to(
+    key: str, target: dict[str, Any]
+) -> None:
+    # Given: a type beside the union that rejects null before any member is read in the original,
+    # and a member that leads to a component the conversion is not given (the validators are).
+    gone = {"$ref": "#/components/schemas/Gone"}
+    node = {"type": "string", key: [{"type": "null"}, {"allOf": [gone]}]}
+    hidden = {"Gone": target}
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+    components = _convert_schemas_to_3_0(hidden)[0]
+
+    # Then: only the candidate reads the reference, and that is enough not to build on it: the
+    # type keeps rejecting null, and the instances that are valid are the original's.
+    assert converted == {"type": "string", key: [{"allOf": [gone]}]}
+    original = OAS31Validator({**node, "components": {"schemas": hidden}})
+    in_3_0 = OAS30Validator({**converted, "components": {"schemas": components}})
+    assert [in_3_0.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
+
+
+def test_the_output_verdict_reports_what_each_reading_could_not_resolve() -> None:
+    # Given: a reference that only the reading that applies the keys beside a reference gets to,
+    # and one that only the reading that ignores them gets to (the other has already answered).
+    gone = {"$ref": "#/components/schemas/Gone"}
+    components: dict[str, Any] = {"Open": {}}
+    beside = {"$ref": "#/components/schemas/Open", "allOf": [gone]}
+    after = {"allOf": [{"$ref": "#/components/schemas/Open", "type": "string"}, gone]}
+    reported_beside: set[str] = set()
+    reported_after: set[str] = set()
+
+    # When
+    verdict_beside = _output_null_verdict(
+        beside, components, assume_unknown=True, unresolved=reported_beside
+    )
+    verdict_after = _output_null_verdict(
+        after, components, assume_unknown=True, unresolved=reported_after
+    )
+
+    # Then: both are reported, and the readings that disagree give no answer.
+    assert reported_beside == reported_after == {"#/components/schemas/Gone"}
+    assert verdict_beside is True
+    assert verdict_after is None
+
+
+def test_discriminators_beside_combinators_are_left_out_through_combinators_and_not() -> None:
+    # Given: discriminators beside allOf, anyOf, oneOf and not, one beside plain keys, and keys
+    # the null answer does not depend on.
+    plain = {"type": "object", "discriminator": DISCRIMINATOR, "properties": {"a": {"allOf": [{}]}}}
+    schema = {
+        "allOf": [
+            {
+                "anyOf": [{"oneOf": [{}], "discriminator": DISCRIMINATOR}],
+                "discriminator": DISCRIMINATOR,
+            },
+            {"not": {"allOf": [{}], "discriminator": DISCRIMINATOR}},
+            plain,
+        ],
+        "discriminator": DISCRIMINATOR,
+    }
+
+    # When
+    stripped = _without_discriminators(schema)
+
+    # Then: only the ones that sit beside a combinator on the way go, and the input is untouched.
+    assert stripped == {
+        "allOf": [
+            {"anyOf": [{"oneOf": [{}]}]},
+            {"not": {"allOf": [{}]}},
+            plain,
+        ]
+    }
+    assert schema["discriminator"] == DISCRIMINATOR
+    assert _without_discriminators("text") == "text"
+
+
+BLIND_TARGETS: dict[str, dict[str, Any]] = {
+    "nothing": {"not": {}},
+    "anything": {},
+    "null-only": {"enum": [None]},
+}
+EXT1, EXT2 = {"$ref": "#/components/schemas/Ext1"}, {"$ref": "#/components/schemas/Ext2"}
+# Members, and the targets of the two references for which no non-null instance matches the member,
+# so that only what is said about null is in question (a discriminator that 3.0 enforces on a
+# member that matches other instances is a separate, existing deviation).
+BLIND_SHAPES: list[tuple[str, dict[str, Any], tuple[str, ...], tuple[str, ...]]] = [
+    (
+        "all-of",
+        {"allOf": [EXT1], "discriminator": DISCRIMINATOR},
+        ("nothing", "null-only"),
+        ("nothing", "null-only"),
+    ),
+    (
+        "any-of-not",
+        {"anyOf": [EXT1, {"not": EXT2}], "discriminator": DISCRIMINATOR},
+        ("nothing", "null-only"),
+        ("anything",),
+    ),
+    (
+        "one-of",
+        {"oneOf": [EXT1, EXT2], "discriminator": DISCRIMINATOR},
+        ("nothing", "null-only"),
+        ("nothing", "null-only"),
+    ),
+    (
+        "all-of-not",
+        {"allOf": [EXT1, {"not": EXT2}], "discriminator": DISCRIMINATOR},
+        ("nothing", "null-only"),
+        ("nothing", "anything", "null-only"),
+    ),
+]
+BLIND_ROWS: list[tuple[str, dict[str, Any], str, str]] = [
+    (name, member, first, second)
+    for name, member, firsts, seconds in BLIND_SHAPES
+    for first in firsts
+    for second in seconds
+]
+
+
+@pytest.mark.parametrize("beside", [{}, {"discriminator": DISCRIMINATOR}], ids=["plain", "disc"])
+@pytest.mark.parametrize("key", ["anyOf", "oneOf"])
+@pytest.mark.parametrize(
+    ("name", "member", "first", "second"),
+    BLIND_ROWS,
+    ids=[f"{row[0]}-{row[2]}-{row[3]}" for row in BLIND_ROWS],
+)
+def test_unresolved_references_leave_the_instances_the_original_accepts_alone(
+    name: str,
+    member: dict[str, Any],
+    first: str,
+    second: str,
+    key: str,
+    beside: dict[str, Any],
+) -> None:
+    # Given: references the conversion is not given the components of (it is blind to them), while
+    # the validators are, so that what the references really lead to is chosen independently.
+    hidden = {"Ext1": BLIND_TARGETS[first], "Ext2": BLIND_TARGETS[second]}
+    node = {**beside, key: [member, {"type": "string"}, {"type": "null"}]}
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+    components = _convert_schemas_to_3_0(hidden)[0]
+
+    # Then: the instances that are valid are the ones the original accepts, null included.
+    original = OAS31Validator({**node, "components": {"schemas": hidden}})
+    in_3_0 = OAS30Validator({**converted, "components": {"schemas": components}})
+    assert [in_3_0.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
 
 
 def test_a_branch_whose_original_answer_turns_around_with_the_assumption_is_not_restored() -> None:
@@ -1017,8 +1266,10 @@ def test_a_branch_whose_original_answer_turns_around_with_the_assumption_is_not_
     # When
     converted = _convert_schema_to_3_0(node, {})
 
-    # Then: the branch is left as it is.
-    assert converted == {"anyOf": [{"allOf": [gone]}, branch, {"nullable": True, "enum": [None]}]}
+    # Then: the branch loses its discriminator and is not joined with anything.
+    assert converted == {
+        "anyOf": [{"allOf": [gone]}, {"allOf": [{"not": gone}]}, {"nullable": True, "enum": [None]}]
+    }
 
 
 def test_a_branch_whose_converted_answer_depends_on_an_unresolved_reference_is_not_restored() -> (

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
+from urllib.parse import unquote
 
 from azure_functions_openapi._schema_3_0_preparation import _prepare_schema_for_3_0
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError
@@ -160,14 +161,15 @@ def _resolve_reference(ref: str, schemas: dict[str, Any] | None) -> Any:
     """The schema a local reference leads to inside *schemas*, or :data:`_UNRESOLVED`.
 
     Only ``#/components/schemas/<Name>`` and pointers into a component (``.../<Name>/properties/p``,
-    ``.../<Name>/allOf/0``) resolve, through objects and list indexes, with the JSON Pointer
-    escapes ``~0`` and ``~1``. Anything else is left unresolved: an external reference, a missing
-    component, or a location that does not hold a schema.
+    ``.../<Name>/allOf/0``) resolve, through objects and list indexes. The fragment is read the
+    way validators read it: percent-decoded first (``%41`` is ``A``), then split at ``/``, with the
+    JSON Pointer escapes ``~0`` and ``~1`` in each part. Anything else is left unresolved: an
+    external reference, a missing component, or a location that does not hold a schema.
     """
     if schemas is None or not ref.startswith(_COMPONENT_PREFIX):
         return _UNRESOLVED
     node: Any = schemas
-    for part in ref[len(_COMPONENT_PREFIX) :].split("/"):
+    for part in unquote(ref[len(_COMPONENT_PREFIX) :]).split("/"):
         part = part.replace("~1", "/").replace("~0", "~")
         if isinstance(node, dict) and part in node:
             node = node[part]
@@ -292,7 +294,11 @@ def _accepts_null(
 
 
 def _output_null_verdict(
-    schema: Any, schemas: dict[str, Any] | None, *, assume_unknown: bool
+    schema: Any,
+    schemas: dict[str, Any] | None,
+    *,
+    assume_unknown: bool,
+    unresolved: set[str] | None = None,
 ) -> bool | None:
     """Whether ``null`` is valid against *schema* as a converted 3.0 document is read.
 
@@ -302,7 +308,11 @@ def _output_null_verdict(
     original answer equals.
     """
     ignored = _accepts_null(
-        schema, schemas, ref_siblings_apply=False, assume_unknown=assume_unknown
+        schema,
+        schemas,
+        ref_siblings_apply=False,
+        assume_unknown=assume_unknown,
+        unresolved=unresolved,
     )
     applied = _accepts_null(
         schema,
@@ -310,6 +320,7 @@ def _output_null_verdict(
         ref_siblings_apply=True,
         discriminator_active=True,
         assume_unknown=assume_unknown,
+        unresolved=unresolved,
     )
     return ignored if ignored == applied else None
 
@@ -341,6 +352,25 @@ def _null_only_form(member: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _without_discriminators(schema: Any) -> Any:
+    """*schema* without the ``discriminator`` of any node that has a combinator, through ``allOf``,
+    ``anyOf``, ``oneOf`` and ``not``.
+
+    2020-12 ignores a discriminator, and 3.0 validators enforce one beside a combinator, so
+    leaving it out gives back what the original accepted.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    combined = any(key in schema for key in ("allOf", "anyOf", "oneOf"))
+    result = {k: v for k, v in schema.items() if not (combined and k == "discriminator")}
+    for key in ("allOf", "anyOf", "oneOf"):
+        if isinstance(result.get(key), list):
+            result[key] = [_without_discriminators(member) for member in result[key]]
+    if "not" in result:
+        result["not"] = _without_discriminators(result["not"])
+    return result
+
+
 def _keep_null_verdict(member: Any, original: Any, schemas: dict[str, Any] | None) -> Any:
     """Return *member*, the 3.0 form of the branch *original*, taking ``null`` as *original* did.
 
@@ -349,22 +379,27 @@ def _keep_null_verdict(member: Any, original: Any, schemas: dict[str, Any] | Non
     in the referenced schema is enforced there and rejects ``null``, and a reference's
     sibling keys are ignored there. A branch whose answer changed is joined with the
     ``null`` schema (it accepted ``null``) or with a conjunct that rules ``null`` out (it
-    did not), which changes nothing for any other instance. A branch whose answers depend on a
-    reference that cannot be resolved is left as it is, because restoring them would turn a
-    guess into acceptance.
+    did not), which changes nothing for any other instance. A branch whose answers consulted a
+    reference that cannot be resolved is never restored, because that would turn a guess into
+    acceptance: it loses its discriminators instead (:func:`_without_discriminators`), which
+    makes it answer as the original does whatever the reference leads to.
     """
     if _has_null_member(member):
         return member
-    before = _accepts_null(original, schemas, ref_siblings_apply=True, assume_unknown=True)
-    after = _output_null_verdict(member, schemas, assume_unknown=True)
+    unresolved: set[str] = set()
+    before = _accepts_null(
+        original, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=unresolved
+    )
+    after = _output_null_verdict(member, schemas, assume_unknown=True, unresolved=unresolved)
+    if unresolved:
+        # An answer that consulted a reference that cannot be resolved is a guess (two answers
+        # that agree under an assumption need not agree for what the references lead to), and a
+        # restored answer would turn it into real acceptance or rejection. What does not need the
+        # answer is to take away what can make the two differ: a discriminator that 3.0 enforces
+        # and 2020-12 ignores. The member then answers as the original does, whatever the
+        # references lead to.
+        return _without_discriminators(member)
     if before == after:
-        return member
-    if (
-        _accepts_null(original, schemas, ref_siblings_apply=True, assume_unknown=False) != before
-        or _output_null_verdict(member, schemas, assume_unknown=False) != after
-    ):
-        # An answer that changes with the assumption for a reference that cannot be resolved is a
-        # guess, and a restored answer would turn it into real acceptance (or rejection).
         return member
     if before:
         return {"anyOf": [member, {"nullable": True, "enum": [None]}]}
@@ -396,19 +431,24 @@ def _exact_nullable_union(
     A ``discriminator`` is active in 3.0 (it rejects ``null`` and any object without the
     property) but annotation-only in 3.1, so it is only carried where it cannot change what
     is accepted: with at least two non-null members, none of which accepts ``null``, it
-    stays with them and the ``null`` branches sit outside its scope. Otherwise it
-    discriminates nothing and is not carried.
+    stays with them and the ``null`` branches sit outside its scope; that is never decided on
+    the strength of a reference that cannot be resolved. Otherwise it discriminates nothing and
+    is not carried.
     """
     hoisted = [_hoist_reference_siblings(member) for member in non_null]
     discriminator = base.get("discriminator")
     rest = {k: v for k, v in base.items() if k != "discriminator"}
+    guessed: set[str] = set()
     scoped = (
         discriminator is not None
         and len(hoisted) > 1
         and not any(
-            _accepts_null(member, schemas, ref_siblings_apply=True, assume_unknown=True)
+            _accepts_null(
+                member, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=guessed
+            )
             for member in non_null
         )
+        and not guessed
     )
     unresolved: set[str] = set()
     rest_rejects_null = not _accepts_null(
@@ -528,8 +568,9 @@ def _collapse_nullable_combinator(
             continue
         non_null = [m for m in members if not _is_null_member(m)]
         null_members = [m for m in members if _is_null_member(m)]
+        guessed: set[str] = set()
         original_accepts_null = _accepts_null(
-            result, schemas, ref_siblings_apply=True, assume_unknown=True
+            result, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=guessed
         )
         base = {k: v for k, v in result.items() if k != key}
         result = {**base, "nullable": True}
@@ -604,12 +645,14 @@ def _collapse_nullable_combinator(
         # original did: a ``nullable`` cannot reach a member that is not a plain typed schema
         # (a union of references, an ``allOf`` conjunct, a ``oneOf``), it must not exempt a
         # ``type`` that sits beside the union in the original, and it cannot stand for a
-        # ``null`` member that has constraints of its own or for several of them. Anything
-        # else is written as a union that keeps its ``null`` members as branches, which is
-        # exact by construction.
-        mismatch = (
-            _output_null_verdict(result, schemas, assume_unknown=False) != original_accepts_null
-        )
+        # ``null`` member that has constraints of its own or for several of them. Neither is it
+        # trusted when either answer consulted a reference that cannot be resolved: the two
+        # answers were then given under different assumptions, and agreeing proves nothing.
+        # Anything else is written as a union that keeps its ``null`` members as branches, which
+        # is exact by construction.
+        mismatch = _output_null_verdict(
+            result, schemas, assume_unknown=False, unresolved=guessed
+        ) != original_accepts_null or bool(guessed)
         if (non_null and (exact or "discriminator" in base)) or mismatch:
             result = _exact_nullable_union(base, key, non_null, null_members, schemas)
     return result
