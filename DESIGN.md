@@ -89,7 +89,10 @@ The final call-flow is:
    keyword and its match count (the branch carries what decides the member's answer
    for `null`, `enum`, `const`, the combinators and `not`, and its annotations, and not
    its other keys, which only apply to instances its `type` excludes and some of which
-   3.0 does not allow), and a branch whose `null` answer 3.0 tools read
+   3.0 does not allow; a reference that is neither a component nor an absolute URI is
+   replaced by its answer for `null`, or dropped and reported when that is not known,
+   because it can point into what the branch does not keep), and a branch whose `null`
+   answer 3.0 tools read
    differently gets the original answer back. The output is judged in both readings of
    the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
    them), with a `discriminator` beside a combinator enforced in both; a disagreement

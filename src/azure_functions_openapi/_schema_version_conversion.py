@@ -11,6 +11,7 @@ both nullable-collapse phases preserve output and loss-message encounter order.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator
+import re
 from typing import Any
 from urllib.parse import unquote
 
@@ -360,20 +361,59 @@ _NULL_READ_KEYS = frozenset(
 )
 
 
-def _null_view(schema: Any) -> Any:
-    """What of *schema* decides whether ``null`` is valid against it, through its combinators."""
+_URI_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*:")
+
+
+def _keeps_meaning_anywhere(ref: str) -> bool:
+    """Whether the reference *ref* points to the same place wherever it is written.
+
+    That is an exact component (``#/components/schemas/<Name>``) or an absolute URI. Any other
+    reference is relative to where it is written: a pointer into a schema, a fragment that
+    is relative to an ``$id``, a relative path.
+    """
+    return _component_name(ref) is not None or _URI_SCHEME.match(ref) is not None
+
+
+def _null_view(schema: Any, schemas: dict[str, Any] | None, dropped: list[str]) -> Any:
+    """What of *schema* decides whether ``null`` is valid against it, through its combinators.
+
+    A reference that does not keep its meaning where the branch is written
+    (:func:`_keeps_meaning_anywhere`) is not carried: it can point into the part of the schema
+    that the branch does not keep. It is replaced by what it says about ``null`` when that is
+    known (nothing, or ``not: {}``), and otherwise dropped and appended to *dropped*.
+    """
     if not isinstance(schema, dict):
         return schema
     view = {key: value for key, value in schema.items() if key in _NULL_READ_KEYS}
+    ref = view.get("$ref")
+    if isinstance(ref, str) and not _keeps_meaning_anywhere(ref):
+        del view["$ref"]
+        unresolved: set[str] = set()
+        accepts = _accepts_null(
+            {"$ref": ref},
+            schemas,
+            ref_siblings_apply=True,
+            assume_unknown=True,
+            unresolved=unresolved,
+        )
+        if unresolved:
+            dropped.append(ref)
+        elif not accepts and not view:
+            view = {"not": {}}
+        elif not accepts:
+            all_of = view.get("allOf")
+            view["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"not": {}}]
     for key in ("allOf", "anyOf", "oneOf"):
         if isinstance(view.get(key), list):
-            view[key] = [_null_view(member) for member in view[key]]
+            view[key] = [_null_view(member, schemas, dropped) for member in view[key]]
     if "not" in view:
-        view["not"] = _null_view(view["not"])
+        view["not"] = _null_view(view["not"], schemas, dropped)
     return view
 
 
-def _null_branch(member: dict[str, Any]) -> dict[str, Any]:
+def _null_branch(
+    member: dict[str, Any], schemas: dict[str, Any] | None, lossy: list[str] | None = None
+) -> dict[str, Any]:
     """The branch that stands for a ``type: "null"`` member that stays a branch of its union.
 
     It accepts only ``null`` (:func:`_null_only_form`) and is made of what decides that answer for
@@ -381,9 +421,21 @@ def _null_branch(member: dict[str, Any]) -> dict[str, Any]:
     and the reference that moved into ``allOf``) and the annotations that describe it.
     Everything else the member carries (``minLength``, ``properties``, ``$comment``, a
     ``discriminator``, ...) only applies to instances that its ``type`` excludes, and OpenAPI 3.0
-    does not allow some of it in a schema at all.
+    does not allow some of it in a schema at all. A reference that points into the member itself
+    cannot stay, so it is replaced by its answer for ``null``; one whose answer is not known is
+    dropped and reported in *lossy*.
     """
     hoisted = _hoist_reference_siblings(member)
+    dropped: list[str] = []
+    view = _null_view(hoisted, schemas, dropped)
+    for ref in dropped:
+        message = (
+            f"dropped $ref '{ref}' of a null schema: it is neither a component nor an absolute "
+            "URI, so it would not point to the same place in the OpenAPI 3.0 document, and "
+            "null may now be accepted where the original rejected it"
+        )
+        if lossy is not None and message not in lossy:
+            lossy.append(message)
     described = {
         key: value
         for key, value in hoisted.items()
@@ -391,7 +443,7 @@ def _null_branch(member: dict[str, Any]) -> dict[str, Any]:
         or key == "examples"
         or (isinstance(key, str) and key.startswith("x-"))
     }
-    return _null_only_form({**described, **_null_view(hoisted)})
+    return _null_only_form({**described, **view})
 
 
 def _without_discriminators(schema: Any) -> Any:
@@ -454,6 +506,7 @@ def _exact_nullable_union(
     non_null: list[Any],
     null_members: list[dict[str, Any]],
     schemas: dict[str, Any] | None,
+    lossy: list[str] | None = None,
 ) -> dict[str, Any]:
     """The nullable union ``base`` + ``key: non_null + null_members``, written so it is exact.
 
@@ -502,7 +555,8 @@ def _exact_nullable_union(
         _keep_null_verdict(member, original, schemas) for member, original in zip(hoisted, non_null)
     ]
     null_branches = [
-        _keep_null_verdict(_null_branch(member), member, schemas) for member in null_members
+        _keep_null_verdict(_null_branch(member, schemas, lossy), member, schemas)
+        for member in null_members
     ]
     if scoped and all(kept is member for kept, member in zip(members, hoisted)):
         return {**rest, key: [{key: members, "discriminator": discriminator}, *null_branches]}
@@ -696,7 +750,7 @@ def _collapse_nullable_combinator(
             result, schemas, assume_unknown=False, unresolved=guessed
         ) != original_accepts_null or bool(guessed)
         if (non_null and (exact or "discriminator" in base)) or mismatch:
-            result = _exact_nullable_union(base, key, non_null, null_members, schemas)
+            result = _exact_nullable_union(base, key, non_null, null_members, schemas, lossy)
     return result
 
 

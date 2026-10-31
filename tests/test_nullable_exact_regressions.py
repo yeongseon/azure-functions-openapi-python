@@ -28,6 +28,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _unique_enum,
     _without_discriminators,
 )
+from azure_functions_openapi.exceptions import OpenAPISpecConfigError
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.spec import collect_spec_warnings, generate_openapi_spec
 
@@ -1095,6 +1096,27 @@ def test_one_sided_object_keys_do_not_change_what_the_other_side_declared(
     assert merged == {"type": "object", **inlined, "allOf": [expected_conjunct]}
 
 
+@pytest.mark.parametrize(
+    ("inlined", "wrapper"),
+    [
+        ({"type": "number"}, {"minimum": 1, "exclusiveMinimum": True}),
+        ({"type": "number", "maximum": 5}, {"description": "d"}),
+        ({"type": "object"}, {"properties": {"a": {}}, "additionalProperties": False}),
+        ({"type": "object", "properties": {"a": {}}}, {"description": "d"}),
+    ],
+    ids=["wrapper-numeric", "target-numeric", "wrapper-object", "target-object"],
+)
+def test_keys_that_only_one_side_declares_are_merged_without_a_conjunct(
+    inlined: dict[str, Any], wrapper: dict[str, Any]
+) -> None:
+    # Given / When: a family of keys (a bound with its exclusivity, the object keys) that only one
+    # side declares.
+    merged = _merge_wrapper_into_inlined(dict(inlined), wrapper)
+
+    # Then: nothing meets anything, so the keys join as they are.
+    assert merged == {**inlined, **wrapper}
+
+
 def test_the_output_verdict_is_the_one_both_readings_give() -> None:
     # Given: components, one of which a reference's sibling type changes the answer for: the
     # specification ignores that sibling and validators built on JSON Schema apply it.
@@ -1307,7 +1329,7 @@ def test_a_null_branch_is_made_of_what_decides_null_and_its_annotations() -> Non
     }
 
     # When
-    branch = _null_branch(member)
+    branch = _null_branch(member, {})
 
     # Then: the answer for null is decided by the same keys as before, and nothing else is carried.
     assert branch == {
@@ -1323,8 +1345,116 @@ def test_a_null_branch_is_made_of_what_decides_null_and_its_annotations() -> Non
         "nullable": True,
         "enum": [None],
     }
-    assert _null_view("text") == "text"
-    assert _null_view(True) is True
+    assert _null_view("text", {}, []) == "text"
+    assert _null_view(True, {}, []) is True
+
+
+def test_a_null_view_carries_only_references_that_mean_the_same_anywhere() -> None:
+    # Given: components that a pointer can resolve in (one accepts null, one does not), and a view
+    # with an exact component, absolute URIs, pointers into components and a reference that is
+    # relative to where it is written.
+    schemas = {"A": {"properties": {"p": {"enum": [None]}, "q": {"not": {}}}}}
+    pointer = "#/components/schemas/A/properties/"
+    exact = {"$ref": "#/components/schemas/T"}
+    url = {"$ref": "https://example.com/schemas/s.json#/defs/x"}
+    urn = {"$ref": "urn:example:schema"}
+    malformed = {"$ref": "http://[::1"}
+    schema = {
+        "allOf": [exact, url, urn, malformed, {"$ref": pointer + "p"}, {"$ref": pointer + "q"}],
+        "not": {"$ref": pointer + "q", "not": {"type": "string"}},
+        "anyOf": [{"$ref": "#/allOf/0"}, {"$ref": "schemas.json#/defs/y"}],
+    }
+    dropped: list[str] = []
+
+    # When
+    view = _null_view(schema, schemas, dropped)
+
+    # Then: what leads somewhere else is kept, a pointer is its answer for null (no constraint when
+    # it accepts null, a conjunct that accepts nothing when it does not), and a reference whose
+    # answer is not known is dropped and listed.
+    assert view == {
+        "allOf": [exact, url, urn, malformed, {}, {"not": {}}],
+        "not": {"not": {"type": "string"}, "allOf": [{"not": {}}]},
+        "anyOf": [{}, {}],
+    }
+    assert dropped == ["#/allOf/0", "schemas.json#/defs/y"]
+
+
+def test_a_reference_into_a_null_member_does_not_dangle_in_the_document() -> None:
+    # Given: a null member whose reference points into its own properties, the location that its
+    # branch does not keep, and the same with a target that rejects null.
+    for target, null_valid in (({"enum": [None]}, True), ({"not": {}}, False)):
+        pointer = "#/$defs/H/anyOf/1/properties/p"
+        member = {"type": "null", "properties": {"p": target}, "$ref": pointer}
+        definitions = {
+            "S": {"type": "string"},
+            "H": {"anyOf": [{"$ref": "#/$defs/S", "description": "d"}, member]},
+        }
+        registry = OpenAPIRegistry()
+        body = {"$ref": "#/$defs/H", "$defs": definitions}
+        registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+
+        # When
+        spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+        # Then: the document is valid, nothing points to the properties that were not kept, no loss
+        # is reported (the answer for null is known), and null is valid as in the original.
+        validate(spec)
+        assert "properties/p" not in json.dumps(spec)
+        assert collect_spec_warnings(spec, registry) == ()
+        original = OAS31Validator(body)
+        converted = OAS30Validator(
+            {"$ref": "#/components/schemas/H", "components": spec["components"]}
+        )
+        assert original.is_valid(None) is null_valid
+        assert [converted.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
+
+
+def test_a_reference_that_is_relative_to_an_id_is_dropped_and_reported() -> None:
+    # Given: a null member that is its own resource (``$id``) and refers to a part of itself by a
+    # fragment that is relative to that resource, which the branch cannot keep.
+    member = {"type": "null", "$id": "urn:example:null", "allOf": [{"type": "string"}]}
+    member["$ref"] = "#/allOf/0"
+    union = {"oneOf": [{"$ref": "#/$defs/S", "description": "d"}, member, dict(member)]}
+    body = {"$ref": "#/$defs/H", "$defs": {"S": {"type": "string"}, "H": union}}
+    registry = OpenAPIRegistry()
+    registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+
+    # Then: the document is valid and the drop is reported once, and strict generation refuses it.
+    validate(spec)
+    warnings = collect_spec_warnings(spec, registry)
+    assert [warning.code.value for warning in warnings] == ["version-downgrade-drop"]
+    assert "dropped $ref '#/allOf/0' of a null schema" in warnings[0].message
+    with pytest.raises(OpenAPISpecConfigError, match="dropped \\$ref '#/allOf/0'"):
+        generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+    losses = _convert_schemas_to_3_0({"H": union, "S": {"type": "string"}})[1]
+    assert len(losses) == 1
+
+
+def test_json_pointer_escapes_are_decoded_in_the_order_the_validators_use() -> None:
+    # Given: properties named "a~1b" and "a/b", which "a~01b" and "a~1b" reach.
+    schemas = {"A": {"properties": {"a~1b": {"not": {}}, "a/b": {"enum": [None]}}}}
+    prefix = "#/components/schemas/A/properties/"
+    pointer = {"$ref": prefix + "a~01b"}
+    node = {
+        "oneOf": [
+            {"type": "string"},
+            {"allOf": [pointer], "discriminator": DISCRIMINATOR},
+            {"type": "null"},
+        ]
+    }
+
+    # When / Then: "~01" is "~1" (not "/"), and the conversion agrees with both validators.
+    assert _resolve_reference(prefix + "a~01b", schemas) == {"not": {}}
+    assert _resolve_reference(prefix + "a~1b", schemas) == {"enum": [None]}
+    converted = _convert_schema_to_3_0(node, schemas)
+    components = _convert_schemas_to_3_0(schemas)[0]
+    original = OAS31Validator({**node, "components": {"schemas": schemas}})
+    in_3_0 = OAS30Validator({**converted, "components": {"schemas": components}})
+    assert [in_3_0.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
 
 
 def test_boolean_schemas_become_schema_objects_where_a_schema_goes() -> None:

@@ -239,7 +239,11 @@ instead as a union that keeps every null member as its own branch that accepts o
 `null` (`nullable: true` with `enum: [null]`, plus what can still decide that answer, the
 member's `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`, and its annotations; its
 other keys apply to instances that its `type` excludes, and some of them are not allowed
-in 3.0 at all, so they are not carried). The fallback keeps the union keyword, so `oneOf` still requires exactly one match,
+in 3.0 at all, so they are not carried). A reference in it that is neither a component nor
+an absolute URI (a pointer into a schema, a fragment that is relative to an `$id`) could
+point into what the branch does not keep, so it is replaced by what it says about `null`;
+one whose answer cannot be known is dropped and reported as a `version-downgrade-drop`,
+which strict generation refuses. The fallback keeps the union keyword, so `oneOf` still requires exactly one match,
 however many branches accept null. A branch that 3.0 tools read differently for
 `null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
 validators enforce, or a nested reference whose sibling keys the specification
