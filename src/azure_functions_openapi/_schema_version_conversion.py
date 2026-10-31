@@ -127,7 +127,8 @@ def _ensure_null_accepting(schema: dict[str, Any]) -> dict[str, Any]:
     """
     result = dict(schema)
     if "const" in result:
-        result["enum"] = [result.pop("const"), None]
+        const = result.pop("const")
+        result["enum"] = [None] if const is None else [const, None]
     elif isinstance(result.get("enum"), list) and None not in result["enum"]:
         result["enum"] = [*result["enum"], None]
     for combinator in ("anyOf", "oneOf"):
@@ -352,6 +353,47 @@ def _null_only_form(member: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+# The keywords that can decide whether ``null`` is valid against a schema (:func:`_accepts_null`
+# reads exactly these): every other one applies to instances of another type, or only describes.
+_NULL_READ_KEYS = frozenset(
+    {"type", "nullable", "enum", "const", "allOf", "anyOf", "oneOf", "not", "$ref"}
+)
+
+
+def _null_view(schema: Any) -> Any:
+    """What of *schema* decides whether ``null`` is valid against it, through its combinators."""
+    if not isinstance(schema, dict):
+        return schema
+    view = {key: value for key, value in schema.items() if key in _NULL_READ_KEYS}
+    for key in ("allOf", "anyOf", "oneOf"):
+        if isinstance(view.get(key), list):
+            view[key] = [_null_view(member) for member in view[key]]
+    if "not" in view:
+        view["not"] = _null_view(view["not"])
+    return view
+
+
+def _null_branch(member: dict[str, Any]) -> dict[str, Any]:
+    """The branch that stands for a ``type: "null"`` member that stays a branch of its union.
+
+    It accepts only ``null`` (:func:`_null_only_form`) and is made of what decides that answer for
+    the member (:func:`_null_view`: ``enum``, ``const``, ``allOf``, ``anyOf``, ``oneOf``, ``not``
+    and the reference that moved into ``allOf``) and the annotations that describe it.
+    Everything else the member carries (``minLength``, ``properties``, ``$comment``, a
+    ``discriminator``, ...) only applies to instances that its ``type`` excludes, and OpenAPI 3.0
+    does not allow some of it in a schema at all.
+    """
+    hoisted = _hoist_reference_siblings(member)
+    described = {
+        key: value
+        for key, value in hoisted.items()
+        if key in _ANNOTATION_ONLY_KEYS
+        or key == "examples"
+        or (isinstance(key, str) and key.startswith("x-"))
+    }
+    return _null_only_form({**described, **_null_view(hoisted)})
+
+
 def _without_discriminators(schema: Any) -> Any:
     """*schema* without the ``discriminator`` of any node that has a combinator, through ``allOf``,
     ``anyOf``, ``oneOf`` and ``not``.
@@ -460,8 +502,7 @@ def _exact_nullable_union(
         _keep_null_verdict(member, original, schemas) for member, original in zip(hoisted, non_null)
     ]
     null_branches = [
-        _keep_null_verdict(_null_only_form(_hoist_reference_siblings(member)), member, schemas)
-        for member in null_members
+        _keep_null_verdict(_null_branch(member), member, schemas) for member in null_members
     ]
     if scoped and all(kept is member for kept, member in zip(members, hoisted)):
         return {**rest, key: [{key: members, "discriminator": discriminator}, *null_branches]}
@@ -870,6 +911,20 @@ def _intersect_enum(schema: dict[str, Any], value: Any) -> None:
     schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), conjunct]
 
 
+def _schema_object(schema: Any) -> Any:
+    """A boolean schema as the OpenAPI 3.0 Schema Object that means the same.
+
+    2020-12 takes ``true`` and ``false`` wherever a schema goes, but 3.0 has no boolean schemas
+    (only ``additionalProperties`` takes a boolean), so ``true`` is ``{}`` and ``false`` is
+    ``{"not": {}}``.
+    """
+    if schema is True:
+        return {}
+    if schema is False:
+        return {"not": {}}
+    return schema
+
+
 def _convert_schema_to_3_0(
     schema: dict[str, Any],
     schemas: dict[str, Any] | None = None,
@@ -1008,7 +1063,7 @@ def _convert_prepared_schema_to_3_0(
     # the combinator at this level is collapsed.
     if "properties" in result and isinstance(result["properties"], dict):
         result["properties"] = {
-            k: _convert_prepared_schema_to_3_0(v, schemas, resolving, lossy)
+            k: _convert_prepared_schema_to_3_0(_schema_object(v), schemas, resolving, lossy)
             for k, v in result["properties"].items()
         }
     if "items" in result:
@@ -1091,18 +1146,20 @@ def _convert_prepared_schema_to_3_0(
     for combinator in ("allOf", "anyOf", "oneOf"):
         if combinator in result and isinstance(result[combinator], list):
             result[combinator] = [
-                _convert_prepared_schema_to_3_0(s, schemas, resolving, lossy)
+                _convert_prepared_schema_to_3_0(_schema_object(s), schemas, resolving, lossy)
                 for s in result[combinator]
             ]
     if "additionalProperties" in result and isinstance(result["additionalProperties"], dict):
         result["additionalProperties"] = _convert_prepared_schema_to_3_0(
             result["additionalProperties"], schemas, resolving, lossy
         )
-    if "not" in result and isinstance(result["not"], dict):
-        result["not"] = _convert_prepared_schema_to_3_0(result["not"], schemas, resolving, lossy)
+    if "not" in result and isinstance(result["not"], (dict, bool)):
+        result["not"] = _convert_prepared_schema_to_3_0(
+            _schema_object(result["not"]), schemas, resolving, lossy
+        )
     if "$defs" in result and isinstance(result["$defs"], dict):
         result["$defs"] = {
-            k: _convert_prepared_schema_to_3_0(v, schemas, resolving, lossy)
+            k: _convert_prepared_schema_to_3_0(_schema_object(v), schemas, resolving, lossy)
             for k, v in result["$defs"].items()
         }
 

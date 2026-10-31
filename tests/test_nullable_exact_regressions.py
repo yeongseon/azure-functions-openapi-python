@@ -17,10 +17,14 @@ from azure_functions_openapi._schema_version_conversion import (
     _convert_schema_to_3_0,
     _convert_schema_to_3_1,
     _convert_schemas_to_3_0,
+    _ensure_null_accepting,
     _keep_null_verdict,
     _merge_wrapper_into_inlined,
+    _null_branch,
+    _null_view,
     _output_null_verdict,
     _resolve_reference,
+    _schema_object,
     _without_discriminators,
 )
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -97,6 +101,36 @@ NULL_MEMBERS: list[tuple[str, dict[str, Any]]] = [
     ("all-of-string", {"type": "null", "allOf": [{"type": "string"}]}),
     ("discriminated", {"type": "null", "allOf": [{}], "discriminator": DISCRIMINATOR}),
     ("reference", {"type": "null", "$ref": "#/$defs/S"}),
+    ("boolean-all-of", {"type": "null", "allOf": [True]}),
+    ("boolean-rejecting", {"type": "null", "allOf": [False]}),
+    ("boolean-not", {"type": "null", "not": False}),
+    ("boolean-not-true", {"type": "null", "not": True}),
+    (
+        "nested-booleans",
+        {"type": "null", "allOf": [{"anyOf": [True, False]}], "not": {"allOf": [False]}},
+    ),
+    ("reference-and-boolean", {"type": "null", "$ref": "#/$defs/S", "allOf": [True]}),
+    (
+        "keys-3-0-does-not-allow",
+        {
+            "type": "null",
+            "$comment": "c",
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": "urn:example",
+            "$anchor": "a",
+            "contentMediaType": "text/plain",
+            "contentEncoding": "base64",
+            "minLength": 3,
+            "properties": {"a": True},
+            "unknownKeyword": 1,
+            "examples": [None],
+            "x-note": 1,
+        },
+    ),
+    (
+        "nested-keys-3-0-does-not-allow",
+        {"type": "null", "allOf": [{"$comment": "c", "type": ["string", "null"], "minLength": 1}]},
+    ),
 ]
 RETAINED_MEMBERS: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
     ("reference-sibling", {**REF, "description": "member"}, {"T": {"allOf": [{"type": "string"}]}}),
@@ -295,6 +329,30 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         for key in ("anyOf", "oneOf")
         for first_name, first in NULL_MEMBERS[:3]
         for second_name, second in NULL_MEMBERS[:3]
+    ],
+    *[
+        (
+            f"retained-member-{name}-{key}",
+            {key: [member, {"type": "null"}]},
+            {},
+        )
+        for key in ("anyOf", "oneOf")
+        for name, member in [
+            ("boolean-all-of", {"type": "string", "allOf": [True]}),
+            ("boolean-not", {"type": "string", "not": False}),
+            ("boolean-properties", {"type": "object", "properties": {"a": True, "b": False}}),
+            ("boolean-nested", {"allOf": [{"anyOf": [{"not": {"allOf": [False]}}]}]}),
+            ("const-null", {"const": None}),
+            ("const-null-and-array", {"oneOf": [{"const": None}, {"type": "array"}]}),
+        ]
+    ],
+    *[
+        (
+            f"const-null-member-{key}",
+            {key: [{"const": None}, {"type": "array"}, {"type": "null"}]},
+            {},
+        )
+        for key in ("anyOf", "oneOf")
     ],
     *[
         (
@@ -857,6 +915,40 @@ def test_a_local_reference_resolves_through_objects_and_list_indexes(ref: str, f
     assert _resolve_reference(ref, None) is _UNRESOLVED
 
 
+def test_a_percent_encoded_pointer_is_decoded_once() -> None:
+    # Given: properties named "%41" and "A", which a reference reaches as "%2541" and "%41".
+    schemas = {"Meta": {"properties": {"%41": {"not": {}}, "A": {"enum": [None]}}}}
+    prefix = "#/components/schemas/Meta/properties/"
+
+    # When / Then: "%2541" is the property named "%41", and "%41" is the one named "A".
+    assert _resolve_reference(prefix + "%2541", schemas) == {"not": {}}
+    assert _resolve_reference(prefix + "%41", schemas) == {"enum": [None]}
+
+
+def test_a_percent_encoded_pointer_leads_to_the_property_the_validators_reach() -> None:
+    # Given: a branch behind a discriminator that reaches "%41" through "%2541" (the two properties
+    # disagree about null, so reading the pointer twice gives the other answer).
+    schemas = {"Meta": {"properties": {"%41": {"not": {}}, "A": {"enum": [None]}}}}
+    pointer = {"$ref": "#/components/schemas/Meta/properties/%2541"}
+    node = {
+        "oneOf": [
+            {"type": "string"},
+            {"allOf": [pointer], "discriminator": DISCRIMINATOR},
+            {"type": "null"},
+        ]
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, schemas)
+    components = _convert_schemas_to_3_0(schemas)[0]
+
+    # Then: null is valid, as in the original (only the null member matches).
+    original = OAS31Validator({**node, "components": {"schemas": schemas}})
+    in_3_0 = OAS30Validator({**converted, "components": {"schemas": components}})
+    assert original.is_valid(None) is True
+    assert [in_3_0.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
+
+
 def test_every_reference_that_cannot_be_resolved_is_reported_to_the_caller() -> None:
     # Given: a node that reaches a missing component, a pointer, an external reference, a
     # resolvable one and a cycle.
@@ -1183,6 +1275,75 @@ def test_discriminators_beside_combinators_are_left_out_through_combinators_and_
     assert _without_discriminators("text") == "text"
 
 
+def test_a_null_branch_is_made_of_what_decides_null_and_its_annotations() -> None:
+    # Given: a null member with keys of every kind, a reference that moves into allOf, and nested
+    # members that carry keys of their own.
+    member = {
+        "type": "null",
+        "description": "d",
+        "examples": [None],
+        "x-note": 1,
+        "minLength": 3,
+        "properties": {"a": True},
+        "$comment": "c",
+        "discriminator": DISCRIMINATOR,
+        "$ref": "#/components/schemas/T",
+        "allOf": [
+            {"type": "string", "title": "t", "minLength": 2, "nullable": True},
+            {"$comment": "c", "anyOf": [{}]},
+        ],
+        "not": {"enum": [1], "description": "n", "not": {"$comment": "c", "const": 2}},
+    }
+
+    # When
+    branch = _null_branch(member)
+
+    # Then: the answer for null is decided by the same keys as before, and nothing else is carried.
+    assert branch == {
+        "description": "d",
+        "examples": [None],
+        "x-note": 1,
+        "allOf": [
+            {"$ref": "#/components/schemas/T"},
+            {"type": "string", "nullable": True},
+            {"anyOf": [{}]},
+        ],
+        "not": {"enum": [1], "not": {"const": 2}},
+        "nullable": True,
+        "enum": [None],
+    }
+    assert _null_view("text") == "text"
+    assert _null_view(True) is True
+
+
+def test_boolean_schemas_become_schema_objects_where_a_schema_goes() -> None:
+    # Given: booleans in allOf, anyOf, not, properties and $defs, and where 3.0 takes a boolean.
+    schema = {
+        "allOf": [True, False],
+        "anyOf": [{"properties": {"a": True, "b": False}}],
+        "not": False,
+        "additionalProperties": False,
+        "items": True,
+        "$defs": {"a": True},
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(schema)
+
+    # Then: 3.0 has no boolean schemas, so each is the Schema Object that means the same.
+    assert converted == {
+        "allOf": [{}, {"not": {}}],
+        "anyOf": [{"properties": {"a": {}, "b": {"not": {}}}}],
+        "not": {"not": {}},
+        "additionalProperties": False,
+        "items": {},
+        "$defs": {"a": {}},
+    }
+    assert _convert_schema_to_3_0({"not": True}) == {"not": {}}
+    assert _schema_object({"type": "string"}) == {"type": "string"}
+    assert _schema_object(1) == 1
+
+
 BLIND_TARGETS: dict[str, dict[str, Any]] = {
     "nothing": {"not": {}},
     "anything": {},
@@ -1443,6 +1604,41 @@ def test_an_ordinary_nullable_union_gets_no_restoring_wrapper(key: str) -> None:
             {"nullable": True, "enum": [None]},
         ]
     }
+
+
+def test_a_null_constant_becomes_a_one_member_enum() -> None:
+    # Given: constants that a nullable branch has to accept next to null, and null itself.
+    # When / Then: null is a member once, because 3.0 requires the members of an enum to be unique.
+    assert _ensure_null_accepting({"const": None}) == {"enum": [None], "nullable": True}
+    assert _ensure_null_accepting({"const": "a"}) == {"enum": ["a", None], "nullable": True}
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        (
+            {"type": "string", "enum": ["a", "b"]},
+            {"type": "string", "enum": ["a", "b", None], "nullable": True},
+        ),
+        ({"enum": ["a", "b"]}, {"enum": ["a", "b", None], "nullable": True}),
+        (
+            {"const": "a", "type": "string"},
+            {"type": "string", "enum": ["a", None], "nullable": True},
+        ),
+    ],
+    ids=["typed-enum", "untyped-enum", "const"],
+)
+def test_an_inlined_enum_gains_null_and_keeps_the_idiom(
+    target: dict[str, Any], expected: dict[str, Any]
+) -> None:
+    # Given: an optional reference to an enum, which the idiom can stand for once null is a member.
+    node = {"anyOf": [{"$ref": "#/components/schemas/T"}, {"type": "null"}]}
+
+    # When
+    converted = _convert_schema_to_3_0(node, {"T": target})
+
+    # Then: the idiom is kept (no union of branches) and null is a member of the enum.
+    assert converted == expected
 
 
 def test_each_null_member_stays_a_branch_with_its_constraints() -> None:

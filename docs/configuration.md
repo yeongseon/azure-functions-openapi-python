@@ -236,8 +236,10 @@ conjunct), one where it would exempt a `type` or constraint that sits beside the
 union, or one whose null members would answer differently for `null` (a null member
 with constraints of its own, or several null members under a `oneOf`), is written
 instead as a union that keeps every null member as its own branch that accepts only
-`null` (`nullable: true` with `enum: [null]`, plus the member's other keys). The
-fallback keeps the union keyword, so `oneOf` still requires exactly one match,
+`null` (`nullable: true` with `enum: [null]`, plus what can still decide that answer, the
+member's `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`, and its annotations; its
+other keys apply to instances that its `type` excludes, and some of them are not allowed
+in 3.0 at all, so they are not carried). The fallback keeps the union keyword, so `oneOf` still requires exactly one match,
 however many branches accept null. A branch that 3.0 tools read differently for
 `null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
 validators enforce, or a nested reference whose sibling keys the specification
@@ -256,6 +258,8 @@ consulted it is written with every branch kept instead of with the `nullable` id
 discriminator is not carried on its strength, and a branch that consulted it is not
 joined with a null schema but loses the discriminators that 3.0 enforces and 2020-12
 ignores, so that it answers as the original does whatever the reference leads to.
+A boolean schema (`true` or `false`) in `allOf`, `anyOf`, `oneOf`, `not`, `properties` or
+`$defs` is written as `{}` or `{"not": {}}`, because 3.0 has no boolean schemas.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts

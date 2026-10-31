@@ -86,7 +86,10 @@ The final call-flow is:
    before replacement. A nullable union keeps the `nullable` idiom only where it
    accepts `null` exactly as the original did; otherwise it is written as a union
    that keeps every `null` member as its own `null`-only branch, preserving the union
-   keyword and its match count, and a branch whose `null` answer 3.0 tools read
+   keyword and its match count (the branch carries what decides the member's answer
+   for `null`, `enum`, `const`, the combinators and `not`, and its annotations, and not
+   its other keys, which only apply to instances its `type` excludes and some of which
+   3.0 does not allow), and a branch whose `null` answer 3.0 tools read
    differently gets the original answer back. The output is judged in both readings of
    the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
    them), with a `discriminator` beside a combinator enforced in both; a disagreement
@@ -144,7 +147,8 @@ The final call-flow is:
    prefixes then become `items: {}` with the existing positional-loss channel,
    while a tail excluded by `maxItems` does not widen prefix positions. The
    recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
-   to `{}`, standalone `false` to `{not: {}}`) and fills missing `items` only on
+   to `{}`, standalone `false` to `{not: {}}`), does the same for a boolean schema in
+   `allOf`, `anyOf`, `oneOf`, `not`, `properties` and `$defs`, and fills missing `items` only on
    converted `type: array` nodes, including nullable arrays; a schema inlined for a
    nullable reference gets the fill and an open tuple tail's `items` only after it
    has been merged with its surroundings, while an `items` it declares itself
