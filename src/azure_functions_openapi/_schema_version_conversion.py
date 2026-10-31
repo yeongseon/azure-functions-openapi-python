@@ -150,10 +150,28 @@ class _PreparedSchemas(dict[str, Any]):
 _COMPONENT_PREFIX = "#/components/schemas/"
 
 
+def _pointer_tokens(ref: str) -> list[str] | None:
+    """The tokens of a local reference ``#/components/schemas/<...>``, or ``None`` for any other.
+
+    The fragment is read the way validators read it: percent-decoded once (``%41`` is ``A``, and
+    ``%2F`` is a ``/`` that separates tokens), then split at ``/``, with the JSON Pointer escapes
+    ``~1`` and ``~0`` unescaped in each token.
+    """
+    if not ref.startswith(_COMPONENT_PREFIX):
+        return None
+    fragment = unquote(ref[len(_COMPONENT_PREFIX) :])
+    return [token.replace("~1", "/").replace("~0", "~") for token in fragment.split("/")]
+
+
 def _component_name(ref: str) -> str | None:
-    """The component a reference names, or ``None`` for a pointer into one or an external one."""
-    name = ref[len(_COMPONENT_PREFIX) :] if ref.startswith(_COMPONENT_PREFIX) else ""
-    return name if name and "/" not in name else None
+    """The component a reference names, or ``None`` for a pointer into one or an external one.
+
+    A reference names a component when its pointer has exactly one token (:func:`_pointer_tokens`),
+    so ``%2F`` in ``#/components/schemas/H%2Fa`` is a pointer into ``H`` and ``~1`` in
+    ``#/components/schemas/a~1b`` is part of the name ``a/b``.
+    """
+    tokens = _pointer_tokens(ref)
+    return tokens[0] if tokens is not None and len(tokens) == 1 and tokens[0] else None
 
 
 _UNRESOLVED: Any = object()
@@ -163,20 +181,19 @@ def _resolve_reference(ref: str, schemas: dict[str, Any] | None) -> Any:
     """The schema a local reference leads to inside *schemas*, or :data:`_UNRESOLVED`.
 
     Only ``#/components/schemas/<Name>`` and pointers into a component (``.../<Name>/properties/p``,
-    ``.../<Name>/allOf/0``) resolve, through objects and list indexes. The fragment is read the
-    way validators read it: percent-decoded first (``%41`` is ``A``), then split at ``/``, with the
-    JSON Pointer escapes ``~0`` and ``~1`` in each part. Anything else is left unresolved: an
-    external reference, a missing component, or a location that does not hold a schema.
+    ``.../<Name>/allOf/0``) resolve, through objects and list indexes, by the tokens of
+    :func:`_pointer_tokens`. Anything else is left unresolved: an external reference, a missing
+    component, or a location that does not hold a schema.
     """
-    if schemas is None or not ref.startswith(_COMPONENT_PREFIX):
+    tokens = _pointer_tokens(ref)
+    if schemas is None or tokens is None:
         return _UNRESOLVED
     node: Any = schemas
-    for part in unquote(ref[len(_COMPONENT_PREFIX) :]).split("/"):
-        part = part.replace("~1", "/").replace("~0", "~")
-        if isinstance(node, dict) and part in node:
-            node = node[part]
-        elif isinstance(node, list) and part.isdecimal() and int(part) < len(node):
-            node = node[int(part)]
+    for token in tokens:
+        if isinstance(node, dict) and token in node:
+            node = node[token]
+        elif isinstance(node, list) and token.isdecimal() and int(token) < len(node):
+            node = node[int(token)]
         else:
             return _UNRESOLVED
     return node if isinstance(node, (dict, bool)) else _UNRESOLVED
@@ -364,17 +381,41 @@ _NULL_READ_KEYS = frozenset(
 _URI_SCHEME = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*:")
 
 
-def _keeps_meaning_anywhere(ref: str) -> bool:
+def _declared_ids(schema: Any) -> frozenset[str]:
+    """The ``$id`` values (without their fragments) that *schema* declares anywhere inside."""
+    ids: set[str] = set()
+    pending = [schema]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            declared = node.get("$id")
+            if isinstance(declared, str):
+                ids.add(declared.split("#", 1)[0])
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    return frozenset(ids)
+
+
+def _keeps_meaning_anywhere(ref: str, ids: frozenset[str] = frozenset()) -> bool:
     """Whether the reference *ref* points to the same place wherever it is written.
 
-    That is an exact component (``#/components/schemas/<Name>``) or an absolute URI. Any other
-    reference is relative to where it is written: a pointer into a schema, a fragment that
-    is relative to an ``$id``, a relative path.
+    That is an exact component (``#/components/schemas/<Name>``) or an absolute URI that is not
+    one of the *ids* that the schema it is written in declares (such a URI leads into that schema
+    by its ``$id``). Any other reference is relative to where it is written: a pointer into a
+    schema, a fragment that is relative to an ``$id``, a relative path.
     """
-    return _component_name(ref) is not None or _URI_SCHEME.match(ref) is not None
+    if _component_name(ref) is not None:
+        return True
+    return _URI_SCHEME.match(ref) is not None and ref.split("#", 1)[0] not in ids
 
 
-def _null_view(schema: Any, schemas: dict[str, Any] | None, dropped: list[str]) -> Any:
+def _null_view(
+    schema: Any,
+    schemas: dict[str, Any] | None,
+    dropped: list[str],
+    ids: frozenset[str] = frozenset(),
+) -> Any:
     """What of *schema* decides whether ``null`` is valid against it, through its combinators.
 
     A reference that does not keep its meaning where the branch is written
@@ -386,7 +427,7 @@ def _null_view(schema: Any, schemas: dict[str, Any] | None, dropped: list[str]) 
         return schema
     view = {key: value for key, value in schema.items() if key in _NULL_READ_KEYS}
     ref = view.get("$ref")
-    if isinstance(ref, str) and not _keeps_meaning_anywhere(ref):
+    if isinstance(ref, str) and not _keeps_meaning_anywhere(ref, ids):
         del view["$ref"]
         unresolved: set[str] = set()
         accepts = _accepts_null(
@@ -405,9 +446,9 @@ def _null_view(schema: Any, schemas: dict[str, Any] | None, dropped: list[str]) 
             view["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"not": {}}]
     for key in ("allOf", "anyOf", "oneOf"):
         if isinstance(view.get(key), list):
-            view[key] = [_null_view(member, schemas, dropped) for member in view[key]]
+            view[key] = [_null_view(member, schemas, dropped, ids) for member in view[key]]
     if "not" in view:
-        view["not"] = _null_view(view["not"], schemas, dropped)
+        view["not"] = _null_view(view["not"], schemas, dropped, ids)
     return view
 
 
@@ -421,25 +462,27 @@ def _null_branch(
     and the reference that moved into ``allOf``) and the annotations that describe it.
     Everything else the member carries (``minLength``, ``properties``, ``$comment``, a
     ``discriminator``, ...) only applies to instances that its ``type`` excludes, and OpenAPI 3.0
-    does not allow some of it in a schema at all. A reference that points into the member itself
+    does not allow some of it in a schema at all. A ``default`` is kept only when it is ``null``,
+    the one value that this schema accepts. A reference that points into the member itself
     cannot stay, so it is replaced by its answer for ``null``; one whose answer is not known is
     dropped and reported in *lossy*.
     """
     hoisted = _hoist_reference_siblings(member)
     dropped: list[str] = []
-    view = _null_view(hoisted, schemas, dropped)
+    view = _null_view(hoisted, schemas, dropped, _declared_ids(member))
     for ref in dropped:
         message = (
-            f"dropped $ref '{ref}' of a null schema: it is neither a component nor an absolute "
-            "URI, so it would not point to the same place in the OpenAPI 3.0 document, and "
-            "null may now be accepted where the original rejected it"
+            f"dropped $ref '{ref}' of a null schema: it is relative to where it is written or "
+            "leads into the schema by one of its $id values, so it would not point to the same "
+            "place in the OpenAPI 3.0 document, and null may now be accepted where the "
+            "original rejected it"
         )
         if lossy is not None and message not in lossy:
             lossy.append(message)
     described = {
         key: value
         for key, value in hoisted.items()
-        if key in _ANNOTATION_ONLY_KEYS
+        if (key in _ANNOTATION_ONLY_KEYS and (key != "default" or value is None))
         or key == "examples"
         or (isinstance(key, str) and key.startswith("x-"))
     }

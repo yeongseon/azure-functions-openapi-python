@@ -17,6 +17,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _convert_schema_to_3_0,
     _convert_schema_to_3_1,
     _convert_schemas_to_3_0,
+    _declared_ids,
     _ensure_null_accepting,
     _keep_null_verdict,
     _merge_wrapper_into_inlined,
@@ -851,6 +852,14 @@ def test_a_branch_that_answers_null_differently_in_3_0_gets_its_answer_back() ->
         ("#/components/schemas/X", "X"),
         ("#/components/schemas/X/properties/name", None),
         ("#/components/schemas/", None),
+        ("#/components/schemas/H%2FanyOf%2F1%2Fproperties%2Fp", None),
+        ("#/components/schemas/H%2fanyOf%2f1", None),
+        ("#/components/schemas/H/anyOf%2F1", None),
+        ("#/components/schemas/a~1b", "a/b"),
+        ("#/components/schemas/a~01b", "a~1b"),
+        ("#/components/schemas/%41", "A"),
+        ("#/components/schemas/%2541", "%41"),
+        ("#/components/schemas/H%252FanyOf", "H%2FanyOf"),
         ("#/$defs/X", None),
         ("https://example.com/schemas/x.json", None),
         ("urn:uuid:1234567890abcdef1234567890", None),
@@ -1410,6 +1419,124 @@ def test_a_reference_into_a_null_member_does_not_dangle_in_the_document() -> Non
         assert [converted.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
 
 
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "H%2FanyOf%2F1%2Fproperties%2Fp",
+        "H%2fanyOf%2f1%2fproperties%2fp",
+        "H/anyOf%2F1/properties%2Fp",
+        "H%2FanyOf/1%2Fproperties/p",
+    ],
+    ids=["upper-case", "lower-case", "mixed", "mixed-other-way"],
+)
+def test_an_encoded_pointer_into_a_null_member_does_not_dangle_either(spelling: str) -> None:
+    # Given: the pointer into the null member's own properties, with its separators percent-encoded
+    # so that the text after the prefix has no "/" (validators decode it into a pointer).
+    components = {
+        "S": {"type": "string"},
+        "H": {
+            "anyOf": [
+                {"$ref": "#/components/schemas/S", "description": "d"},
+                {
+                    "type": "null",
+                    "properties": {"p": {"enum": [None]}},
+                    "$ref": f"#/components/schemas/{spelling}",
+                },
+            ]
+        },
+    }
+    registry = OpenAPIRegistry()
+    body = {"$ref": "#/$defs/H", "$defs": components}
+    registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0", strict=True)
+
+    # Then: it is not taken for the name of a component, so it does not stay where its target is
+    # gone: the document is valid, no loss is reported (its answer for null is known), and null is
+    # valid as in the original.
+    validate(spec)
+    assert "properties" not in json.dumps(spec["components"]["schemas"]["H"])
+    assert "%2" not in json.dumps(spec["components"]["schemas"]["H"]).lower()
+    assert collect_spec_warnings(spec, registry) == ()
+    original = OAS31Validator(
+        {"$ref": "#/components/schemas/H", "components": {"schemas": components}}
+    )
+    converted = OAS30Validator({"$ref": "#/components/schemas/H", "components": spec["components"]})
+    assert original.is_valid(None) is True
+    assert [converted.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
+
+
+def test_the_ids_a_schema_declares_are_collected_without_their_fragments() -> None:
+    # Given: ids at several depths, one with a fragment, a property that is named "$id" and values
+    # that are no ids.
+    schema = {
+        "$id": "urn:example:outer#",
+        "allOf": [{"$id": "https://example.com/inner.json#frag"}, {"properties": {"$id": {}}}],
+        "not": {"anyOf": [{"$id": 1}, {"$id": "urn:example:deep"}]},
+    }
+
+    # When / Then
+    assert _declared_ids(schema) == {
+        "urn:example:outer",
+        "https://example.com/inner.json",
+        "urn:example:deep",
+    }
+    assert _declared_ids("text") == frozenset()
+
+
+def test_an_absolute_uri_that_an_id_of_the_schema_declares_does_not_keep_its_place() -> None:
+    # Given: an absolute URI that leads into the schema it is written in by its id, and one that
+    # leads somewhere else.
+    schema = {
+        "allOf": [
+            {"$ref": "urn:example:null#/allOf/0"},
+            {"$ref": "https://example.com/other.json#/defs/x"},
+        ],
+        "not": {"$ref": "urn:example:null#/allOf/1"},
+    }
+    ids = frozenset({"urn:example:null"})
+    dropped: list[str] = []
+
+    # When
+    view = _null_view(schema, {}, dropped, ids)
+
+    # Then: the ones that lead into the schema are dropped and listed (below a combinator and
+    # below ``not``), the other stays.
+    assert view == {
+        "allOf": [{}, {"$ref": "https://example.com/other.json#/defs/x"}],
+        "not": {},
+    }
+    assert dropped == ["urn:example:null#/allOf/0", "urn:example:null#/allOf/1"]
+    assert _null_view(schema, {}, [], frozenset()) == schema
+
+
+def test_an_absolute_uri_into_a_null_member_by_its_id_is_dropped_and_reported() -> None:
+    # Given: a null member that declares an id and refers to a part of itself by that id.
+    member = {"type": "null", "$id": "urn:example:null", "allOf": [{"type": "string"}]}
+    member["$ref"] = "urn:example:null#/allOf/0"
+    body = {
+        "$ref": "#/$defs/H",
+        "$defs": {
+            "S": {"type": "string"},
+            "H": {"anyOf": [{"$ref": "#/$defs/S", "description": "d"}, member]},
+        },
+    }
+    registry = OpenAPIRegistry()
+    registry.set("holder", {"route": "holder", "method": "post", "request_body": body})
+
+    # When
+    spec = generate_openapi_spec(registry=registry, openapi_version="3.0.0")
+
+    # Then: the document is valid (nothing points to an id that was not kept) and the drop is
+    # reported.
+    validate(spec)
+    assert "urn:example:null" not in json.dumps(spec)
+    warnings = collect_spec_warnings(spec, registry)
+    assert [warning.code.value for warning in warnings] == ["version-downgrade-drop"]
+    assert "dropped $ref 'urn:example:null#/allOf/0'" in warnings[0].message
+
+
 def test_a_reference_that_is_relative_to_an_id_is_dropped_and_reported() -> None:
     # Given: a null member that is its own resource (``$id``) and refers to a part of itself by a
     # fragment that is relative to that resource, which the branch cannot keep.
@@ -1455,6 +1582,22 @@ def test_json_pointer_escapes_are_decoded_in_the_order_the_validators_use() -> N
     original = OAS31Validator({**node, "components": {"schemas": schemas}})
     in_3_0 = OAS30Validator({**converted, "components": {"schemas": components}})
     assert [in_3_0.is_valid(p) for p in PROBES] == [original.is_valid(p) for p in PROBES]
+
+
+def test_a_null_branch_keeps_a_default_only_when_it_is_null() -> None:
+    # Given: null members whose default is the one value they accept, and ones whose default no
+    # instance of them can be.
+    accepted = {"type": "null", "default": None, "description": "d"}
+    rejected = {"type": "null", "default": {"a": [1]}, "description": "d"}
+
+    # When / Then: a default that the branch cannot accept would make the document invalid.
+    assert _null_branch(accepted, {}) == {
+        "default": None,
+        "description": "d",
+        "nullable": True,
+        "enum": [None],
+    }
+    assert _null_branch(rejected, {}) == {"description": "d", "nullable": True, "enum": [None]}
 
 
 def test_boolean_schemas_become_schema_objects_where_a_schema_goes() -> None:
