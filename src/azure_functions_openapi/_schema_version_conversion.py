@@ -654,6 +654,7 @@ def _collapse_nullable_combinator(
                         # The node's own ``const`` was converted before this point, so one that
                         # arrives with the member's keys has not been.
                         _intersect_enum(result, result.pop("const"))
+                    _unique_enum(result)
             else:
                 result[key] = non_null
         elif not non_null:
@@ -911,6 +912,44 @@ def _intersect_enum(schema: dict[str, Any], value: Any) -> None:
     schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), conjunct]
 
 
+_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+def _unique_enum(schema: dict[str, Any]) -> None:
+    """Write the ``enum`` of *schema* the way OpenAPI 3.0 allows: unique members, and not empty.
+
+    2020-12 lets an ``enum`` list a value twice or list nothing (which accepts nothing), but 3.0
+    requires unique members and at least one of them. A repeated member is dropped (two values are
+    the same when JSON Schema says so, so ``1`` and ``1.0`` are, and ``true`` and ``1`` are not); an
+    empty ``enum`` is replaced by ``not: {}``, which accepts nothing as well. Scalars are looked up
+    in a set, so an enum of thousands of values is not compared pair by pair.
+    """
+    enum = schema.get("enum")
+    if not isinstance(enum, list):
+        return
+    members: list[Any] = []
+    scalars: set[tuple[bool, Any]] = set()
+    for member in enum:
+        if isinstance(member, _JSON_SCALARS):
+            scalar = (isinstance(member, bool), member)
+            if scalar in scalars:
+                continue
+            scalars.add(scalar)
+        elif any(
+            _json_schema_equal(member, kept)
+            for kept in members
+            if not isinstance(kept, _JSON_SCALARS)
+        ):
+            continue
+        members.append(member)
+    if members:
+        schema["enum"] = members
+        return
+    del schema["enum"]
+    all_of = schema.get("allOf")
+    schema["allOf"] = [*(all_of if isinstance(all_of, list) else []), {"not": {}}]
+
+
 def _schema_object(schema: Any) -> Any:
     """A boolean schema as the OpenAPI 3.0 Schema Object that means the same.
 
@@ -1048,6 +1087,7 @@ def _convert_prepared_schema_to_3_0(
     # ``enum: [None, ...]`` -> keep ``null`` IN the enum (``nullable: true``
     # alone does not exempt a sibling ``enum`` from its own closed-list check,
     # #782 follow-up) and also set ``nullable: true`` for discoverability.
+    _unique_enum(result)
     enum_val = result.get("enum")
     if isinstance(enum_val, list) and None in enum_val:
         result["nullable"] = True

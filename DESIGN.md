@@ -148,7 +148,8 @@ The final call-flow is:
    while a tail excluded by `maxItems` does not widen prefix positions. The
    recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
    to `{}`, standalone `false` to `{not: {}}`), does the same for a boolean schema in
-   `allOf`, `anyOf`, `oneOf`, `not`, `properties` and `$defs`, and fills missing `items` only on
+   `allOf`, `anyOf`, `oneOf`, `not`, `properties` and `$defs`, writes every `enum` with
+   unique members (an empty one as `not: {}`), and fills missing `items` only on
    converted `type: array` nodes, including nullable arrays; a schema inlined for a
    nullable reference gets the fill and an open tuple tail's `items` only after it
    has been merged with its surroundings, while an `items` it declares itself

@@ -259,7 +259,9 @@ discriminator is not carried on its strength, and a branch that consulted it is 
 joined with a null schema but loses the discriminators that 3.0 enforces and 2020-12
 ignores, so that it answers as the original does whatever the reference leads to.
 A boolean schema (`true` or `false`) in `allOf`, `anyOf`, `oneOf`, `not`, `properties` or
-`$defs` is written as `{}` or `{"not": {}}`, because 3.0 has no boolean schemas.
+`$defs` is written as `{}` or `{"not": {}}`, because 3.0 has no boolean schemas, and an
+`enum` is written without repeated members (an empty one as `not: {}`), because 3.0 requires
+its members to be unique and at least one.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts

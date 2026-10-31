@@ -25,6 +25,7 @@ from azure_functions_openapi._schema_version_conversion import (
     _output_null_verdict,
     _resolve_reference,
     _schema_object,
+    _unique_enum,
     _without_discriminators,
 )
 from azure_functions_openapi.registry import OpenAPIRegistry
@@ -110,6 +111,12 @@ NULL_MEMBERS: list[tuple[str, dict[str, Any]]] = [
         {"type": "null", "allOf": [{"anyOf": [True, False]}], "not": {"allOf": [False]}},
     ),
     ("reference-and-boolean", {"type": "null", "$ref": "#/$defs/S", "allOf": [True]}),
+    ("nested-duplicate-null-enum", {"type": "null", "allOf": [{"enum": [None, None]}]}),
+    ("nested-duplicate-enum", {"type": "null", "allOf": [{"enum": ["a", "a", "b"]}]}),
+    ("nested-empty-enum", {"type": "null", "allOf": [{"enum": []}]}),
+    ("nested-empty-enum-under-not", {"type": "null", "not": {"enum": []}}),
+    ("duplicate-enum", {"type": "null", "enum": [None, None, "a"]}),
+    ("duplicate-enum-without-null", {"type": "null", "enum": ["a", "a"]}),
     (
         "keys-3-0-does-not-allow",
         {
@@ -343,6 +350,10 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
             ("boolean-properties", {"type": "object", "properties": {"a": True, "b": False}}),
             ("boolean-nested", {"allOf": [{"anyOf": [{"not": {"allOf": [False]}}]}]}),
             ("const-null", {"const": None}),
+            ("duplicate-enum", {"type": "string", "enum": ["a", "a", "b"]}),
+            ("merged-up-duplicate-enum", {"enum": ["a", "a", None]}),
+            ("duplicate-enum-in-all-of", {"allOf": [{"enum": ["a", "a", "b"]}]}),
+            ("empty-enum", {"enum": []}),
             ("const-null-and-array", {"oneOf": [{"const": None}, {"type": "array"}]}),
         ]
     ],
@@ -1604,6 +1615,39 @@ def test_an_ordinary_nullable_union_gets_no_restoring_wrapper(key: str) -> None:
             {"nullable": True, "enum": [None]},
         ]
     }
+
+
+def test_an_enum_is_written_with_unique_members_and_not_empty() -> None:
+    # Given: enums that list a value twice (numbers equal as JSON, objects equal as JSON), one
+    # that tells true from 1, one that lists nothing next to an allOf, and a value that is no enum.
+    repeated = {"enum": [1, 1.0, "a", {"b": [1]}, {"b": [1]}, "a", None, None]}
+    told_apart = {"enum": [True, 1, False, 0, {"a": True}, {"a": 1}, [True], [1], {"a": True}]}
+    empty = {"enum": [], "allOf": [{"type": "string"}]}
+    not_a_list = {"enum": "a"}
+
+    # When
+    for schema in (repeated, told_apart, empty, not_a_list):
+        _unique_enum(schema)
+
+    # Then: a repeated member is dropped in place, members JSON tells apart stay, an empty enum
+    # that accepts nothing becomes a conjunct that accepts nothing, and anything else is left.
+    assert repeated == {"enum": [1, "a", {"b": [1]}, None]}
+    assert told_apart == {"enum": [True, 1, False, 0, {"a": True}, {"a": 1}, [True], [1]]}
+    assert empty == {"allOf": [{"type": "string"}, {"not": {}}]}
+    assert not_a_list == {"enum": "a"}
+    assert _convert_schema_to_3_0({"enum": []}) == {"allOf": [{"not": {}}]}
+
+
+def test_an_enum_that_a_nullable_union_merges_up_is_written_with_unique_members() -> None:
+    # Given: a nullable union whose only other member is an enum that lists a value twice and
+    # already accepts null, so the union is replaced by that member with ``nullable`` added.
+    node = {"anyOf": [{"enum": ["a", "a", None]}, {"type": "null"}]}
+
+    # When
+    converted = _convert_schema_to_3_0(node)
+
+    # Then: the member's enum reaches the result once per value.
+    assert converted == {"enum": ["a", None], "nullable": True}
 
 
 def test_a_null_constant_becomes_a_one_member_enum() -> None:
