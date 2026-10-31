@@ -1600,6 +1600,31 @@ def test_a_null_branch_keeps_a_default_only_when_it_is_null() -> None:
     assert _null_branch(rejected, {}) == {"description": "d", "nullable": True, "enum": [None]}
 
 
+def test_a_null_branch_that_rests_on_an_unresolved_reference_still_reads_the_rest() -> None:
+    # Given: a null member that leads to an external schema first (so what it says about null is a
+    # guess, whatever the pointers after it say) and to two pointers into a component, one that
+    # accepts null and one that does not.
+    schemas = {"Text": {"properties": {"p": {"enum": [None]}, "q": {"not": {}}}}}
+    external = {"$ref": "https://example.com/schemas/gone.json"}
+    member = {
+        "type": "null",
+        "allOf": [
+            external,
+            {"$ref": "#/components/schemas/Text/properties/q"},
+            {"$ref": "#/components/schemas/Text/properties/p"},
+        ],
+    }
+    lossy: list[str] = []
+
+    # When
+    branch = _null_branch(member, schemas, lossy)
+
+    # Then: the pointers are replaced by their answers (they are not carried), the external
+    # reference stays, and nothing is reported (every pointer could be read).
+    assert branch == {"allOf": [external, {"not": {}}, {}], "nullable": True, "enum": [None]}
+    assert lossy == []
+
+
 def test_boolean_schemas_become_schema_objects_where_a_schema_goes() -> None:
     # Given: booleans in allOf, anyOf, not, properties and $defs, and where 3.0 takes a boolean.
     schema = {
@@ -1776,9 +1801,9 @@ def test_a_nullable_union_member_is_left_to_its_own_conversion() -> None:
     }
 
 
-def test_a_null_member_whose_nested_reference_sibling_changes_its_answer_is_restored() -> None:
+def test_a_null_member_whose_nested_reference_sibling_changes_its_answer_keeps_it() -> None:
     # Given: a null member that also requires a string through a sibling of a reference, which
-    # the specification ignores (so the member would then accept null) and validators apply.
+    # the specification ignores (so a copy of it would accept null) and validators apply.
     sibling = {"$ref": "#/components/schemas/Open", "type": "string"}
     node = {
         "anyOf": [
@@ -1790,11 +1815,10 @@ def test_a_null_member_whose_nested_reference_sibling_changes_its_answer_is_rest
     # When
     converted = _convert_schema_to_3_0(node, {"T": {"type": "string"}, "Open": {}})
 
-    # Then: the null branch is kept from accepting null, as the original did.
-    null_only = {"nullable": True, "enum": [None]}
-    assert converted["anyOf"][1] == {
-        "allOf": [{"allOf": [sibling], **null_only}, {"not": null_only}]
-    }
+    # Then: the member is written as what it says about null, which is that it rejects it (the
+    # sibling applies in the original), so the branch matches nothing instead of copying the
+    # reference and its sibling.
+    assert converted["anyOf"][1] == {"not": {}, "nullable": True, "enum": [None]}
 
 
 def test_the_discriminator_dial_can_be_set_apart_from_the_sibling_dial() -> None:
@@ -1982,24 +2006,119 @@ def test_each_null_member_stays_a_branch_with_its_constraints() -> None:
 
 
 def test_a_reference_beside_a_null_type_moves_into_all_of() -> None:
-    # Given: a null member that also refers to a schema: both apply, so nothing is accepted, and
-    # 3.0 ignores the keys beside a reference.
+    # Given: a null member that also refers to a schema that cannot be resolved (an external one),
+    # so what the member says about null is not known, and 3.0 ignores the keys beside a reference.
+    external = "https://example.com/schemas/s.json"
     node = {
         "anyOf": [
             {"$ref": "#/components/schemas/T", "description": "member"},
-            {"type": "null", "$ref": "#/components/schemas/S"},
+            {"type": "null", "$ref": external},
         ]
     }
 
     # When
-    converted = _convert_schema_to_3_0(node, {"T": {"type": "integer"}, "S": {"type": "string"}})
+    converted = _convert_schema_to_3_0(node, {"T": {"type": "integer"}})
 
     # Then: the reference is the first conjunct of the null branch, not a bare key beside it.
     assert converted["anyOf"][1] == {
-        "allOf": [{"$ref": "#/components/schemas/S"}],
+        "allOf": [{"$ref": external}],
         "nullable": True,
         "enum": [None],
     }
+
+
+@pytest.mark.parametrize(
+    ("member", "accepts"),
+    [
+        ({"type": "null"}, True),
+        ({"type": "null", "not": {}}, False),
+        ({"type": "null", "enum": ["x"]}, False),
+        ({"type": "null", "enum": [None, None, "x"]}, True),
+        ({"type": "null", "const": 1}, False),
+        ({"type": "null", "allOf": [{"type": "string"}]}, False),
+        ({"type": "null", "allOf": [True]}, True),
+        ({"type": "null", "allOf": [False]}, False),
+        ({"type": "null", "not": False}, True),
+        ({"type": "null", "anyOf": [{"type": "string"}, {"enum": [None]}]}, True),
+        ({"type": "null", "oneOf": [{"type": "string"}, {"type": "integer"}]}, False),
+        ({"type": "null", "allOf": [{"enum": [None, None]}]}, True),
+        ({"type": "null", "allOf": [{"enum": []}]}, False),
+        ({"type": "null", "$ref": "#/components/schemas/Text"}, False),
+        ({"type": "null", "$ref": "#/components/schemas/OnlyNull"}, True),
+        ({"type": "null", "$ref": "#/components/schemas/Text/properties/p"}, True),
+        ({"type": "null", "$ref": "#/components/schemas/Text/properties/q"}, False),
+        ({"type": "null", "$ref": "#/components/schemas/Text%2Fproperties%2Fp"}, True),
+        ({"type": "null", "$ref": "#/components/schemas/Text%2Fproperties%2Fq"}, False),
+        (
+            {"type": "null", "allOf": [{"$ref": "#/components/schemas/Open", "type": "string"}]},
+            False,
+        ),
+        ({"type": "null", "minLength": 3, "properties": {"a": True}, "$comment": "c"}, True),
+        (
+            {
+                "type": "null",
+                "$id": "urn:example:n",
+                "allOf": [{"type": "string"}],
+                "$ref": "#/allOf/0",
+            },
+            None,
+        ),
+        ({"type": "null", "enum": ["x"], "allOf": [{"$ref": "urn:example:gone"}]}, False),
+        ({"type": "null", "anyOf": [{"enum": [None]}, {"$ref": "urn:example:gone"}]}, True),
+    ],
+    ids=[
+        "plain",
+        "rejecting-not",
+        "enum-without-null",
+        "duplicate-enum-with-null",
+        "const",
+        "all-of-string",
+        "all-of-true",
+        "all-of-false",
+        "not-false",
+        "any-of-one-accepts",
+        "one-of-none-accepts",
+        "nested-duplicate-enum",
+        "nested-empty-enum",
+        "ref-string",
+        "ref-only-null",
+        "pointer-accepting",
+        "pointer-rejecting",
+        "encoded-pointer-accepting",
+        "encoded-pointer-rejecting",
+        "ref-sibling",
+        "other-types-keys",
+        "id-relative-unknown",
+        "decided-before-the-unresolved-reference",
+        "any-of-accepts-before-the-unresolved-reference",
+    ],
+)
+def test_a_null_branch_is_the_answer_of_its_member_for_null_when_that_is_known(
+    member: dict[str, Any], accepts: bool | None
+) -> None:
+    # Given: components that the members refer to (one rejects null and has properties that accept
+    # it and reject it, one accepts only null, one is open), and members that carry keys of every
+    # kind.
+    schemas = {
+        "Text": {"type": "string", "properties": {"p": {"enum": [None]}, "q": {"not": {}}}},
+        "OnlyNull": {"enum": [None]},
+        "Open": {},
+    }
+    lossy: list[str] = []
+    annotated = {**member, "description": "d", "x-note": 1, "title": "t"}
+
+    # When
+    branch = _null_branch(annotated, schemas, lossy)
+
+    # Then: it matches null if the member accepts it and nothing if it does not, with the
+    # annotations of the member, and nothing is reported. When the answer depends on a reference
+    # that cannot be resolved, the branch is made of what decides it and the reference is reported.
+    if accepts is None:
+        assert len(lossy) == 1
+        return
+    expected = {"description": "d", "x-note": 1, "title": "t", "nullable": True, "enum": [None]}
+    assert branch == (expected if accepts else {**expected, "not": {}})
+    assert lossy == []
 
 
 def test_a_union_of_null_members_only_keeps_its_branches_when_they_do_not_add_up() -> None:

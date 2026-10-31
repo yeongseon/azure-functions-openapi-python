@@ -85,15 +85,15 @@ The final call-flow is:
    Inline nullable refs resolve against the **original complete component map**,
    before replacement. A nullable union keeps the `nullable` idiom only where it
    accepts `null` exactly as the original did; otherwise it is written as a union
-   that keeps every `null` member as its own `null`-only branch, preserving the union
-   keyword and its match count (the branch carries what decides the member's answer
-   for `null`, `enum`, `const`, the combinators and `not`, and its annotations, and not
-   its other keys, which only apply to instances its `type` excludes and some of which
-   3.0 does not allow; a reference that is neither a component nor an absolute URI the
-   schema does not declare as its own `$id` is replaced by its answer for `null`, or
-   dropped and reported when that is not known, because it can point into what the
-   branch does not keep), and a branch whose `null`
-   answer 3.0 tools read
+   that keeps every `null` member as its own branch, preserving the union keyword and
+   its match count. A `null` member can only match `null`, so its branch is its answer for
+   `null` (`nullable` with `enum: [null]` when it accepts it, with `not: {}` added when it
+   does not) and the annotations that describe it; nothing else of it is written, so
+   nothing 3.0 does not allow can come with it. Only when that answer depends on a
+   reference that cannot be resolved is the branch made of what decides it, and a
+   reference in it that is neither a component nor an absolute URI the member does not
+   declare as its own `$id` is dropped and reported, because it can point into what the
+   branch does not keep. A non-null branch whose `null` answer 3.0 tools read
    differently gets the original answer back. The output is judged in both readings of
    the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
    them), with a `discriminator` beside a combinator enforced in both; a disagreement

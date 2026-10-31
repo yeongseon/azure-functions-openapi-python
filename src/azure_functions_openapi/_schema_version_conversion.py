@@ -457,19 +457,35 @@ def _null_branch(
 ) -> dict[str, Any]:
     """The branch that stands for a ``type: "null"`` member that stays a branch of its union.
 
-    It accepts only ``null`` (:func:`_null_only_form`) and is made of what decides that answer for
-    the member (:func:`_null_view`: ``enum``, ``const``, ``allOf``, ``anyOf``, ``oneOf``, ``not``
-    and the reference that moved into ``allOf``) and the annotations that describe it.
-    Everything else the member carries (``minLength``, ``properties``, ``$comment``, a
-    ``discriminator``, ...) only applies to instances that its ``type`` excludes, and OpenAPI 3.0
-    does not allow some of it in a schema at all. A ``default`` is kept only when it is ``null``,
-    the one value that this schema accepts. A reference that points into the member itself
-    cannot stay, so it is replaced by its answer for ``null``; one whose answer is not known is
-    dropped and reported in *lossy*.
+    A ``type: "null"`` member can only ever match ``null``, so all that is left of it is what it
+    says about ``null``. When that is known (no reference it consults is out of reach) the branch
+    is the null-only schema (:func:`_null_only_form`) if the member accepts ``null``, and one that
+    matches nothing if it does not, with the annotations that describe the member: nothing else of
+    the member needs to be written, so nothing that 3.0 does not allow (a boolean schema, ``$id``,
+    a nested ``enum`` that repeats a member, a pointer into a part that is not kept) can reach the
+    document.
+
+    When what it says depends on a reference that cannot be resolved (an external reference, a
+    missing component) the answer is a guess, and the branch is made of what decides it instead
+    (:func:`_null_view`: ``enum``, ``const``, ``allOf``, ``anyOf``, ``oneOf``, ``not`` and the
+    reference that moved into ``allOf``). A reference in it that points into the member itself
+    cannot stay, so it is dropped and reported in *lossy*.
     """
-    hoisted = _hoist_reference_siblings(member)
+    described = {
+        key: value
+        for key, value in member.items()
+        if (key in _ANNOTATION_ONLY_KEYS and (key != "default" or value is None))
+        or key == "examples"
+        or (isinstance(key, str) and key.startswith("x-"))
+    }
+    unresolved: set[str] = set()
+    accepts = _accepts_null(
+        member, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=unresolved
+    )
+    if not unresolved:
+        return _null_only_form({**described, **({} if accepts else {"not": {}})})
     dropped: list[str] = []
-    view = _null_view(hoisted, schemas, dropped, _declared_ids(member))
+    view = _null_view(_hoist_reference_siblings(member), schemas, dropped, _declared_ids(member))
     for ref in dropped:
         message = (
             f"dropped $ref '{ref}' of a null schema: it is relative to where it is written or "
@@ -479,13 +495,6 @@ def _null_branch(
         )
         if lossy is not None and message not in lossy:
             lossy.append(message)
-    described = {
-        key: value
-        for key, value in hoisted.items()
-        if (key in _ANNOTATION_ONLY_KEYS and (key != "default" or value is None))
-        or key == "examples"
-        or (isinstance(key, str) and key.startswith("x-"))
-    }
     return _null_only_form({**described, **view})
 
 
@@ -556,12 +565,12 @@ def _exact_nullable_union(
     OpenAPI 3.0 has no way to mark an arbitrary schema nullable in place, but a union keeps
     every branch as a branch, and a branch that accepts only ``null`` (``nullable`` and an
     ``enum`` of ``null``) is valid there. So the union keyword stays and each ``null``
-    member stays its own branch, with the constraints it had and its place in the count
-    (a ``oneOf`` still needs exactly one match, whatever number of branches accept
-    ``null``). A branch that answered ``null`` differently once converted gets its answer
-    back (:func:`_keep_null_verdict`). The keys beside the union stay beside it, where they
-    keep the meaning they had, and a reference that carries sibling keys moves into
-    ``allOf`` (so does one beside ``type: "null"``). When the keys beside the union are
+    member stays its own branch, written as what it says about ``null`` and in its place in the
+    count (:func:`_null_branch`; a ``oneOf`` still needs exactly one match, whatever number of
+    branches accept ``null``). A non-null branch that answered ``null`` differently once
+    converted gets its answer back (:func:`_keep_null_verdict`). The keys beside the union stay
+    beside it, where they keep the meaning they had, and a reference that carries sibling keys
+    moves into ``allOf``. When the keys beside the union are
     proven to reject ``null``, the ``null`` branches could never match and are left out; a
     rejection that rests on a reference that cannot be resolved (``not`` turns the assumption
     around) is no proof, and the branches stay.
@@ -597,10 +606,7 @@ def _exact_nullable_union(
     members = [
         _keep_null_verdict(member, original, schemas) for member, original in zip(hoisted, non_null)
     ]
-    null_branches = [
-        _keep_null_verdict(_null_branch(member, schemas, lossy), member, schemas)
-        for member in null_members
-    ]
+    null_branches = [_null_branch(member, schemas, lossy) for member in null_members]
     if scoped and all(kept is member for kept, member in zip(members, hoisted)):
         return {**rest, key: [{key: members, "discriminator": discriminator}, *null_branches]}
     return {**rest, key: [*members, *null_branches]}

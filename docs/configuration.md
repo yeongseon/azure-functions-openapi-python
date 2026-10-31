@@ -235,18 +235,23 @@ did. A nullable union it cannot reach (a union of references, a `oneOf`, an `all
 conjunct), one where it would exempt a `type` or constraint that sits beside the
 union, or one whose null members would answer differently for `null` (a null member
 with constraints of its own, or several null members under a `oneOf`), is written
-instead as a union that keeps every null member as its own branch that accepts only
-`null` (`nullable: true` with `enum: [null]`, plus what can still decide that answer, the
-member's `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`, and its annotations; its
-other keys apply to instances that its `type` excludes, and some of them are not allowed
-in 3.0 at all, so they are not carried). A reference in it keeps its place only when it is
-a component or an absolute URI that the schema does not declare as one of its own `$id`
-values; any other (a pointer into a schema, a fragment that is relative to an `$id`, a
-relative path, a URI that an `$id` of the schema declares) could point into what the branch
-does not keep, so it is replaced by what it says about `null`; one whose answer cannot be
-known is dropped and reported as a `version-downgrade-drop`,
-which strict generation refuses. The fallback keeps the union keyword, so `oneOf` still requires exactly one match,
-however many branches accept null. A branch that 3.0 tools read differently for
+instead as a union that keeps every null member as its own branch. A null member can only
+ever match `null`, so the branch is what it says about `null`: `nullable: true` with
+`enum: [null]` when it accepts `null`, the same with `not: {}` when it does not (it then
+matches nothing, and still holds its place in the count), and the annotations that describe
+the member (`title`, `description`, a `default` of `null`, `example(s)`, `x-` extensions);
+nothing else of it needs to be written, so nothing that 3.0 does not allow can come
+with it. Only when what it says about `null` depends on a reference that cannot be resolved
+(an external reference, a missing component) is that answer a guess, and the branch is made
+of what decides it instead (its `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`). A
+reference in such a branch keeps its place only when it is a component (read from its
+percent-decoded pointer, so an encoded `%2F` makes it a pointer) or an absolute URI that the
+member does not declare as one of its own `$id` values; any other (a pointer into a schema,
+a fragment that is relative to an `$id`, a relative path, a URI that an `$id` of the member
+declares) could point into what the branch does not keep, and is dropped and reported as a
+`version-downgrade-drop`, which strict generation refuses. The fallback keeps the union
+keyword, so `oneOf` still requires exactly one match, however many branches accept null. A
+non-null branch that 3.0 tools read differently for
 `null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
 validators enforce, or a nested reference whose sibling keys the specification
 ignores and validators built on JSON Schema apply) is joined with the `null` schema,
