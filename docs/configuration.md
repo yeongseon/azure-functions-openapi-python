@@ -230,6 +230,69 @@ attaching `nullable` directly to one branch of a nullable multi-type union,
 so the result is not just structurally valid but actually accepts a `null`
 value under real OpenAPI 3.0 tooling.
 
+The `nullable` idiom is used only where it accepts `null` exactly as the original
+did. A nullable union it cannot reach (a union of references, a `oneOf`, an `allOf`
+conjunct), one where it would exempt a `type` or constraint that sits beside the
+union, or one whose null members would answer differently for `null` (a null member
+with constraints of its own, or several null members under a `oneOf`), is written
+instead as a union that keeps every null member as its own branch that accepts only
+`null` (`nullable: true` with `enum: [null]`, plus what can still decide that answer, the
+member's `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`, and its annotations; its
+other keys apply to instances that its `type` excludes, and some of them are not allowed
+in 3.0 at all, so they are not carried). A reference in it keeps its place only when it is
+a component or an absolute URI that the schema does not declare as one of its own `$id`
+values; any other (a pointer into a schema, a fragment that is relative to an `$id`, a
+relative path, a URI that an `$id` of the schema declares) could point into what the branch
+does not keep, so it is replaced by what it says about `null`; one whose answer cannot be
+known is dropped and reported as a `version-downgrade-drop`,
+which strict generation refuses. The fallback keeps the union keyword, so `oneOf` still requires exactly one match,
+however many branches accept null. A branch that 3.0 tools read differently for
+`null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
+validators enforce, or a nested reference whose sibling keys the specification
+ignores and validators built on JSON Schema apply) is joined with the `null` schema,
+or with a conjunct that rules `null` out, so it answers as it did in every reading.
+A `discriminator` on a schema that accepts only `null` is dropped, because it
+discriminates nothing and 3.0 would enforce it. A nullable union that is the only other member of
+a nullable union stays a member, and is rewritten on its own, rather than being
+merged into the outer union. Keys beside the union that reject null make the null
+branches unreachable. Pointers into a component (`#/components/schemas/Meta/properties/p`,
+percent-escapes and `~0`/`~1` included) are followed. An answer that depends on a
+reference the conversion cannot resolve (an external reference, a missing component) is
+a guess, because `not` and `oneOf` turn an assumption around, and the conversion never
+builds on one: a rejection that rests on it does not drop the null branches, a union that
+consulted it is written with every branch kept instead of with the `nullable` idiom, a
+discriminator is not carried on its strength, and a branch that consulted it is not
+joined with a null schema but loses the discriminators that 3.0 enforces and 2020-12
+ignores, so that it answers as the original does whatever the reference leads to.
+A boolean schema (`true` or `false`) in `allOf`, `anyOf`, `oneOf`, `not`, `properties` or
+`$defs` is written as `{}` or `{"not": {}}`, because 3.0 has no boolean schemas, and an
+`enum` is written without repeated members (an empty one as `not: {}`), because 3.0 requires
+its members to be unique and at least one.
+A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
+`null` and any object without the property), so it is only carried where it cannot
+change what is accepted: with at least two non-null members, none of which accepts
+null, it stays with them and the null branches sit outside its scope. Otherwise it
+discriminates nothing and is not carried, which includes a `discriminator` beside a
+reference that is moved into an `allOf`. A reference with sibling constraints stays
+in an `allOf` branch rather than mixing its raw constraints with converted, inlined
+content.
+When a field's own keys meet those of an inlined bare reference, annotations such
+as `description` describe the field, size bounds keep the tighter value, and other
+shared constraints are kept in `allOf`. Numeric bounds and their exclusivity flags
+are kept together: when both sides declare a lower or upper bound family, the
+field's family is retained as a separate `allOf` conjunct, so neither side is lost.
+`additionalProperties` means "the properties this schema does not declare", so the
+object keys (`properties`, `additionalProperties`) stay with the declarations they were
+written beside in the same way, unless both sides declare them alike.
+If the referenced schema carries a `discriminator`, those conjuncts go in an outer
+`allOf` beside the merged schema, because 3.0 validators enforce a discriminator that
+sits beside an `allOf`.
+
+A `nullable: true` in an input schema is read the way the 3.1 conversion reads it, as
+accepting `null`, not the way a 3.1 validator ignores an unknown keyword; the
+conversion keeps what that reading accepts, so a `oneOf` of a `nullable` member and
+an explicit null member rejects `null` in every version.
+
 A `type` array without `null` (for example `type: [string, integer]`, which
 validation producers use for error locations) is rewritten to an `anyOf` of
 single-type schemas, and sibling keywords stay on the schema. An `array` branch
@@ -334,13 +397,11 @@ absent. Thus homogeneous matching, positional-loss warnings and closed-prefix
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is
-`Optional[SameModel]`), has one level of the self-reference inlined so the
-leaf case works, but the recursive edge one level deeper has no OpenAPI 3.0
-form that can mark a bare `$ref` nullable — the same representability gap as
-the tuple case above, not merely an approximation. `strict=True` raises
-`OpenAPISpecConfigError`; non-strict generation keeps the schema (valid for
-every instance except a `null` at that one recursive edge) and emits the same
-structured `version-downgrade-drop` warning.
+`Optional[SameModel]`), has one level of the self-reference inlined, and the
+recursive edge one level deeper keeps the reference inside a union with a
+`null`-only branch. OpenAPI 3.0 cannot mark a bare `$ref` nullable, but it can
+express that union, so `null` is accepted at every level exactly as in 3.1 and
+nothing is reported.
 
 ### What changes in 3.1 / 3.2 mode
 

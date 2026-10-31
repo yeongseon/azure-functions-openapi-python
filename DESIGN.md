@@ -83,7 +83,41 @@ The final call-flow is:
    nullable/example syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable
    unions, refs, and other downgrade forms, recording losses in encounter order.
    Inline nullable refs resolve against the **original complete component map**,
-   before replacement.
+   before replacement. A nullable union keeps the `nullable` idiom only where it
+   accepts `null` exactly as the original did; otherwise it is written as a union
+   that keeps every `null` member as its own `null`-only branch, preserving the union
+   keyword and its match count (the branch carries what decides the member's answer
+   for `null`, `enum`, `const`, the combinators and `not`, and its annotations, and not
+   its other keys, which only apply to instances its `type` excludes and some of which
+   3.0 does not allow; a reference that is neither a component nor an absolute URI the
+   schema does not declare as its own `$id` is replaced by its answer for `null`, or
+   dropped and reported when that is not known, because it can point into what the
+   branch does not keep), and a branch whose `null`
+   answer 3.0 tools read
+   differently gets the original answer back. The output is judged in both readings of
+   the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
+   them), with a `discriminator` beside a combinator enforced in both; a disagreement
+   counts as a different answer. A nullable union that is the sole other member of a
+   nullable union stays a member instead of being merged up, and a `const` or `not`
+   that arrives with a merged member is converted or kept, not dropped. A
+   `discriminator` on a null-only schema is dropped.
+   A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators, so it
+   is carried only with at least two non-null members, none of which accepts `null`:
+   it stays with them and the null branches sit outside its scope. Otherwise it
+   discriminates nothing and is not carried, including one beside a reference moved
+   into an `allOf`. Keys beside the union that reject null make the null branches dead, but
+   only when that rejection does not rest on a reference the evaluator cannot resolve
+   (the evaluator reports each one; `#/components/schemas/<Name>` and pointers into a
+   component resolve, percent-decoded like validators read them, an external reference or
+   a missing target does not). An answer that consulted one is a guess: the `nullable`
+   idiom is not trusted on it, a discriminator is not carried on it, and a branch is not
+   restored from it but loses its discriminators.
+   Numeric bounds and their exclusivity flags, and the object keys `properties` and
+   `additionalProperties`, are kept together when merging inlined content with field
+   constraints, using separate `allOf` conjuncts when both sides declare a family; if the inlined schema carries a `discriminator`,
+   the conjuncts sit in an outer `allOf` so that 3.0 validators do not start
+   enforcing it. An input `nullable: true` is read as the 3.1 conversion reads it
+   (accepting `null`), and the acceptance of that reading is what is preserved.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
@@ -117,7 +151,9 @@ The final call-flow is:
    prefixes then become `items: {}` with the existing positional-loss channel,
    while a tail excluded by `maxItems` does not widen prefix positions. The
    recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
-   to `{}`, standalone `false` to `{not: {}}`) and fills missing `items` only on
+   to `{}`, standalone `false` to `{not: {}}`), does the same for a boolean schema in
+   `allOf`, `anyOf`, `oneOf`, `not`, `properties` and `$defs`, writes every `enum` with
+   unique members (an empty one as `not: {}`), and fills missing `items` only on
    converted `type: array` nodes, including nullable arrays; a schema inlined for a
    nullable reference gets the fill and an open tuple tail's `items` only after it
    has been merged with its surroundings, while an `items` it declares itself
