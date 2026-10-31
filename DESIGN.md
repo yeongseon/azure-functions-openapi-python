@@ -98,10 +98,13 @@ The final call-flow is:
    is carried only with at least two non-null members, none of which accepts `null`:
    it stays with them and the null branches sit outside its scope. Otherwise it
    discriminates nothing and is not carried, including one beside a reference moved
-   into an `allOf`. Keys beside the union that reject null make the null branches dead.
-   Numeric bounds and their exclusivity flags are kept together when merging
-   inlined content with field constraints, using separate `allOf` conjuncts when
-   both sides declare a bound family; if the inlined schema carries a `discriminator`,
+   into an `allOf`. Keys beside the union that reject null make the null branches dead, but
+   only when that rejection does not rest on a reference the evaluator cannot resolve
+   (the evaluator reports each one, and only an exact `#/components/schemas/<Name>`
+   reference counts as resolvable).
+   Numeric bounds and their exclusivity flags, and the object keys `properties` and
+   `additionalProperties`, are kept together when merging inlined content with field
+   constraints, using separate `allOf` conjuncts when both sides declare a family; if the inlined schema carries a `discriminator`,
    the conjuncts sit in an outer `allOf` so that 3.0 validators do not start
    enforcing it. An input `nullable: true` is read as the 3.1 conversion reads it
    (accepting `null`), and the acceptance of that reading is what is preserved.

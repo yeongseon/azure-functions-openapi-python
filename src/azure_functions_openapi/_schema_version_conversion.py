@@ -144,6 +144,15 @@ class _PreparedSchemas(dict[str, Any]):
     """A component map whose schemas already went through the 3.0 preparation step."""
 
 
+_COMPONENT_PREFIX = "#/components/schemas/"
+
+
+def _component_name(ref: str) -> str | None:
+    """The component a reference names, or ``None`` for a pointer into one or an external one."""
+    name = ref[len(_COMPONENT_PREFIX) :] if ref.startswith(_COMPONENT_PREFIX) else ""
+    return name if name and "/" not in name else None
+
+
 def _is_null_member(member: Any) -> bool:
     return isinstance(member, dict) and member.get("type") == "null"
 
@@ -164,6 +173,7 @@ def _accepts_null(
     assume_unknown: bool,
     seen: frozenset[str] = frozenset(),
     discriminator_active: bool | None = None,
+    unresolved: set[str] | None = None,
 ) -> bool:
     """Whether the instance ``null`` is valid against *schema*.
 
@@ -182,7 +192,10 @@ def _accepts_null(
     below *schema* (a member, or a referenced component) is read as the original: conversion
     rewrites it, when it reaches it, so that it accepts ``null`` exactly as it did.
 
-    *assume_unknown* is the answer for a reference that cannot be resolved.
+    *assume_unknown* is the answer for a reference that cannot be resolved (a pointer into a
+    component, an external reference, a missing component), and each such reference is added to
+    *unresolved* when it is given, so that a caller can tell an answer that did not depend on one
+    from one that did: ``not`` and ``oneOf`` turn an assumption around.
     """
     if not isinstance(schema, dict):
         return schema is not False
@@ -198,6 +211,7 @@ def _accepts_null(
                 discriminator_active=False,
                 assume_unknown=assume_unknown,
                 seen=inner_seen,
+                unresolved=unresolved,
             )
         return _accepts_null(
             inner,
@@ -206,17 +220,20 @@ def _accepts_null(
             discriminator_active=enforced,
             assume_unknown=assume_unknown,
             seen=inner_seen,
+            unresolved=unresolved,
         )
 
     ref = schema.get("$ref")
     if isinstance(ref, str):
-        name = ref.rsplit("/", 1)[-1] if ref.startswith("#/components/schemas/") else None
+        name = _component_name(ref)
         target = schemas.get(name) if schemas is not None and name is not None else None
         if name is not None and name in seen:
             target_accepts = True
         elif isinstance(target, dict) and name is not None:
             target_accepts = below(target, siblings=True, inner_seen=seen | {name})
         else:
+            if unresolved is not None:
+                unresolved.add(ref)
             target_accepts = assume_unknown
         if not target_accepts or not ref_siblings_apply:
             return target_accepts
@@ -337,8 +354,10 @@ def _exact_nullable_union(
     ``null``). A branch that answered ``null`` differently once converted gets its answer
     back (:func:`_keep_null_verdict`). The keys beside the union stay beside it, where they
     keep the meaning they had, and a reference that carries sibling keys moves into
-    ``allOf`` (so does one beside ``type: "null"``). When the keys beside the union reject
-    ``null``, the ``null`` branches could never match and are left out.
+    ``allOf`` (so does one beside ``type: "null"``). When the keys beside the union are
+    proven to reject ``null``, the ``null`` branches could never match and are left out; a
+    rejection that rests on a reference that cannot be resolved (``not`` turns the assumption
+    around) is no proof, and the branches stay.
 
     A ``discriminator`` is active in 3.0 (it rejects ``null`` and any object without the
     property) but annotation-only in 3.1, so it is only carried where it cannot change what
@@ -357,7 +376,11 @@ def _exact_nullable_union(
             for member in non_null
         )
     )
-    if hoisted and not _accepts_null(rest, schemas, ref_siblings_apply=True, assume_unknown=True):
+    unresolved: set[str] = set()
+    rest_rejects_null = not _accepts_null(
+        rest, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=unresolved
+    )
+    if hoisted and rest_rejects_null and not unresolved:
         return {**rest, **({"discriminator": discriminator} if scoped else {}), key: hoisted}
     members = [
         _keep_null_verdict(member, original, schemas) for member, original in zip(hoisted, non_null)
@@ -385,10 +408,8 @@ def _inline_ref_nullable(
     then keeps the reference and adds a ``null`` branch to the union instead
     (see :func:`_exact_nullable_union`).
     """
-    if not ref.startswith("#/components/schemas/"):
-        return None
-    name = ref.rsplit("/", 1)[-1]
-    if schemas is None or name in resolving:
+    name = _component_name(ref)
+    if name is None or schemas is None or name in resolving:
         return None
     target = schemas.get(name)
     if not isinstance(target, dict):
@@ -576,6 +597,9 @@ _ANNOTATION_KEYS = frozenset(
         "xml",
     }
 )
+# ``additionalProperties`` means "the properties this same schema does not declare", so it must
+# travel with the ``properties`` it was written beside.
+_OBJECT_KEYS = ("properties", "additionalProperties", "patternProperties")
 _BOUND_KEYS = frozenset(
     {
         "maxProperties",
@@ -594,7 +618,8 @@ def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]
     Every key keeps doing its job. A key only one side declares is kept. When both
     declare it: an annotation (or ``x-`` extension) takes the wrapper's value, since the
     wrapper describes this field; a size bound keeps the tighter value; numeric bounds
-    retain their exclusivity in one conjunct; any other constraint, and the wrapper's
+    retain their exclusivity in one conjunct; the object keys of both sides stay with
+    their own declarations in one conjunct; any other constraint, and the wrapper's
     own ``allOf``, become ``allOf`` conjuncts so both sides still apply. ``nullable`` is
     the caller's to set.
 
@@ -606,11 +631,19 @@ def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]
     merged = dict(inlined)
     conjuncts: list[Any] = []
     coupled_keys: set[str] = set()
-    for bound, exclusive in (("minimum", "exclusiveMinimum"), ("maximum", "exclusiveMaximum")):
-        family = (bound, exclusive)
+    for family in (
+        ("minimum", "exclusiveMinimum"),
+        ("maximum", "exclusiveMaximum"),
+        _OBJECT_KEYS,
+    ):
         if any(k in inlined for k in family) and any(k in wrapper for k in family):
-            conjuncts.append({k: wrapper[k] for k in family if k in wrapper})
+            declared = {k: wrapper[k] for k in family if k in wrapper}
             coupled_keys.update(family)
+            if family is _OBJECT_KEYS and all(
+                k in inlined and _json_schema_equal(inlined[k], v) for k, v in declared.items()
+            ):
+                continue
+            conjuncts.append(declared)
     for key, value in wrapper.items():
         if key == "nullable" or key in coupled_keys:
             continue

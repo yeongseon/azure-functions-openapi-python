@@ -12,6 +12,7 @@ import pytest
 
 from azure_functions_openapi._schema_version_conversion import (
     _accepts_null,
+    _component_name,
     _convert_schema_to_3_0,
     _convert_schema_to_3_1,
     _convert_schemas_to_3_0,
@@ -46,6 +47,8 @@ PROBES: list[JsonValue] = [
     {"kind": "fish"},
     {"a": 1},
     {"a": 1, "b": 2},
+    {"b": "x"},
+    {"b": 1},
 ]
 TARGETS_WITH_DISCRIMINATOR: list[tuple[str, dict[str, Any]]] = [
     ("min", {"type": "number", "minimum": 0}),
@@ -61,6 +64,26 @@ FIELD_CONSTRAINTS: list[tuple[str, dict[str, Any]]] = [
     ("required-b", {"required": ["b"]}),
     ("enum-a", {"enum": ["a", 3]}),
     ("all-of", {"allOf": [{"minimum": 3}]}),
+]
+OBJECT_SCOPE_ROWS: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
+    (
+        "both-declare-and-conflict",
+        {"properties": {"a": {}}, "additionalProperties": {"type": "string"}},
+        {"properties": {"a": {}}, "additionalProperties": False},
+    ),
+    ("wrapper-closed", {"additionalProperties": False}, {"properties": {"a": {}}}),
+    ("target-closed", {"properties": {"a": {}}}, {"additionalProperties": False}),
+    (
+        "different-properties",
+        {"properties": {"b": {"type": "integer"}}, "additionalProperties": {"type": "string"}},
+        {"properties": {"a": {}}, "additionalProperties": False},
+    ),
+    (
+        "identical",
+        {"properties": {"a": {}}, "additionalProperties": False},
+        {"properties": {"a": {}}, "additionalProperties": False},
+    ),
+    ("no-overlap", {"properties": {"a": {}}, "additionalProperties": False}, {"required": ["a"]}),
 ]
 DISCRIMINATOR = {"propertyName": "kind"}
 NULL_MEMBERS: list[tuple[str, dict[str, Any]]] = [
@@ -385,6 +408,39 @@ CASES: list[tuple[str, dict[str, Any], dict[str, Any]]] = [
         for combinator in ("allOf", "anyOf", "oneOf")
     ],
     *[
+        (
+            f"unresolved-pointer-{key}-{name}",
+            {**beside, key: members},
+            {"Meta": {"type": "object", "properties": {"name": {"type": "string"}}}},
+        )
+        for key in ("anyOf", "oneOf")
+        for name, beside, members in [
+            (
+                "under-not",
+                {"not": {"$ref": "#/$defs/Meta/properties/name"}},
+                [{"type": "integer"}, {"type": "null"}],
+            ),
+            ("as-member", {}, [{"$ref": "#/$defs/Meta/properties/name"}, {"type": "null"}]),
+            (
+                "member-with-sibling",
+                {},
+                [
+                    {"$ref": "#/$defs/Meta/properties/name", "description": "member"},
+                    {"type": "null"},
+                ],
+            ),
+        ]
+    ],
+    *[
+        (
+            f"object-scope-{key}-{name}",
+            {**wrapper, key: [REF, {"type": "null"}]},
+            {"T": {"type": "object", **target}},
+        )
+        for key in ("anyOf", "oneOf")
+        for name, wrapper, target in OBJECT_SCOPE_ROWS
+    ],
+    *[
         (f"merged-up-const-{key}-{name}", {key: [member, {"type": "null"}]}, {})
         for key in ("anyOf", "oneOf")
         for name, member in [
@@ -668,6 +724,182 @@ def test_a_branch_that_answers_null_differently_in_3_0_gets_its_answer_back() ->
     assert _keep_null_verdict(sibling, sibling, schemas) == {"allOf": [sibling, {"not": null_only}]}
     plain = {"$ref": "#/components/schemas/Plain"}
     assert _keep_null_verdict(plain, plain, schemas) is plain
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected"),
+    [
+        ("#/components/schemas/X", "X"),
+        ("#/components/schemas/X/properties/name", None),
+        ("#/components/schemas/", None),
+        ("#/$defs/X", None),
+        ("https://example.com/schemas/x.json", None),
+        ("urn:uuid:1234567890abcdef1234567890", None),
+    ],
+)
+def test_only_an_exact_component_reference_names_a_component(
+    ref: str, expected: str | None
+) -> None:
+    # Given / When / Then: a pointer into a component or an external reference names none.
+    assert _component_name(ref) == expected
+
+
+def test_a_pointer_into_a_component_does_not_resolve_to_a_component_of_its_last_segment() -> None:
+    # Given: a pointer into Meta, and an unrelated component that happens to be called ``name``.
+    schemas = {
+        "name": {"type": "integer"},
+        "Meta": {"type": "object", "properties": {"name": {"type": "string"}}},
+    }
+    pointer = "#/components/schemas/Meta/properties/name"
+
+    # When
+    converted = _convert_schema_to_3_0({"anyOf": [{"$ref": pointer}, {"type": "null"}]}, schemas)
+    unresolved: set[str] = set()
+    accepts = _accepts_null(
+        {"$ref": pointer},
+        schemas,
+        ref_siblings_apply=True,
+        assume_unknown=False,
+        unresolved=unresolved,
+    )
+
+    # Then: the unrelated component is neither inlined nor read for the pointer.
+    assert converted == {"anyOf": [{"$ref": pointer}, {"nullable": True, "enum": [None]}]}
+    assert accepts is False
+    assert unresolved == {pointer}
+
+
+def test_every_reference_that_cannot_be_resolved_is_reported_to_the_caller() -> None:
+    # Given: a node that reaches a missing component, a pointer, an external reference, a
+    # resolvable one and a cycle.
+    schemas = {
+        "Known": {"type": "string"},
+        "Loop": {"anyOf": [{"$ref": "#/components/schemas/Loop"}]},
+    }
+    refs = [
+        "#/components/schemas/Missing",
+        "#/components/schemas/Known/type",
+        "https://example.com/x.json",
+    ]
+    node = {
+        "allOf": [
+            *({"$ref": ref} for ref in refs),
+            {"$ref": "#/components/schemas/Known"},
+            {"$ref": "#/components/schemas/Loop"},
+        ]
+    }
+    unresolved: set[str] = set()
+
+    # When
+    _accepts_null(
+        node, schemas, ref_siblings_apply=True, assume_unknown=True, unresolved=unresolved
+    )
+
+    # Then: only the ones that could not be resolved are listed.
+    assert unresolved == set(refs)
+
+
+def test_a_reference_that_cannot_be_resolved_below_a_nullable_union_is_reported_too() -> None:
+    # Given: an unresolvable reference inside a nullable union that sits below the schema.
+    gone = "#/components/schemas/Gone"
+    node = {"allOf": [{"anyOf": [{"$ref": gone}, {"type": "null"}]}]}
+    unresolved: set[str] = set()
+
+    # When: the converted document is read, where such a union is read as the original.
+    _accepts_null(node, {}, ref_siblings_apply=False, assume_unknown=True, unresolved=unresolved)
+
+    # Then
+    assert unresolved == {gone}
+
+
+@pytest.mark.parametrize("key", ["anyOf", "oneOf"])
+def test_a_rejection_that_rests_on_an_unresolved_reference_keeps_the_null_branch(key: str) -> None:
+    # Given: a ``not`` over a reference that cannot be resolved, beside a nullable union.
+    node = {
+        "not": {"$ref": "#/components/schemas/Gone"},
+        key: [{"type": "integer"}, {"type": "null"}],
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, {})
+
+    # Then: assuming the reference accepts null would make ``not`` reject it, which is no proof.
+    assert converted == {
+        "not": {"$ref": "#/components/schemas/Gone"},
+        key: [{"type": "integer"}, {"nullable": True, "enum": [None]}],
+    }
+
+
+def test_a_rejection_that_does_not_depend_on_an_unresolved_reference_still_drops_the_branch() -> (
+    None
+):
+    # Given: a type that rejects null, beside a ``not`` over a reference that cannot be resolved.
+    node = {
+        "type": "object",
+        "not": {"$ref": "#/components/schemas/Gone"},
+        "anyOf": [{"$ref": "#/components/schemas/T", "description": "member"}, {"type": "null"}],
+    }
+
+    # When
+    converted = _convert_schema_to_3_0(node, {"T": {"type": "object"}})
+
+    # Then: the type alone proves the rejection, so the null branch is left out.
+    assert converted["anyOf"] == [
+        {"description": "member", "allOf": [{"$ref": "#/components/schemas/T"}]}
+    ]
+
+
+def test_object_keys_of_a_field_stay_with_the_properties_they_were_written_beside() -> None:
+    # Given: an inlined closed schema and a field that declares the same properties and an open one.
+    inlined = {"type": "object", "properties": {"a": {}}, "additionalProperties": False}
+    wrapper = {
+        "properties": {"a": {}},
+        "additionalProperties": {"type": "string"},
+        "nullable": True,
+    }
+
+    # When
+    merged = _merge_wrapper_into_inlined(inlined, wrapper)
+
+    # Then: the field's additionalProperties keeps its properties in one conjunct, so ``a`` is
+    # not an additional property there.
+    assert merged == {
+        **inlined,
+        "allOf": [{"properties": {"a": {}}, "additionalProperties": {"type": "string"}}],
+    }
+
+
+def test_object_keys_that_both_sides_declare_alike_are_not_repeated() -> None:
+    # Given / When
+    inlined = {"type": "object", "properties": {"a": {}}, "additionalProperties": False}
+    merged = _merge_wrapper_into_inlined(
+        inlined, {"properties": {"a": {}}, "additionalProperties": False}
+    )
+
+    # Then
+    assert merged == inlined
+
+
+@pytest.mark.parametrize(
+    ("inlined", "wrapper", "expected_conjunct"),
+    [
+        (
+            {"properties": {"a": {}}},
+            {"additionalProperties": False},
+            {"additionalProperties": False},
+        ),
+        ({"additionalProperties": False}, {"properties": {"a": {}}}, {"properties": {"a": {}}}),
+    ],
+    ids=["wrapper-closed", "target-closed"],
+)
+def test_one_sided_object_keys_do_not_change_what_the_other_side_declared(
+    inlined: dict[str, Any], wrapper: dict[str, Any], expected_conjunct: dict[str, Any]
+) -> None:
+    # Given / When
+    merged = _merge_wrapper_into_inlined({"type": "object", **inlined}, wrapper)
+
+    # Then: the wrapper's keys form their own conjunct instead of joining the other side's.
+    assert merged == {"type": "object", **inlined, "allOf": [expected_conjunct]}
 
 
 def test_the_output_verdict_is_the_one_both_readings_give() -> None:

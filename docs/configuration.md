@@ -247,7 +247,9 @@ A `discriminator` on a schema that accepts only `null` is dropped, because it
 discriminates nothing and 3.0 would enforce it. A nullable union that is the only other member of
 a nullable union stays a member, and is rewritten on its own, rather than being
 merged into the outer union. Keys beside the union that reject null make the null
-branches unreachable.
+branches unreachable; a rejection that depends on a reference the conversion cannot
+resolve (a pointer into a component, an external reference) is not taken as proof,
+because `not` turns an assumption around, and the null branches stay.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts
@@ -261,6 +263,9 @@ as `description` describe the field, size bounds keep the tighter value, and oth
 shared constraints are kept in `allOf`. Numeric bounds and their exclusivity flags
 are kept together: when both sides declare a lower or upper bound family, the
 field's family is retained as a separate `allOf` conjunct, so neither side is lost.
+`additionalProperties` means "the properties this schema does not declare", so the
+object keys (`properties`, `additionalProperties`) stay with the declarations they were
+written beside in the same way, unless both sides declare them alike.
 If the referenced schema carries a `discriminator`, those conjuncts go in an outer
 `allOf` beside the merged schema, because 3.0 validators enforce a discriminator that
 sits beside an `allOf`.
