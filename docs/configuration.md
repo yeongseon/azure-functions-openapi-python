@@ -232,15 +232,26 @@ value under real OpenAPI 3.0 tooling.
 
 The `nullable` idiom is used only where it accepts `null` exactly as the original
 did. A nullable union it cannot reach (a union of references, a `oneOf`, an `allOf`
-conjunct), or one where it would exempt a `type` or constraint that sits beside the
-union, is written instead as a union with a branch that accepts only `null`
-(`nullable: true` with `enum: [null]`). The fallback keeps the union keyword, so
-`oneOf` still requires exactly one match, including when a member already accepts
-null. Keys beside the union that reject null make the null branch unreachable.
+conjunct), one where it would exempt a `type` or constraint that sits beside the
+union, or one whose null members would answer differently for `null` (a null member
+with constraints of its own, or several null members under a `oneOf`), is written
+instead as a union that keeps every null member as its own branch that accepts only
+`null` (`nullable: true` with `enum: [null]`, plus the member's other keys). The
+fallback keeps the union keyword, so `oneOf` still requires exactly one match,
+however many branches accept null. A branch that 3.0 tools read differently for
+`null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
+validators enforce, or a nested reference whose sibling keys the specification
+ignores and validators built on JSON Schema apply) is joined with the `null` schema,
+or with a conjunct that rules `null` out, so it answers as it did in every reading.
+A `discriminator` on a schema that accepts only `null` is dropped, because it
+discriminates nothing and 3.0 would enforce it. A nullable union that is the only other member of
+a nullable union stays a member, and is rewritten on its own, rather than being
+merged into the outer union. Keys beside the union that reject null make the null
+branches unreachable.
 A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
 `null` and any object without the property), so it is only carried where it cannot
 change what is accepted: with at least two non-null members, none of which accepts
-null, it stays with them and null gets its own branch outside its scope. Otherwise it
+null, it stays with them and the null branches sit outside its scope. Otherwise it
 discriminates nothing and is not carried, which includes a `discriminator` beside a
 reference that is moved into an `allOf`. A reference with sibling constraints stays
 in an `allOf` branch rather than mixing its raw constraints with converted, inlined

@@ -85,12 +85,20 @@ The final call-flow is:
    Inline nullable refs resolve against the **original complete component map**,
    before replacement. A nullable union keeps the `nullable` idiom only where it
    accepts `null` exactly as the original did; otherwise it is written as a union
-   with a `null`-only branch, preserving the union keyword and its match count.
+   that keeps every `null` member as its own `null`-only branch, preserving the union
+   keyword and its match count, and a branch whose `null` answer 3.0 tools read
+   differently gets the original answer back. The output is judged in both readings of
+   the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
+   them), with a `discriminator` beside a combinator enforced in both; a disagreement
+   counts as a different answer. A nullable union that is the sole other member of a
+   nullable union stays a member instead of being merged up, and a `const` or `not`
+   that arrives with a merged member is converted or kept, not dropped. A
+   `discriminator` on a null-only schema is dropped.
    A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators, so it
    is carried only with at least two non-null members, none of which accepts `null`:
-   it stays with them and null gets a separate branch. Otherwise it discriminates
-   nothing and is not carried, including one beside a reference moved into an
-   `allOf`. Keys beside the union that reject null make the null branch dead.
+   it stays with them and the null branches sit outside its scope. Otherwise it
+   discriminates nothing and is not carried, including one beside a reference moved
+   into an `allOf`. Keys beside the union that reject null make the null branches dead.
    Numeric bounds and their exclusivity flags are kept together when merging
    inlined content with field constraints, using separate `allOf` conjuncts when
    both sides declare a bound family; if the inlined schema carries a `discriminator`,
