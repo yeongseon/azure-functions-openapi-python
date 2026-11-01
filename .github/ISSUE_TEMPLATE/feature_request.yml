@@ -15,57 +15,50 @@ body:
         Thanks for suggesting a feature!
 
   - type: textarea
-    id: problem
+    id: context
     attributes:
       label: Context
-      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
-      placeholder: What happened, what you expected, and why it matters now.
+      description: What problem or gap this addresses, why it matters now, and current behavior or limitations.
+      placeholder: What is missing or limited, why does it matter, and how does the project currently handle it?
     validations:
       required: true
-
-  - type: textarea
-    id: current-state
-    attributes:
-      label: Current State
-      description: How does the project currently handle this (if at all)?
-      placeholder: |
-        - Current behavior
-        - Current limitations
-    validations:
-      required: false
 
   - type: textarea
     id: proposed-solution
     attributes:
       label: Proposed Solution
-      description: How would you like this to work?
-      placeholder: Describe your ideal solution
+      description: State the required change explicitly. Avoid pasting a complete implementation when a concise description suffices.
+      placeholder: Describe the desired capability and required changes.
     validations:
       required: true
 
   - type: textarea
-    id: tasks
-    attributes:
-      label: Tasks
-      description: Break down the implementation into tasks (if known)
-      placeholder: |
-        - [ ] Task 1
-        - [ ] Task 2
-    validations:
-      required: false
-
-  - type: textarea
-    id: expected-outcome
+    id: acceptance-checklist
     attributes:
       label: Acceptance Checklist
-      description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
+      description: Concrete, outcome-focused items. Use checkboxes - each one should be something a reviewer can confirm is done.
+      placeholder: |
+        - [ ] The new behavior works as described in Proposed Solution
+        - [ ] Tests cover the new behavior
+        - [ ] Documentation and examples are updated
+        - [ ] `make check-all` passes
     validations:
       required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Items intentionally excluded from this work
+      placeholder: |
+        - Non-goals or deferred enhancements
+    validations:
+      required: false
 
   - type: textarea
     id: references
     attributes:
       label: References
-      description: Any related files, links, documentation, or examples
+      description: Any related issues, PRs, documentation, or examples
     validations:
       required: false

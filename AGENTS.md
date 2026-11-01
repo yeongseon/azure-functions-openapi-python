@@ -173,6 +173,22 @@ What problem this issue addresses and why now. Note the target release (e.g. vX.
 - Relevant issues, PRs, ADRs, official documentation, and documented dependencies or integrations.
 ```
 
+**Writing the body:**
+
+- Lead with the observable problem and its user impact.
+- Distinguish verified root causes from unconfirmed hypotheses.
+- Provide one minimal representative example before introducing edge cases.
+- State required work explicitly rather than implying it through discussion.
+- Keep acceptance criteria outcome-focused so a reviewer can confirm when each item is done.
+- Authoring check: ensure an unfamiliar reader can quickly answer: What is broken or missing? Why does it matter? What needs to change? How will we know it is done?
+
+**Evidence and detail:**
+
+- Keep essential reproducible evidence in the issue body.
+- Move long stack traces, large code diffs, benchmark matrices, and exploratory logs into links or collapsed `<details>` blocks.
+- Describe the required change concisely instead of pasting a complete proposed implementation.
+- Never discard evidence needed to reproduce or verify a complex defect.
+
 ### Labels
 
 - Apply at least one type label: `bug`, `enhancement`, `documentation`, or `chore` (`ci`, `test`, `question` where they fit).
