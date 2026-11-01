@@ -14,6 +14,7 @@ from azure_functions_openapi.decorator import (
 )
 from azure_functions_openapi.docs_routes import DocsRoutes, register_openapi_routes
 from azure_functions_openapi.exceptions import OpenAPISpecConfigError, SDKIncompatibleError
+from azure_functions_openapi.host_config import resolve_route_prefix
 from azure_functions_openapi.registry import OpenAPIRegistry
 from azure_functions_openapi.registry import registry as _default_registry
 from azure_functions_openapi.spec import (
@@ -255,6 +256,7 @@ __all__ = [
     "register_openapi_metadata",
     "register_openapi_routes",
     "render_swagger_ui",
+    "resolve_route_prefix",
     "scan_endpoint_metadata",
     "scan_validation_metadata",
 ]

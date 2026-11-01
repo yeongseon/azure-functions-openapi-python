@@ -726,6 +726,69 @@ class TestHandleGenerateWithApp:
         mock_import.assert_not_called()
 
 
+class TestAppImportFailureMessage:
+    """--app import failures name the target and the exception type (#860)."""
+
+    @staticmethod
+    def _generate_with_app(monkeypatch: pytest.MonkeyPatch, project: Path, app: str) -> int:
+        monkeypatch.chdir(project)
+        monkeypatch.setattr(sys, "path", list(sys.path))
+        monkeypatch.setattr(sys, "argv", ["azure-functions-openapi", "generate", "--app", app])
+        return main()
+
+    def test_exception_from_module_level_code_names_target_and_type(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        # Given: an app module that reads a missing environment variable at import time.
+        (tmp_path / "import_time_failure_app.py").write_text(
+            "import os\nSECRET = os.environ['OPENAPI_TEST_MISSING_SECRET']\n", encoding="utf-8"
+        )
+        monkeypatch.delenv("OPENAPI_TEST_MISSING_SECRET", raising=False)
+
+        # When: the CLI imports that module through --app.
+        exit_code = self._generate_with_app(monkeypatch, tmp_path, "import_time_failure_app:app")
+
+        # Then: it fails with exit code 1 and the message traces the failure to the target.
+        captured = capsys.readouterr()
+        assert exit_code == 1
+        assert captured.out == ""
+        assert "--app 'import_time_failure_app:app'" in captured.err
+        assert "KeyError" in captured.err
+        assert "OPENAPI_TEST_MISSING_SECRET" in captured.err
+
+    @pytest.mark.parametrize(
+        ("app", "exception_type", "detail"),
+        [
+            ("nonexistent_module_xyz_12345", "ModuleNotFoundError", "nonexistent_module_xyz_12345"),
+            (":app", "ValueError", "Invalid --app value"),
+            ("json:no_such_variable", "AttributeError", "no attribute 'no_such_variable'"),
+        ],
+    )
+    def test_designed_errors_keep_their_message_and_gain_the_type(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        app: str,
+        exception_type: str,
+        detail: str,
+    ) -> None:
+        # Given: an --app value that fails in one of the CLI's own designed ways.
+        # When: the CLI tries to import it.
+        exit_code = self._generate_with_app(monkeypatch, tmp_path, app)
+
+        # Then: the original message is still reported, now with the exception type.
+        captured = capsys.readouterr()
+        assert exit_code == 1
+        assert captured.out == ""
+        assert f"--app {app!r}" in captured.err
+        assert exception_type in captured.err
+        assert detail in captured.err
+
+
 class TestEmptyPathsWarning:
     """Tests for the empty-paths guard warning."""
 

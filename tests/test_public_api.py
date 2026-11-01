@@ -29,6 +29,7 @@ class TestAPISurface:
             "register_openapi_metadata",
             "register_openapi_routes",
             "render_swagger_ui",
+            "resolve_route_prefix",
             "scan_endpoint_metadata",
             "scan_validation_metadata",
             "scan_validation_metadata",
@@ -63,6 +64,7 @@ class TestAPISurface:
             register_openapi_metadata,
             register_openapi_routes,
             render_swagger_ui,
+            resolve_route_prefix,
             scan_endpoint_metadata,  # noqa: F401
             scan_validation_metadata,
         )

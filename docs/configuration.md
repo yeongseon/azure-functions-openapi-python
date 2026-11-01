@@ -207,6 +207,9 @@ Supported versions:
 - `OPENAPI_VERSION_3_1` (`"3.1.0"`)
 - `OPENAPI_VERSION_3_2` (`"3.2.0"`)
 
+For guidance on choosing a version for downstream consumers such as Azure API
+Management, see the [OpenAPI version FAQ](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use).
+
 ```python
 from azure_functions_openapi import OPENAPI_VERSION_3_1, get_openapi_json
 
@@ -227,6 +230,128 @@ attaching `nullable` directly to one branch of a nullable multi-type union,
 so the result is not just structurally valid but actually accepts a `null`
 value under real OpenAPI 3.0 tooling.
 
+The `nullable` idiom is used only where it accepts `null` exactly as the original
+did. A nullable union it cannot reach (a union of references, a `oneOf`, an `allOf`
+conjunct), one where it would exempt a `type` or constraint that sits beside the
+union, or one whose null members would answer differently for `null` (a null member
+with constraints of its own, or several null members under a `oneOf`), is written
+instead as a union that keeps every null member as its own branch. A null member can only
+ever match `null`, so the branch is what it says about `null`: `nullable: true` with
+`enum: [null]` when it accepts `null`, the same with `not: {}` when it does not (it then
+matches nothing, and still holds its place in the count), and the annotations that describe
+the member (`title`, `description`, a `default` of `null`, `example(s)`, `x-` extensions);
+nothing else of it needs to be written, so nothing that 3.0 does not allow can come
+with it. Only when what it says about `null` depends on a reference that cannot be resolved
+(an external reference, a missing component) is that answer a guess, and the branch is made
+of what decides it instead (its `enum`, `const`, `allOf`, `anyOf`, `oneOf` and `not`). A
+reference in such a branch keeps its place only when it is a component (read from its
+percent-decoded pointer, so an encoded `%2F` makes it a pointer) or an absolute URI that the
+member does not declare as one of its own `$id` values; any other (a pointer into a schema,
+a fragment that is relative to an `$id`, a relative path, a URI that an `$id` of the member
+declares) could point into what the branch does not keep, and is dropped and reported as a
+`version-downgrade-drop`, which strict generation refuses. The fallback keeps the union
+keyword, so `oneOf` still requires exactly one match, however many branches accept null. A
+non-null branch that 3.0 tools read differently for
+`null` than 2020-12 does (a referenced schema with a `discriminator`, which 3.0
+validators enforce, or a nested reference whose sibling keys the specification
+ignores and validators built on JSON Schema apply) is joined with the `null` schema,
+or with a conjunct that rules `null` out, so it answers as it did in every reading.
+A `discriminator` on a schema that accepts only `null` is dropped, because it
+discriminates nothing and 3.0 would enforce it. A nullable union that is the only other member of
+a nullable union stays a member, and is rewritten on its own, rather than being
+merged into the outer union. Keys beside the union that reject null make the null
+branches unreachable. Pointers into a component (`#/components/schemas/Meta/properties/p`,
+percent-escapes and `~0`/`~1` included) are followed. An answer that depends on a
+reference the conversion cannot resolve (an external reference, a missing component) is
+a guess, because `not` and `oneOf` turn an assumption around, and the conversion never
+builds on one: a rejection that rests on it does not drop the null branches, a union that
+consulted it is written with every branch kept instead of with the `nullable` idiom, a
+discriminator is not carried on its strength, and a branch that consulted it is not
+joined with a null schema but loses the discriminators that 3.0 enforces and 2020-12
+ignores, so that it answers as the original does whatever the reference leads to.
+A boolean schema (`true` or `false`) in `allOf`, `anyOf`, `oneOf`, `not`, `properties` or
+`$defs` is written as `{}` or `{"not": {}}`, because 3.0 has no boolean schemas, and an
+`enum` is written without repeated members (an empty one as `not: {}`), because 3.0 requires
+its members to be unique and at least one.
+A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators (they reject
+`null` and any object without the property), so it is only carried where it cannot
+change what is accepted: with at least two non-null members, none of which accepts
+null, it stays with them and the null branches sit outside its scope. Otherwise it
+discriminates nothing and is not carried, which includes a `discriminator` beside a
+reference that is moved into an `allOf`. A reference with sibling constraints stays
+in an `allOf` branch rather than mixing its raw constraints with converted, inlined
+content.
+When a field's own keys meet those of an inlined bare reference, annotations such
+as `description` describe the field, size bounds keep the tighter value, and other
+shared constraints are kept in `allOf`. Numeric bounds and their exclusivity flags
+are kept together: when both sides declare a lower or upper bound family, the
+field's family is retained as a separate `allOf` conjunct, so neither side is lost.
+`additionalProperties` means "the properties this schema does not declare", so the
+object keys (`properties`, `additionalProperties`) stay with the declarations they were
+written beside in the same way, unless both sides declare them alike.
+If the referenced schema carries a `discriminator`, those conjuncts go in an outer
+`allOf` beside the merged schema, because 3.0 validators enforce a discriminator that
+sits beside an `allOf`.
+
+A `nullable: true` in an input schema is read the way the 3.1 conversion reads it, as
+accepting `null`, not the way a 3.1 validator ignores an unknown keyword; the
+conversion keeps what that reading accepts, so a `oneOf` of a `nullable` member and
+an explicit null member rejects `null` in every version.
+
+A `type` array without `null` (for example `type: [string, integer]`, which
+validation producers use for error locations) is rewritten to an `anyOf` of
+single-type schemas, and sibling keywords stay on the schema. An `array` branch
+gains an empty `items`, because OpenAPI 3.0 requires one; a nullable union
+carries `nullable` on its first branch, so `null` is still accepted; and a
+`$ref` beside the array moves into `allOf`, because OpenAPI 3.0 ignores the
+siblings of a reference. A multi-type `type` array that conversion cannot
+rewrite faithfully, such as one beside a `discriminator`, stays in the document.
+Like an `anyOf` with a `null` branch that conversion could not normalize, it is
+reported as a structured `version-downgrade-drop`
+warning (visible via `generate_openapi_report()` or the CLI's
+`--fail-on-warnings`) and raises `OpenAPISpecConfigError` under `strict=True`.
+These rewrites and the check cover every inline schema, including the schemas
+of response headers.
+
+Conversion drops the following keywords that OpenAPI 3.0 does not define and
+reports each occurrence through `version-downgrade-drop` (or raises through the
+same strict-mode error above):
+
+| Dropped keywords | Constraint lost |
+| --- | --- |
+| `propertyNames` | Restrictions on object key names, including constrained Pydantic dict keys |
+| `if`, `then`, `else` | Conditional constraints |
+| `contains`, `minContains`, `maxContains` | Requirements and counts for matching array elements |
+| `unevaluatedProperties`, `unevaluatedItems` | Restrictions on unevaluated properties or elements |
+| `dependentRequired`, `dependentSchemas` | Dependent property requirements and object constraints |
+
+Each message names the keyword and its original JSON-pointer-like schema path
+(escaping `~` as `~0` and `/` as `~1`). Components include `Schema 'Name':`;
+inline schemas include the method, emitted route and operation slot, for example
+`POST /api/config requestBody.content.application/json.schema/properties/flags/propertyNames`.
+A dropped keyword that holds schemas of its own (for example a `propertyNames`
+with an `if` inside) is reported together with the occurrences nested in it.
+Removal and reporting use one preparation traversal before nullable collapsing or
+tuple approximation can relocate or revisit predicates. It covers properties,
+items, prefix items, additional properties, pattern-property values, combinator
+members, `not` and `$defs`, for both components and inline operation schemas.
+This is a scoped conversion policy, not a general audit of all JSON Schema keywords.
+OpenAPI 3.1 and 3.2 output is unchanged.
+
+A schema that accepts only `null` (`type: "null"`, or a union of nothing but null
+members) becomes `enum: [null]` with `nullable: true`. A type-less `nullable`
+schema would accept every value in OpenAPI 3.0, and a `not` over it would then
+reject every value. An `enum` or `const` beside it is intersected with that: a
+list that includes `null` narrows to it, and one that excludes `null` leaves a
+schema that accepts nothing, as the original does.
+
+Numeric exclusive bounds become boolean modifiers of `minimum` or `maximum`.
+When both forms are present, conversion keeps the stricter bound; equal bounds
+stay exclusive. An `enum` beside `const` is intersected using JSON Schema equality
+(booleans are distinct from numbers). A conflicting pair remains unsatisfiable
+by retaining both predicates with `allOf`. When the `enum` it meets is empty, which
+OpenAPI 3.0 does not allow, the contradiction is written as `not: {}` instead.
+
 A heterogeneous `tuple[...]` (differing item types per position) has no
 positional representation in OpenAPI 3.0 at all: it is approximated as
 `items.anyOf`, which accepts the right set of values but can no longer
@@ -236,17 +361,52 @@ non-strict generation emits the best-effort schema plus a structured
 `version-downgrade-drop` warning (visible via `generate_openapi_report()` or
 the CLI's `--fail-on-warnings`). A tuple whose positions all share the
 identical type (e.g. `tuple[int, int]`) is unaffected — a plain `items`
-schema already describes it faithfully.
+schema already describes it faithfully. A tuple with a reachable open tail is
+the exception described below: its tail is unconstrained, so a constrained
+prefix is approximated as `items: {}` and reported.
+
+For `prefixItems` with `items: false`, conversion caps `maxItems` at the prefix
+length, retaining a tighter existing cap. When `items` is a schema, it also
+constrains additional positions: plain `items` is exact when every prefix schema
+matches that tail schema. Otherwise, the tail joins `items.anyOf` and the same
+positional-loss warning (or strict error) applies. A tail that a `maxItems` at or
+below the prefix length makes unreachable is ignored. An absent or `true` tail is
+open: when reachable, it contributes an unconstrained schema. If any prefix
+position is constrained, conversion emits `items: {}` and reports the same
+positional loss (or raises in strict mode), because retaining a uniform prefix
+schema would incorrectly restrict the tail. An empty prefix, or one whose schemas
+constrain nothing (`true`, `{}`, or only annotations such as `title`), with an open
+tail remains unconstrained without a positional-loss warning.
+
+Boolean `items: true` becomes `items: {}`. Without a prefix, `items: false`
+becomes `items: {not: {}}`, preserving its rejection of every array element;
+closed prefixes retain the cap logic above. Every converted schema with
+`type: array` and no `items` gains `items: {}`, including nullable arrays and
+arrays left item-less after dropping `contains`. Filling a missing `items` adds
+no restriction and no warning; dropping `contains` still reports its own loss.
+These rules apply recursively to inline operation schemas and components.
+Non-array schemas do not gain `items`, and an `items` schema that is already
+present is kept, apart from the tuple conversions above (a typed tail still joins
+`items.anyOf`). When a nullable union refers to an array, an `items` that this
+conversion would synthesize for it (the fill for a missing `items`, or an open tuple
+tail) never displaces an `items` that the surrounding schema declares; an `items`
+that the referenced schema itself declares, including `true`, keeps following the
+existing merge of the two schemas' keys.
+OpenAPI 3.1 and 3.2 output is unchanged.
+
+Legacy array-valued `items` is normalized to `prefixItems` before this same tuple
+conversion runs. Its sibling `additionalItems`, when present, becomes `items`:
+a schema remains a schema, `false` remains `false`, and an absent tail remains
+absent. Thus homogeneous matching, positional-loss warnings and closed-prefix
+`maxItems` caps follow exactly the same rules as authored `prefixItems`.
 
 A nullable field that refers back to its own model, directly or through
 another model (e.g. a tree/linked-list node whose "next" is
-`Optional[SameModel]`), has one level of the self-reference inlined so the
-leaf case works, but the recursive edge one level deeper has no OpenAPI 3.0
-form that can mark a bare `$ref` nullable — the same representability gap as
-the tuple case above, not merely an approximation. `strict=True` raises
-`OpenAPISpecConfigError`; non-strict generation keeps the schema (valid for
-every instance except a `null` at that one recursive edge) and emits the same
-structured `version-downgrade-drop` warning.
+`Optional[SameModel]`), has one level of the self-reference inlined, and the
+recursive edge one level deeper keeps the reference inside a union with a
+`null`-only branch. OpenAPI 3.0 cannot mark a bare `$ref` nullable, but it can
+express that union, so `null` is accepted at every level exactly as in 3.1 and
+nothing is reported.
 
 ### What changes in 3.1 / 3.2 mode
 

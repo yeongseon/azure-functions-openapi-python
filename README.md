@@ -199,6 +199,12 @@ to the Python facade; that registry remains caller-owned and additive.
 See the [CLI Guide](docs/cli.md) for all options, CI integration examples, and
 the warning that `--app` imports execute module-level code.
 
+Route-prefix detection is opt-in: use `--route-prefix auto` in the CLI, or pass
+`resolve_route_prefix(Path(__file__).with_name("host.json"))` to `route_prefix=`
+in Python (`Path` comes from `pathlib`; the helper is exported at the package
+root). Existing defaults stay `/api`. See [Route Prefix](docs/route-prefix.md)
+for app-setting precedence and the CLI's `route-prefix-mismatch` warning.
+
 ## Installation
 
 ```bash
@@ -288,7 +294,7 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
 
 > **Pydantic v2 is a required dependency** (`pydantic>=2.0,<3.0`) and is installed with this package. `requests=` / `responses=` accept Pydantic models (the recommended path) **or** raw JSON Schema dicts (see below) — so you can describe schemas without authoring Pydantic models, but Pydantic itself is always present.
 
-> **Want runtime validation too? (optional)** `@openapi` documents your Pydantic models — it does not parse or validate requests at runtime. If you also want automatic request parsing, consistent `400`/`422` error responses, and response-model enforcement, layer [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)'s `@validate_http` on the **same** Pydantic models. It is an optional companion, not a dependency — this package works fully on its own. See the [validation README](https://github.com/yeongseon/azure-functions-validation-python#readme) for details, or a full runnable example that pairs both on one resource: [Full Stack CRUD API](https://github.com/yeongseon/azure-functions-cookbook-python/tree/main/examples/apis-and-ingress/full_stack_crud_api).
+> **Want runtime validation too? (optional)** `@openapi` documents your Pydantic models — it does not parse or validate requests at runtime. If you also want automatic request parsing, consistent `400`/`422` error responses, and response-model enforcement, layer [`azure-functions-validation`](https://github.com/yeongseon/azure-functions-validation-python)'s `@validate_http` on the **same** Pydantic models. It is an optional companion, not a dependency — this package works fully on its own. See the [validation README](https://github.com/yeongseon/azure-functions-validation-python#readme) for details, or a full runnable example that pairs both on one resource: [Full Stack CRUD API](https://github.com/yeongseon/azure-functions-cookbook-python/tree/main/examples/apis-and-ingress/full_stack_crud_api). `@validate_http` alone is also enough for the generated spec: the request, parameter and response models you declare in it, plus its `422` response, are discovered from its metadata, so `@openapi` is then only needed for summary, tags, security and extra response codes (see [Automatic bridge](docs/usage.md#automatic-bridge-zero-duplication)).
 
 > **Want structured logging too? (optional)** Pair your documented endpoints with [`azure-functions-logging`](https://github.com/yeongseon/azure-functions-logging-python) for structured, correlation-aware logs and observability. It attaches request/response context to every log line without changing your `@openapi` contracts. Like validation, it is an optional companion, not a dependency — this package works fully on its own. See the [logging README](https://github.com/yeongseon/azure-functions-logging-python#readme) for details.
 

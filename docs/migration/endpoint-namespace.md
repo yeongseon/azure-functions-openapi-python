@@ -19,20 +19,25 @@ old namespace. That mirror is now removed.
 If you upgrade the OpenAPI consumer to 0.21.2+ **without** upgrading a producer
 package that still emits only the old `validation` namespace:
 
-- The operation is **still registered** — it is derived from the Azure Functions
-  binding (route + method), so your endpoint does not disappear.
-- The **validation-derived schema hints are dropped** — request/response models
-  contributed via the old namespace no longer flow into the generated spec.
-- A **`VERSION_SKEW`** warning is emitted to flag the stale-producer condition.
+- The legacy namespace is ignored completely. It contributes no schema hints
+  and does not itself produce a version-skew warning or register an operation.
+  Explicit `@openapi` metadata and ordinary return-type inference still apply.
+- A **present `endpoint` namespace with a rejected version** is different: it
+  produces a binding-derived operation with a structured `version-skew` warning.
+  No response schema is recovered from the legacy namespace.
+- This consumer accepts endpoint versions 1 and 2. A malformed v2 response is
+  skipped with `discovery-skipped` diagnostics; valid sibling responses survive.
 
-This is a graceful degradation plus a warning, not a crash.
+There is no legacy fallback, including after unsupported versions or malformed
+v2 entries. See the [version policy](../extending/producer-guide.md#version-policy-as-it-behaves-today).
 
 ## How to migrate
 
 Upgrade your producer packages to versions that emit the shared `endpoint`
 namespace. In particular, upgrade `azure-functions-validation` to a release that
 writes `endpoint` metadata, then regenerate your spec. Once every producer emits
-`endpoint`, the `VERSION_SKEW` warning clears and full schema hints return.
+an accepted version of `endpoint`, full schema hints return. A legacy-only
+producer has no version-skew warning to clear.
 
 If you cannot upgrade a producer yet, add an explicit `@openapi(...)` decorator
 to the affected handler so the bridge can build the operation from first-class

@@ -78,18 +78,88 @@ The final call-flow is:
 1. Snapshot metadata and scan-lifetime warnings; assemble operations and hoist
    definitions into the complete component map. Compilation events accumulate
    locally rather than updating the registry during the walk.
-2. Convert inline request, response (including `itemSchema`), and parameter schemas:
-   3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy nullable/example
-   syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable unions, refs,
-   and other downgrade forms, recording losses in encounter order. Inline nullable
-   refs resolve against the **original complete component map**, before replacement.
+2. Convert inline request, response (including `itemSchema` and headers), and
+   parameter schemas: 3.1 and 3.2 use `_convert_operation_schemas_to_3_1` for legacy
+   nullable/example syntax; 3.0 uses `_convert_operation_schemas_to_3_0` for nullable
+   unions, refs, and other downgrade forms, recording losses in encounter order.
+   Inline nullable refs resolve against the **original complete component map**,
+   before replacement. A nullable union keeps the `nullable` idiom only where it
+   accepts `null` exactly as the original did; otherwise it is written as a union
+   that keeps every `null` member as its own branch, preserving the union keyword and
+   its match count. A `null` member can only match `null`, so its branch is its answer for
+   `null` (`nullable` with `enum: [null]` when it accepts it, with `not: {}` added when it
+   does not) and the annotations that describe it; nothing else of it is written, so
+   nothing 3.0 does not allow can come with it. Only when that answer depends on a
+   reference that cannot be resolved is the branch made of what decides it, and a
+   reference in it that is neither a component nor an absolute URI the member does not
+   declare as its own `$id` is dropped and reported, because it can point into what the
+   branch does not keep. A non-null branch whose `null` answer 3.0 tools read
+   differently gets the original answer back. The output is judged in both readings of
+   the keys beside a `$ref` (the specification ignores them, JSON Schema validators apply
+   them), with a `discriminator` beside a combinator enforced in both; a disagreement
+   counts as a different answer. A nullable union that is the sole other member of a
+   nullable union stays a member instead of being merged up, and a `const` or `not`
+   that arrives with a merged member is converted or kept, not dropped. A
+   `discriminator` on a null-only schema is dropped.
+   A `discriminator` is annotation-only in 3.1 but enforced by 3.0 validators, so it
+   is carried only with at least two non-null members, none of which accepts `null`:
+   it stays with them and the null branches sit outside its scope. Otherwise it
+   discriminates nothing and is not carried, including one beside a reference moved
+   into an `allOf`. Keys beside the union that reject null make the null branches dead, but
+   only when that rejection does not rest on a reference the evaluator cannot resolve
+   (the evaluator reports each one; `#/components/schemas/<Name>` and pointers into a
+   component resolve, percent-decoded like validators read them, an external reference or
+   a missing target does not). An answer that consulted one is a guess: the `nullable`
+   idiom is not trusted on it, a discriminator is not carried on it, and a branch is not
+   restored from it but loses its discriminators.
+   Numeric bounds and their exclusivity flags, and the object keys `properties` and
+   `additionalProperties`, are kept together when merging inlined content with field
+   constraints, using separate `allOf` conjuncts when both sides declare a family; if the inlined schema carries a `discriminator`,
+   the conjuncts sit in an outer `allOf` so that 3.0 validators do not start
+   enforcing it. An input `nullable: true` is read as the 3.1 conversion reads it
+   (accepting `null`), and the acceptance of that reading is what is preserved.
 3. Convert named components separately with `_convert_schemas_to_3_1` or
    `_convert_schemas_to_3_0`: inline schemas and components are distinct locations,
    not duplicate passes. The 3.0 component conversion also resolves refs against
    the original map, replacing it only after all converted components are returned.
-4. For 3.0, retain `_check_schemas_3_0_compatible` after conversion. It rejects or
-   warns about residual constructs such as non-null type arrays that conversion
-   does not normalize. Faithfully converted nullable schemas must not trigger it.
+4. For 3.0, retain the residual compatibility audit after conversion:
+   `_check_operation_schemas_3_0_compatible` for inline operation schemas and
+   `_check_schemas_3_0_compatible` for components. Each rejects (strict) or reports
+   a `type` array or null-`anyOf` that conversion could not normalize, naming the
+   construct and where it was found. Conversion rewrites non-null `type` arrays to
+   `anyOf` except a multi-type array beside a `discriminator`, which a combinator
+   would activate, and faithfully converted schemas must not trigger the audit.
+   Inline schemas include response header schemas. A null-only schema converts to
+   `enum: [null]` with `nullable`, which keeps it exact beneath `not`. Non-strict
+   findings join the schema-loss findings below rather than being logged on their own.
+   Before conversion reshapes schemas, a schema-only preparation traversal drops
+   and reports each occurrence of `propertyNames`, `if`/`then`/`else`, `contains`,
+   `minContains`/`maxContains`, `unevaluatedProperties`/`unevaluatedItems`,
+   `dependentRequired` and `dependentSchemas`. Removal and reporting share the
+   same visit, retaining original escaped schema paths and component names or
+   inline operation-slot labels; occurrences nested inside a dropped keyword are
+   reported as well. A component expanded for a nullable reference is prepared once
+   per batch, or on demand when a caller passes a raw component map. These losses use `version-downgrade-drop` and
+   the existing strict error wrapper, not the residual audit. Legacy array-valued
+   `items` is instead normalized to `prefixItems`, with `additionalItems` becoming
+   the tail `items` (schema, false or absent preserved), before the existing tuple
+   conversion handles homogeneous matching, positional loss and closed-prefix
+   caps. The preparation covers properties, items, prefix items, additional and
+   pattern-property schemas, combinators, `not` and `$defs`; 3.1/3.2 bypass it.
+   Keywords outside this list are not generally audited.
+   Reachable open tuple tails contribute an unconstrained schema: constrained
+   prefixes then become `items: {}` with the existing positional-loss channel,
+   while a tail excluded by `maxItems` does not widen prefix positions. The
+   recursive 3.0 converter normalizes boolean `items` to schema objects (`true`
+   to `{}`, standalone `false` to `{not: {}}`), does the same for a boolean schema in
+   `allOf`, `anyOf`, `oneOf`, `not`, `properties` and `$defs`, writes every `enum` with
+   unique members (an empty one as `not: {}`), and fills missing `items` only on
+   converted `type: array` nodes, including nullable arrays; a schema inlined for a
+   nullable reference gets the fill and an open tuple tail's `items` only after it
+   has been merged with its surroundings, while an `items` it declares itself
+   (including a boolean) follows the existing merge. Existing closed-prefix caps stay as they were, and an `items` schema
+   that is already present is kept apart from the tuple conversions above;
+   3.1/3.2 bypass these rules.
 5. Normalize and validate the document before custom-method relocation and QUERY
    removal. Relocate custom methods for 3.2; record unsupported method/QUERY drops
    before 3.2. Append schema-loss findings, log findings, and enforce strict mode.
@@ -157,6 +227,20 @@ URL after `history.replaceState`.
 
 ## Integration Boundaries
 
+- The bridge reads only the versioned plain-dictionary `endpoint` namespace using
+  this package's independent read-side mirror, without producer imports or runtime
+  dependencies. Producers and consumers release independently; there is no legacy
+  `validation` namespace fallback. Supported versions are explicitly `{1, 2}`.
+- V1 retains JSON-for-every-status semantics. V2 requires per-response `content`
+  mappings of media types to schema dictionaries, with optional header schemas;
+  empty content means body absence. Richer response semantics require a distinct
+  payload version because old consumers could not safely ignore them in v1.
+- Allowlisted v2 parsing deep-copies schemas, diagnoses ignored unknown fields and
+  skips malformed response entries while preserving valid siblings. Unsupported
+  versions retain observable degraded binding discovery. Neither path fabricates
+  producer response hints. Schema conversion remains a separate compiler concern.
+- Response headers use the same schema-resolution helper as response media for
+  definition hoisting and collision resolution before target-version conversion.
 - Runtime validation belongs to `azure-functions-validation`.
 - Diagnostics belong to `azure-functions-doctor`.
 - This repository owns OpenAPI metadata capture, document generation, and documentation UI helpers.
@@ -166,8 +250,31 @@ URL after `history.replaceState`.
   comparison, so duplicate declarations of the same model collapse to one
   response; incompatible response, request-body, or parameter schemas fail with
   endpoint- and source-aware diagnostics.
+- Compatible shared statuses union media and case-insensitive headers, preserving
+  explicit prose/examples and header spelling. Disjoint statuses merge; nonempty
+  media maps with no overlap, conflicting overlapping schemas, and body-less versus
+  body-bearing declarations fail with endpoint/status/media/header context.
+  Return-type inference remains lower precedence than discovered responses.
 
 ## Compatibility Policy
+
+Route-prefix configuration detection is opt-in: existing Python parameters and
+the CLI's effective default remain `/api`. `resolve_route_prefix` reads only the
+explicitly located host file (cwd by default), with a present Azure app-setting
+override taking precedence, and returns a normalized string for existing APIs.
+The Python helper deliberately retains its `RuntimeWarning` and `/api` fallback
+for unusable files. The CLI's `auto` mode locates the file beside the imported
+app module (cwd when no module file is available). A present app-setting override,
+even empty, short-circuits before any file is read. Without that override, an
+unreadable file, invalid strict JSON (including comments or trailing commas), or
+a non-string `extensions.http.routePrefix` raises a configuration error: exit `1`,
+file path and reason on stderr, no specification written, independent of
+`--fail-on-warnings`. Missing files or keys silently use `/api` in both APIs.
+Non-auto CLI generation still diagnoses file-prefix mismatches through structured
+warnings that gate `--fail-on-warnings`; unusable files produce no mismatch
+warning. Python APIs do not infer caller intent or warn about mismatches.
+Reading the file never executes application code, but the CLI imports the app module
+before it resolves the prefix, so import-time side effects precede a configuration error.
 
 - Minimum supported Python version: `3.11`
 - Supported runtime target: Azure Functions Python v2 programming model

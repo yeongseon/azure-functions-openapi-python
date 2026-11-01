@@ -2,7 +2,11 @@
 
 ## OpenAPI 3.0 vs 3.1 vs 3.2: which one should I use?
 
-Use 3.0.0 if downstream tooling in your stack still expects OpenAPI 3.0.
+Use 3.0.0 if downstream tooling in your stack still expects OpenAPI 3.0. For
+example, Azure API Management supports OpenAPI 2.0 and 3.0.x, while it
+treats OpenAPI 3.1 as import only (3.1-specific constructs are ignored or
+downgraded) and recommends 2.0 or 3.0.x for full fidelity. See
+[API formats support in Azure API Management](https://learn.microsoft.com/en-us/azure/api-management/api-management-api-import-restrictions).
 
 Use 3.1.0 if your tooling supports it and you want newer JSON Schema alignment.
 

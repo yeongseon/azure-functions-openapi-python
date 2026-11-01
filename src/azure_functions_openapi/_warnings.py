@@ -36,6 +36,7 @@ class WarningCode(StrEnum):
     SCHEMA_SUBSTITUTION = "schema-substitution"
     OPERATION_SKIPPED = "operation-skipped"
     UNRESOLVED_ROUTE = "unresolved-route"
+    ROUTE_PREFIX_MISMATCH = "route-prefix-mismatch"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
         return self.value

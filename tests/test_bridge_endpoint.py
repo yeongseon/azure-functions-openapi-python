@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from openapi_schema_validator import OAS30Validator
+from openapi_spec_validator import validate
 from pydantic import BaseModel
 import pytest
 
@@ -969,3 +971,48 @@ def test_endpoint_v1_additive_422_response_is_preserved_in_spec() -> None:
     # The 422 response schema is carried through, not dropped or flattened away.
     schema = responses["422"]["content"]["application/json"]["schema"]
     assert schema["properties"]["detail"]["type"] == "string"
+
+
+@pytest.mark.parametrize("hoist_flat_schemas", [False, True])
+def test_endpoint_v1_422_envelope_with_type_array_is_valid_openapi_3_0(
+    hoist_flat_schemas: bool,
+) -> None:
+    """The ``422`` envelope a validation producer publishes lists ``loc`` items as
+    ``type: [string, integer]``, a JSON Schema 2020-12 construct OpenAPI 3.0 cannot
+    express. The 3.0 document must still validate and keep accepting both (#858)."""
+    envelope: dict[str, Any] = {
+        "type": "object",
+        "properties": {
+            "detail": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "loc": {"type": "array", "items": {"type": ["string", "integer"]}},
+                        "msg": {"type": "string"},
+                    },
+                    "required": ["loc", "msg"],
+                },
+            }
+        },
+        "required": ["detail"],
+    }
+    payload: dict[str, Any] = {
+        "version": 1,
+        "request_body": {"type": "object", "properties": {"name": {"type": "string"}}},
+        "responses": {"422": {"schema": envelope}},
+    }
+    scan_endpoint_metadata(_make_app({"endpoint": payload}))
+
+    spec = generate_openapi_spec(
+        openapi_version="3.0.0", strict=True, hoist_flat_schemas=hoist_flat_schemas
+    )
+
+    validate(spec)
+    schema = spec["paths"]["/api/users"]["post"]["responses"]["422"]["content"]["application/json"][
+        "schema"
+    ]
+    validator = OAS30Validator({**schema, "components": spec.get("components", {})})
+    assert validator.is_valid({"detail": [{"loc": ["body", 0], "msg": "invalid"}]})
+    assert not validator.is_valid({"detail": [{"loc": [None], "msg": "invalid"}]})
+    assert collect_spec_warnings(spec) == ()

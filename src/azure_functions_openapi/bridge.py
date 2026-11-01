@@ -11,6 +11,7 @@ from azure_functions_openapi._endpoint_contract import (
     ENDPOINT_NAMESPACE,
     HANDLER_METADATA_ATTR,
     SUPPORTED_ENDPOINT_VERSIONS,
+    read_v2_responses,
 )
 from azure_functions_openapi._warnings import WarningCode
 from azure_functions_openapi.decorator import (
@@ -192,33 +193,117 @@ def _resolved_schema(schema: Any) -> Any:
     return type_to_schema(schema)
 
 
+def _media_key(media_type: Any) -> str:
+    """Media types are case-insensitive, so compare and merge on the lower-cased name."""
+    return str(media_type).lower()
+
+
 def _response_details_conflict(existing: Any, discovered: Any) -> bool:
+    return _response_conflict_location(existing, discovered) is not None
+
+
+def _header_map(detail: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
+    """A response's headers by lower-cased name, and a defect when one name has two schemas."""
+    headers = detail.get("headers")
+    if not isinstance(headers, dict):
+        return {}, None
+    by_name: dict[str, Any] = {}
+    for name, header in headers.items():
+        key = str(name).lower()
+        if key in by_name and _header_schema(by_name[key]) != _header_schema(header):
+            return by_name, f"header {key} declared with different schemas"
+        by_name[key] = header
+    return by_name, None
+
+
+def _header_schema(header: Any) -> Any:
+    return _resolved_schema(header.get("schema")) if isinstance(header, dict) else None
+
+
+def _content_schemas(detail: dict[str, Any]) -> tuple[bool, dict[str, Any], str | None]:
+    """Whether a response has a body, the schema of each media type that has one, and a defect.
+
+    The defect names a declaration that cannot be reconciled: a media entry that is not
+    a mapping, or one media type declared with different schemas under case variants.
+    """
+    schemas: dict[str, Any] = {}
+    content = detail.get("content")
+    if not isinstance(content, dict):
+        return False, schemas, None
+    for media_type, media in content.items():
+        if not isinstance(media, dict):
+            return True, schemas, f"malformed media entry {media_type!r}"
+        if "schema" in media:
+            key = _media_key(media_type)
+            resolved = _resolved_schema(media["schema"])
+            if key in schemas and schemas[key] != resolved:
+                return True, schemas, f"media {key} declared with different schemas"
+            schemas[key] = resolved
+    return bool(content), schemas, None
+
+
+def _response_conflict_location(existing: Any, discovered: Any) -> str | None:
     if not isinstance(existing, dict) or not isinstance(discovered, dict):
-        return bool(existing != discovered)
+        return "response" if existing != discovered else None
 
-    def _content_schemas(detail: dict[str, Any]) -> dict[str, Any]:
-        schemas: dict[str, Any] = {}
-        content = detail.get("content")
-        if not isinstance(content, dict):
-            return schemas
-        for media_type, media in content.items():
-            if isinstance(media, dict) and "schema" in media:
-                schemas[str(media_type)] = _resolved_schema(media["schema"])
-        return schemas
+    existing_body, existing_schemas, existing_defect = _content_schemas(existing)
+    discovered_body, discovered_schemas, discovered_defect = _content_schemas(discovered)
+    if existing_defect or discovered_defect:
+        return existing_defect or discovered_defect
+    if existing_body != discovered_body:
+        return "body-less versus body-bearing response"
+    if not existing_body and any(
+        key not in {"description", "headers", "content"} for key in existing | discovered
+    ):
+        return "response" if existing != discovered else None
+    existing_media = {_media_key(name) for name in existing.get("content") or {}}
+    discovered_media = {_media_key(name) for name in discovered.get("content") or {}}
+    if existing_media and not existing_media & discovered_media:
+        return f"media types {sorted(existing_media)} versus {sorted(discovered_media)}"
+    for media_type in sorted(set(existing_schemas) & set(discovered_schemas)):
+        if existing_schemas[media_type] != discovered_schemas[media_type]:
+            return f"media {media_type}"
+    existing_headers, existing_header_defect = _header_map(existing)
+    _, discovered_header_defect = _header_map(discovered)
+    if existing_header_defect or discovered_header_defect:
+        return existing_header_defect or discovered_header_defect
+    discovered_headers = discovered.get("headers")
+    for name, header in discovered_headers.items() if isinstance(discovered_headers, dict) else ():
+        current = existing_headers.get(str(name).lower())
+        if current is not None and _header_schema(current) != _header_schema(header):
+            return f"header {name}"
+    return None
 
-    existing_schemas = _content_schemas(existing)
-    discovered_schemas = _content_schemas(discovered)
-    if not existing_schemas or not discovered_schemas:
-        return existing != discovered
-    shared_media_types = set(existing_schemas) & set(discovered_schemas)
-    if not shared_media_types:
-        return True
-    return bool(
-        any(
-            existing_schemas[media_type] != discovered_schemas[media_type]
-            for media_type in shared_media_types
+
+def _merge_response_detail(existing: dict[str, Any], discovered: dict[str, Any]) -> dict[str, Any]:
+    """Union compatible representations, preserving explicit prose and header spelling."""
+    merged = copy.deepcopy(existing)
+    for key, value in discovered.items():
+        merged.setdefault(key, copy.deepcopy(value))
+    for field in ("content", "headers"):
+        incoming = discovered.get(field)
+        if not isinstance(incoming, dict):
+            continue
+        existing_entries = merged.get(field)
+        current = (
+            {
+                name: dict(entry) if isinstance(entry, dict) else entry
+                for name, entry in existing_entries.items()
+            }
+            if isinstance(existing_entries, dict)
+            else {}
         )
-    )
+        names = {str(name).lower(): name for name in current}
+        for name, detail in incoming.items():
+            target_name = names.get(str(name).lower(), name)
+            if target_name not in current:
+                current[target_name] = copy.deepcopy(detail)
+            elif isinstance(current[target_name], dict) and isinstance(detail, dict):
+                for key, value in detail.items():
+                    current[target_name].setdefault(key, copy.deepcopy(value))
+        if current:
+            merged[field] = current
+    return merged
 
 
 def _effective_request_schema(entry: dict[str, Any]) -> Any:
@@ -298,7 +383,9 @@ def _effective_response_details(
     return details
 
 
-def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> str | None:
+def _find_model_conflict(
+    existing: dict[str, Any], discovered: dict[str, Any], *, detailed: bool = False
+) -> str | None:
     # An inferred response (P1-A return-type inference) is the lowest-precedence
     # source, so it never conflicts with discovered validation metadata — the
     # latter simply supersedes it in :func:`_merge_into_existing`.
@@ -339,10 +426,10 @@ def _find_model_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -
         existing_responses = _effective_response_details(existing, known_statuses)
         discovered_responses = _effective_response_details(discovered, known_statuses)
         for status, detail in discovered_responses.items():
-            if status in existing_responses and _response_details_conflict(
-                existing_responses[status], detail
-            ):
-                return f"status {status}"
+            if status in existing_responses:
+                location = _response_conflict_location(existing_responses[status], detail)
+                if location is not None:
+                    return f"status {status} {location}" if detailed else f"status {status}"
 
     return None
 
@@ -352,7 +439,7 @@ def _models_conflict(existing: dict[str, Any], discovered: dict[str, Any]) -> bo
 
 
 def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -> None:
-    conflict = _find_model_conflict(existing, discovered)
+    conflict = _find_model_conflict(existing, discovered, detailed=True)
     if conflict is not None:
         method = str(discovered.get("method", existing.get("method", ""))).upper()
         route = str(discovered.get("route", existing.get("route", "")))
@@ -385,10 +472,19 @@ def _merge_into_existing(existing: dict[str, Any], discovered: dict[str, Any]) -
     discovered_response = discovered.get("response")
     if isinstance(discovered_response, dict) and discovered_response:
         existing_response = existing.get("response")
-        if not isinstance(existing_response, dict):
-            existing_response = {}
+        # One explicit declaration can be registered in several registries, so write to a
+        # detached copy of its map instead of through it.
+        existing_response = dict(existing_response) if isinstance(existing_response, dict) else {}
         for status, detail in discovered_response.items():
-            existing_response.setdefault(status, detail)
+            target_status = next(
+                (key for key in existing_response if str(key) == str(status)), status
+            )
+            if target_status not in existing_response:
+                existing_response[target_status] = copy.deepcopy(detail)
+            elif isinstance(existing_response[target_status], dict) and isinstance(detail, dict):
+                existing_response[target_status] = _merge_response_detail(
+                    existing_response[target_status], detail
+                )
         existing["response"] = existing_response
 
     existing_params = existing.get("parameters", [])
@@ -448,9 +544,8 @@ def _discovered_operation_from_endpoint(
 
     Every schema field here is already a
     JSON Schema dict authored by the producer, so no Pydantic model access is
-    needed. The producer's ``responses`` map is ``{"<status>": {"schema": ...}}``;
-    we wrap each entry into a full OpenAPI response object so the spec generator
-    can embed it verbatim.
+    needed. V1 response schemas become JSON media objects; v2 responses use
+    allowlisted content and header schema maps, with diagnostics for skipped hints.
     """
     raw_request_body = endpoint.get("request_body")
     request_body = raw_request_body if isinstance(raw_request_body, dict) else None
@@ -464,7 +559,10 @@ def _discovered_operation_from_endpoint(
 
     response: dict[int, dict[str, Any]] = {}
     raw_responses = endpoint.get("responses")
-    if isinstance(raw_responses, dict):
+    diagnostics: list[str] = []
+    if endpoint.get("version") == 2:
+        response, diagnostics = read_v2_responses(endpoint)
+    elif isinstance(raw_responses, dict):
         for status, detail in raw_responses.items():
             if not isinstance(detail, dict):
                 continue
@@ -499,6 +597,7 @@ def _discovered_operation_from_endpoint(
         ),
         "parameters": parameters,
         "response": response,
+        "_endpoint_warnings": diagnostics,
     }
 
 
@@ -557,9 +656,8 @@ def _has_endpoint_namespace(handler: Any) -> bool:
 
     Unlike :func:`_read_endpoint_hints`, this ignores version validity: it reports
     mere *presence* of ``_azure_functions_metadata["endpoint"]`` as a dict. It lets
-    the scan loop distinguish "no endpoint contract at all" from "endpoint contract
-    present but rejected (e.g. unsupported version)", so a silent downgrade to the
-    ``validation`` namespace can be surfaced to the user.
+    the scan loop distinguish absent metadata from rejected metadata, so degraded
+    binding discovery remains observable without legacy namespace fallback.
     """
     current: Any = handler
     for _ in range(_MAX_WRAPPED_DEPTH):
@@ -630,8 +728,7 @@ def scan_endpoint_metadata(
     """Scan function builders for toolkit metadata and register OpenAPI operations.
 
     Reads the convention-based ``_azure_functions_metadata`` attribute from each
-    handler, preferring the self-contained ``"endpoint"`` namespace and falling
-    back to the ``"validation"`` namespace. No import from
+    handler, reading only the self-contained ``"endpoint"`` namespace. No import from
     ``azure-functions-validation`` is required.
 
     ``route_prefix`` mirrors ``host.json`` ``extensions.http.routePrefix``
@@ -829,6 +926,8 @@ def scan_endpoint_metadata(
                 discovered = _discovered_operation_from_endpoint(
                     function_name, endpoint_hints, path, method
                 )
+                for diagnostic in discovered["_endpoint_warnings"]:
+                    reg.add_discovery_warning(function_name, diagnostic)
 
             # When methods= was unspecified and we auto-expanded to every HTTP
             # method, drop the request body from GET/HEAD/DELETE operations:
@@ -1059,8 +1158,8 @@ def scan_validation_metadata(
 ) -> None:
     """Deprecated alias for :func:`scan_endpoint_metadata` (forwards ``infer_docstring``).
 
-    The scanner now primarily consumes the namespace-neutral ``"endpoint"``
-    contract (the ``"validation"`` namespace is only a fallback), so the
+    The scanner consumes only the namespace-neutral ``"endpoint"``
+    contract (there is no ``"validation"`` namespace fallback), so the
     ``scan_validation_metadata`` name is a misnomer. Use
     :func:`scan_endpoint_metadata` instead. This alias forwards unchanged and
     will be removed in a future minor release. The opt-in ``infer_docstring``

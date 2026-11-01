@@ -130,6 +130,30 @@ azure-functions-openapi generate --app function_app:app --output openapi.json
     build-time-safe defaults, for example by guarding external initialization
     with an environment flag when generating a spec in CI.
 
+For example, guard the initialization that needs live credentials or network
+access behind a flag that only the spec-generation job sets:
+
+```python
+# function_app.py
+import os
+
+import azure.functions as func
+from azure.servicebus import ServiceBusClient
+
+app = func.FunctionApp()
+
+if not os.environ.get("SKIP_EXTERNAL_INIT"):
+    service_bus = ServiceBusClient.from_connection_string(os.environ["SERVICE_BUS_CONNECTION"])
+```
+
+```bash
+SKIP_EXTERNAL_INIT=1 azure-functions-openapi generate --app function_app:app --output openapi.json
+```
+
+If the module still raises while it is imported, the CLI exits with code `1` and
+names the `--app` target and the exception type, for example
+`Error: Could not import module from --app 'function_app:app': KeyError: 'SERVICE_BUS_CONNECTION'`.
+
 Discovery semantics:
 
 - **`--app function_app`** (module only): decorators fire, but binding discovery
@@ -161,12 +185,12 @@ Discovery semantics:
 | `--description` | - | any string | library default | OpenAPI `info.description` (Markdown / CommonMark supported) |
 | `--output` | `-o` | file path | stdout | Write generated content to file |
 | `--format` | `-f` | `json`, `yaml` | `json` | Output serialization format |
-| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version |
+| `--openapi-version` | - | `3.0`, `3.1`, `3.2` | `3.1` | OpenAPI schema version. See [version selection guidance](faq.md#openapi-30-vs-31-vs-32-which-one-should-i-use). |
 | `--pretty` | `-p` | flag | `false` | Pretty-print JSON output (adds indentation); no effect on YAML |
-| `--route-prefix` | - | any string (or `""`) | `/api` | HTTP route prefix from `host.json` `extensions.http.routePrefix`. See [Route Prefix](route-prefix.md). |
+| `--route-prefix` | - | `auto`, any literal prefix (or `""`) | `/api` | Opt into app-setting / `host.json` resolution with `auto`; the file is beside the imported app module, otherwise cwd. Write `/auto` for a literal prefix named auto. See [Route Prefix](route-prefix.md). |
 | `--fail-on-empty-paths` | - | flag | `false` | Exit with code 1 if the generated spec has no paths |
 | `--strict` | - | flag | `false` | Fail on any malformed registry entry instead of skipping it. Recommended for CI where a missing path should break the build |
-| `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, or spec-validation issues; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
+| `--fail-on-warnings` | - | flag | `false` | Exit with code 2 if the generator emits any structured warnings (version skew, namespace fallback, spec-validation issues, or a `route-prefix-mismatch`; the advisory `unresolved-route` warning never fails). Use in CI to stop a wrong-but-plausible spec from being published |
 | `--infer-auth-level` | - | flag | `false` | Infer operation security from scanned Azure Functions `auth_level` bindings. Requires `--app module:variable`; explicit operation security wins |
 | `--isolate-app` | - | flag | `false` | Compatibility flag requiring `--app module:variable`; selecting a variable now always uses a fresh, app-scoped registry, even without this flag |
 
@@ -175,8 +199,30 @@ Discovery semantics:
 | Code | Meaning |
 | --- | --- |
 | `0` | Success |
-| `1` | Runtime or generation error (including `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
-| `2` | Either invalid CLI arguments (argparse parse error) **or** structured warnings were emitted while `--fail-on-warnings` is set |
+| `1` | Configuration, runtime or generation error (including unusable `host.json` in `--route-prefix auto`, `--fail-on-empty-paths` with no paths, or an `--isolate-app` that cannot be honored) |
+| `2` | Either invalid CLI arguments (argparse parse error) **or** gating structured warnings (including `route-prefix-mismatch`) were emitted while `--fail-on-warnings` is set |
+
+### Route-prefix errors and warnings
+
+`route-prefix-mismatch` is printed as a structured JSON line on stderr when a
+file's normalized `extensions.http.routePrefix` differs from the effective
+default or explicit CLI prefix. Fix it with `--route-prefix <value>` or opt into
+`--route-prefix auto`. Equal values, `auto`, missing keys/files, and malformed or
+unreadable files do not produce this warning. The comparison ignores environment
+overrides; `auto` honors them.
+
+With `--route-prefix auto`, a present app-setting override
+`AzureFunctionsJobHost__extensions__http__routePrefix`, including an empty value,
+is used before any file is read. Without that override, an unreadable file,
+invalid JSON (including comments or trailing commas), or a non-string
+`extensions.http.routePrefix` causes exit `1`, with the file path and reason on
+stderr. This configuration error prevents output from being created or modified
+and does not depend on `--fail-on-warnings`; the app module has already been imported
+by then, so its import-time side effects have run. Fix the file or pass a literal
+`--route-prefix`. Missing files or keys still silently use `/api`. This stricter
+behavior applies only to CLI `auto`; the Python helper `resolve_route_prefix()`
+retains its `RuntimeWarning` and `/api` fallback for unusable files.
+See [Route Prefix](route-prefix.md) for precedence and file location.
 
 ## Validate generated output
 
