@@ -740,7 +740,7 @@ def _collapse_nullable_combinator(
                     result = _merge_wrapper_into_inlined(inlined, result)
             elif isinstance(sole, dict):
                 conflict = _has_null_member(sole) or any(
-                    k in result and result[k] != v
+                    k in result and not _json_schema_equal(result[k], v)
                     for k, v in sole.items()
                     if k in _STRUCTURAL_MERGE_KEYS or k == "not"
                 )
@@ -870,9 +870,9 @@ def _merge_wrapper_into_inlined(inlined: dict[str, Any], wrapper: dict[str, Any]
         if key == "nullable" or key in coupled_keys:
             continue
         if key == "allOf" and isinstance(value, list):
-            if merged.get("allOf") != value:
+            if not _json_schema_equal(merged.get("allOf"), value):
                 conjuncts.extend(value)
-        elif key not in merged or merged[key] == value:
+        elif key not in merged or _json_schema_equal(merged[key], value):
             merged[key] = value
         elif key in _ANNOTATION_KEYS or key.startswith("x-"):
             merged[key] = value
