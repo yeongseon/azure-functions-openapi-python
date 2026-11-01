@@ -15,22 +15,11 @@ body:
         Use this template for maintenance tasks, refactoring, or other chores.
 
   - type: textarea
-    id: problem
+    id: context
     attributes:
       label: Context
-      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
-      placeholder: What happened, what you expected, and why it matters now.
-    validations:
-      required: true
-
-  - type: textarea
-    id: current-state
-    attributes:
-      label: Current State
-      description: What is the current situation?
-      placeholder: |
-        - Current code/config state
-        - Any issues or limitations
+      description: What maintenance or chore this issue addresses, why now, and the current situation.
+      placeholder: What needs maintenance or cleanup, why now, and what is the current situation?
     validations:
       required: true
 
@@ -38,7 +27,7 @@ body:
     id: tasks
     attributes:
       label: Tasks
-      description: Break down the work into actionable items
+      description: State the required work explicitly as actionable items.
       placeholder: |
         - [ ] Task 1
         - [ ] Task 2
@@ -46,10 +35,13 @@ body:
       required: true
 
   - type: textarea
-    id: expected-outcome
+    id: acceptance-checklist
     attributes:
       label: Acceptance Checklist
       description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
+      placeholder: |
+        - [ ] The maintenance goal is met and a reviewer can confirm it
+        - [ ] `make check-all` passes
     validations:
       required: true
 

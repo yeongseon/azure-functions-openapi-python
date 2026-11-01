@@ -15,8 +15,13 @@
 ## Issue Authoring
 
 Follow [Repository scope](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/AGENTS.md#repository-scope)
-before creating or editing an issue and verify the saved title, body, and labels afterwards.
-This also applies when using the API or CLI.
+and the [Body authoring rules](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/AGENTS.md#body)
+in `AGENTS.md` before creating or editing an issue. Human- and agent-authored
+issues are held to the same standard. Run a post-save readability pass: verify
+the saved title, body, and labels, and confirm an unfamiliar contributor can
+answer the four authoring questions (what is broken or missing, why it matters,
+what needs to change, and how we know it is done). This also applies when using
+the API or CLI.
 
 ## Change Workflow
 1. Confirm whether the change affects runtime API, CLI, schema output, or docs only.

@@ -15,42 +15,37 @@ body:
         Thanks for taking the time to report a bug!
 
   - type: textarea
-    id: problem
+    id: context
     attributes:
       label: Context
-      description: What problem this issue addresses and why now. Include the current behaviour and the impact.
-      placeholder: What happened, what you expected, and why it matters now.
+      description: Lead with the observable problem and user impact. Distinguish verified causes from hypotheses.
+      placeholder: What is broken or unexpected, and why does it matter?
     validations:
       required: true
 
   - type: textarea
-    id: current-state
-    attributes:
-      label: Current State
-      description: Describe the current behavior and any relevant context
-      placeholder: |
-        - What is happening now?
-        - Any error messages or logs?
-    validations:
-      required: true
-
-  - type: textarea
-    id: steps-to-reproduce
+    id: reproduction
     attributes:
       label: Steps to Reproduce
-      description: How can we reproduce this issue?
+      description: Minimal reproduction steps with one representative example. Keep long traces or logs in links or collapsed details.
       placeholder: |
-        1. Install package...
-        2. Run command...
-        3. See error...
+        1. Minimal example or code:
+        2. Command or trigger:
+
+        Observed:
+        Expected:
     validations:
       required: true
 
   - type: textarea
-    id: expected-outcome
+    id: acceptance-checklist
     attributes:
       label: Acceptance Checklist
       description: Concrete, verifiable items. Use checkboxes - each one should be something a reviewer can confirm is done.
+      placeholder: |
+        - [ ] The observed behavior no longer occurs and the expected behavior holds
+        - [ ] A regression test covers the case
+        - [ ] `make check-all` passes
     validations:
       required: true
 
@@ -58,10 +53,11 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Your environment details
+      description: Environment details if relevant (Python version, OS, package version)
       placeholder: |
         - Python version:
-        - Package version:
+        - azure-functions version:
+        - azure-functions-openapi version:
         - OS:
     validations:
       required: false
@@ -70,6 +66,6 @@ body:
     id: references
     attributes:
       label: References
-      description: Any related files, links, or resources
+      description: Any related issues, PRs, documentation, or links
     validations:
       required: false
