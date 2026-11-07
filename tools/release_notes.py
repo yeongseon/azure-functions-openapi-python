@@ -153,6 +153,8 @@ class Config:
     legacy_repos: list[str] = field(default_factory=list)
     non_human_logins: set[str] = field(default_factory=set)
     protected: dict[str, list[str]] = field(default_factory=dict)
+    # Evidence-backed clarifications per tag: {tag: {"notes"|"highlights"|"upgrade": [lines]}}
+    annotations: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path = CONFIG_PATH) -> Config:
@@ -162,6 +164,10 @@ class Config:
             legacy_repos=list(data.get("legacy_repos", [])),
             non_human_logins={x.lower() for x in data.get("non_human_logins", [])},
             protected={k: list(v) for k, v in data.get("protected", {}).items()},
+            annotations={
+                tag: {block: list(lines) for block, lines in blocks.items()}
+                for tag, blocks in data.get("annotations", {}).items()
+            },
         )
 
 
@@ -499,6 +505,15 @@ def _commit_items(commits: list[Commit]) -> list[Item]:
     return items
 
 
+def apply_annotations(parsed: Parsed, blocks: dict[str, list[str]]) -> None:
+    """Append maintainer-supplied clarifications once (re-rendering never duplicates)."""
+    for name in ("notes", "highlights", "upgrade"):
+        lines = blocks.get(name, [])
+        target: list[str] = getattr(parsed, name)
+        if lines and not any(lines[0] in existing for existing in target):
+            target.extend(["", *lines] if target else lines)
+
+
 def build_notes(
     tag: str,
     original: str,
@@ -516,6 +531,7 @@ def build_notes(
     if not parsed.items and not (parsed.highlights or parsed.notes or parsed.upgrade) and commits:
         parsed.items = _commit_items(commits)
         reconstructed = f"{prev}...{tag}"
+    apply_annotations(parsed, cfg.annotations.get(tag, {}))
     pr_authors = gh.pr_authors()
     for item in parsed.items:
         attribute(item, commits, pr_authors, cfg)
