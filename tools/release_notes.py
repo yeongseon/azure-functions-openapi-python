@@ -34,7 +34,7 @@ Rules that keep the notes honest:
   old body had, or loses a ``protected`` phrase from the config.
 
 Stdlib-only on purpose, like the other release-gate tools. Network access goes
-through the ``gh`` CLI (``GH_TOKEN`` in CI) behind the small ``GitHub`` class so
+through the REST API (``GH_TOKEN`` in CI) behind the small ``GitHub`` protocol so
 the logic is unit-testable with a fake.
 """
 
@@ -43,12 +43,14 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass, field
 import difflib
+import http.client
 import json
+import os
 from pathlib import Path
 import re
-import subprocess
 import sys
 from typing import Any, Protocol
+from urllib.parse import quote
 
 MARKER = "<!-- release-notes-format: v1 -->"
 CONFIG_PATH = Path(".github/release-notes.json")
@@ -131,6 +133,10 @@ class Commit:
     message: str
     login: str | None
     login_is_bot: bool = False
+
+
+class GitHubError(RuntimeError):
+    """A GitHub API request failed."""
 
 
 class GitHub(Protocol):
@@ -572,50 +578,83 @@ def verify(original: str, new: str, tag: str, cfg: Config) -> list[str]:
 # --------------------------------------------------------------------------- gh client
 
 
-class GhCli:
-    """``gh`` CLI backed implementation of :class:`GitHub`."""
+class GitHubApi:
+    """GitHub REST API implementation of :class:`GitHub` (token from the environment).
+
+    Uses ``http.client`` and an explicit ``GH_TOKEN``/``GITHUB_TOKEN`` instead of
+    spawning the ``gh`` CLI, so the tool needs no subprocess. Locally:
+    ``GH_TOKEN=$(gh auth token) python3 -m tools.release_notes ...``.
+    """
+
+    HOST = "api.github.com"
 
     def __init__(self, repo: str) -> None:
         self.repo = repo
+        self._token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
         self._prs: dict[int, tuple[str, bool]] | None = None
         self._cache: dict[str, Any] = {}
         self._veterans: set[str] = set()
+        self._release_cache: list[dict[str, Any]] | None = None
 
-    def _run(self, *args: str, stdin: str | None = None) -> str:
-        proc = subprocess.run(  # noqa: S603
-            ["gh", *args], input=stdin, capture_output=True, text=True, check=True
-        )
-        return proc.stdout
+    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "release-notes-tool",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        body = json.dumps(payload) if payload is not None else None
+        conn = http.client.HTTPSConnection(self.HOST, timeout=30)
+        try:
+            conn.request(method, path, body=body, headers=headers)
+            response = conn.getresponse()
+            raw = response.read().decode("utf-8")
+        finally:
+            conn.close()
+        if response.status >= 400:
+            raise GitHubError(f"{method} {path} -> HTTP {response.status}")
+        return json.loads(raw) if raw else None
 
-    def _api(self, path: str) -> Any:
+    def _get(self, path: str) -> Any:
         if path not in self._cache:
-            self._cache[path] = json.loads(self._run("api", path))
+            self._cache[path] = self._request("GET", path)
         return self._cache[path]
 
+    def _pages(self, path: str) -> list[Any]:
+        joiner = "&" if "?" in path else "?"
+        items: list[Any] = []
+        page = 1
+        while True:
+            batch = self._request("GET", f"{path}{joiner}per_page=100&page={page}")
+            items.extend(batch)
+            if len(batch) < 100:
+                return items
+            page += 1
+
+    def _all_releases(self) -> list[dict[str, Any]]:
+        if self._release_cache is None:
+            self._release_cache = self._pages(f"/repos/{self.repo}/releases")
+        return self._release_cache
+
     def releases(self) -> list[tuple[str, str]]:
-        data = json.loads(
-            self._run(
-                "release",
-                "list",
-                "-R",
-                self.repo,
-                "--limit",
-                "500",
-                "--json",
-                "tagName,publishedAt,isDraft",
-            )  # fmt: skip
-        )
-        return [(r["tagName"], r["publishedAt"]) for r in data if not r["isDraft"]]
+        return [
+            (r["tag_name"], r["published_at"] or r["created_at"])
+            for r in self._all_releases()
+            if not r["draft"]
+        ]
 
     def release_body(self, tag: str) -> str:
-        data = json.loads(self._run("release", "view", tag, "-R", self.repo, "--json", "body"))
-        return str(data["body"] or "")
+        for release in self._all_releases():
+            if release["tag_name"] == tag:
+                return str(release["body"] or "")
+        raise GitHubError(f"no release for {tag}")
 
     def compare(self, base: str, head: str) -> list[Commit]:
         commits: list[Commit] = []
         page = 1
         while True:
-            data = self._api(f"repos/{self.repo}/compare/{base}...{head}?per_page=100&page={page}")
+            data = self._get(f"/repos/{self.repo}/compare/{base}...{head}?per_page=100&page={page}")
             batch = data.get("commits", [])
             for raw in batch:
                 msg = raw["commit"]["message"]
@@ -635,24 +674,10 @@ class GhCli:
 
     def pr_authors(self) -> dict[int, tuple[str, bool]]:
         if self._prs is None:
-            data = json.loads(
-                self._run(
-                    "pr",
-                    "list",
-                    "-R",
-                    self.repo,
-                    "--state",
-                    "merged",
-                    "--limit",
-                    "5000",
-                    "--json",
-                    "number,author",
-                )  # fmt: skip
-            )
             self._prs = {
-                p["number"]: (p["author"]["login"], bool(p["author"].get("is_bot")))
-                for p in data
-                if p.get("author")
+                p["number"]: (p["user"]["login"], p["user"].get("type") == "Bot")
+                for p in self._pages(f"/repos/{self.repo}/pulls?state=closed")
+                if p.get("merged_at") and p.get("user")
             }
         return self._prs
 
@@ -664,26 +689,26 @@ class GhCli:
         if login in self._veterans:
             return True  # an earlier contribution is also earlier than any later tag
         try:
-            ref = self._api(f"repos/{self.repo}/commits/{before_tag}")
+            ref = self._get(f"/repos/{self.repo}/commits/{before_tag}")
             before = ref["commit"]["committer"]["date"]
-            commits = self._api(
-                f"repos/{self.repo}/commits?author={login}&until={before}&per_page=1"
-            )
-            found = bool(commits)
-            if not found:
-                query = f"repo:{self.repo} is:pr is:merged author:{login} merged:<{before}"
-                result = json.loads(
-                    self._run("api", "-X", "GET", "search/issues", "-f", f"q={query}")
+            found = bool(
+                self._get(
+                    f"/repos/{self.repo}/commits?author={quote(login)}&until={before}&per_page=1"
                 )
+            )
+            if not found:
+                query = quote(f"repo:{self.repo} is:pr is:merged author:{login} merged:<{before}")
+                result = self._get(f"/search/issues?q={query}")
                 found = int(result.get("total_count", 0)) > 0
-        except (subprocess.CalledProcessError, KeyError, ValueError):
+        except (GitHubError, KeyError, ValueError, OSError):
             return True
         if found:
             self._veterans.add(login)
         return found
 
     def set_body(self, tag: str, body: str) -> None:
-        self._run("release", "edit", tag, "-R", self.repo, "--notes-file", "-", stdin=body)
+        release = self._request("GET", f"/repos/{self.repo}/releases/tags/{quote(tag)}")
+        self._request("PATCH", f"/repos/{self.repo}/releases/{release['id']}", {"body": body})
 
 
 # --------------------------------------------------------------------------- CLI
@@ -775,7 +800,7 @@ def main(argv: list[str] | None = None) -> int:
     p_apply.add_argument("--backup", help="dir to save the previous body before editing")
     args = parser.parse_args(argv)
     cfg = Config.load(Path(args.config))
-    gh = GhCli(cfg.repo)
+    gh = GitHubApi(cfg.repo)
     handler = {"preview": cmd_preview, "render": cmd_render, "apply": cmd_apply}[args.command]
     return handler(args, cfg, gh)
 

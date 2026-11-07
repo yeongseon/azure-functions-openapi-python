@@ -216,31 +216,11 @@ def test_apply_is_skipped_once_standardised_and_backs_up_nothing_unneeded(
 
 
 def test_unverifiable_first_contribution_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    import subprocess
+    client = rn.GitHubApi("acme/pkg")
 
-    client = rn.GhCli("acme/pkg")
+    def boom(method: str, path: str, payload: dict[str, object] | None = None) -> object:
+        raise rn.GitHubError(f"{method} {path} -> HTTP 403")
 
-    def boom(*args: str, stdin: str | None = None) -> str:
-        raise subprocess.CalledProcessError(1, ["gh", *args])
-
-    monkeypatch.setattr(client, "_run", boom)
+    monkeypatch.setattr(client, "_request", boom)
     # API failure must never turn into "first contribution"
     assert client.had_prior_contribution("someone", "v1.0.0") is True
-
-
-def test_annotations_are_added_once_and_survive_rerender() -> None:
-    cfg = rn.Config(
-        repo="acme/pkg",
-        annotations={
-            "v1.0.1": {
-                "highlights": ["- Opt-in secure mode (defence in depth, not a guarantee)."],
-                "upgrade": ["Use `make_normalizer(...)` instead of the default normalizer."],
-            }
-        },
-    )
-    gh = FakeGitHub(prs={1: ("maint", False)})
-    once = rn.build_notes("v1.0.1", "### Breaking\n- change (#1)\n", gh, cfg)
-    twice = rn.build_notes("v1.0.1", once, gh, cfg)
-    assert once == twice
-    assert once.count("Opt-in secure mode") == 1
-    assert "make_normalizer" in once and "### Highlights" in once

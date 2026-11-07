@@ -146,6 +146,7 @@ published) are listed under `protected` in `.github/release-notes.json`; the too
 dropping them.
 
 ```bash
+# Needs a token: export GH_TOKEN=$(gh auth token)
 # Preview without changing anything
 python3 -m tools.release_notes apply v0.31.0 --dry-run
 # Re-render an already standardized release (it is skipped otherwise)
