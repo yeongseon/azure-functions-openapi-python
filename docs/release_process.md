@@ -13,6 +13,7 @@ gated step.
 | Component | Owns |
 |---|---|
 | `release-please.yml` | version calculation, `CHANGELOG.md`, the Release PR, the tag, the GitHub Release |
+| `release-please.yml` → `standardize-release-notes` | presentation of the GitHub Release body only (layout + credits, see [Release notes layout](#release-notes-layout-and-credits)) |
 | `e2e-azure.yml` | real-Azure certification of one exact commit |
 | `publish-pypi.yml` | the only path that uploads to PyPI (automatic on `v*` tag push, with `workflow_dispatch` as its recovery path — see [Recovery](#recovery)) |
 
@@ -110,6 +111,51 @@ reuse a tag to make a changed commit appear to be the same release candidate.
 
 ---
 
+
+## Release notes layout and credits
+
+After Release Please creates the GitHub Release, the `standardize-release-notes` job rewrites
+**only the Release body** with `tools/release_notes.py`. It does not create or move tags, does not
+edit `CHANGELOG.md`, and runs separately from `publish-pypi.yml`, so it cannot block a release.
+The items are the ones Release Please already generated, so the Release and `CHANGELOG.md` list
+the same changes. The tool refuses to write if a PR or commit reference would be dropped.
+
+Layout (empty sections are omitted):
+
+1. `## vX.Y.Z (YYYY-MM-DD)`
+2. Notes: status annotations such as "not published to PyPI"
+3. Highlights
+4. Breaking Changes, followed by the upgrade steps
+5. Features, Bug Fixes, Performance, Reverts
+6. New Contributors
+7. A collapsed block for documentation, maintenance and other changes (historical releases only,
+   because Release Please hides those types)
+8. `**Full Changelog**` compare link
+
+Credit rules:
+
+- `by @user` is taken from the merged PR author, the squash-commit author, or a `Co-authored-by`
+  trailer with a GitHub `<id>+<login>@users.noreply.github.com` address. Nothing is guessed.
+- Bots (`[bot]`, `app/…`) and the logins in `non_human_logins` of `.github/release-notes.json`
+  are never credited.
+- A login appears under **New Contributors** only when GitHub shows no earlier commit or merged
+  PR by that login before the previous release.
+
+Release-specific statements that must never be lost (for example a release that was not
+published) are listed under `protected` in `.github/release-notes.json`; the tool fails instead of
+dropping them.
+
+```bash
+# Needs a token: export GH_TOKEN=$(gh auth token)
+# Preview without changing anything
+python3 -m tools.release_notes apply v0.31.0 --dry-run
+# Re-render an already standardized release (it is skipped otherwise)
+python3 -m tools.release_notes apply v0.31.0 --force --backup ./release-backup
+```
+
+Editing a historical Release never republishes a package and never touches the tag.
+
+---
 
 ## What is no longer used
 
