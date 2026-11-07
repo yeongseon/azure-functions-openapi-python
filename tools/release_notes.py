@@ -118,6 +118,7 @@ class Parsed:
     notes: list[str] = field(default_factory=list)
     highlights: list[str] = field(default_factory=list)
     upgrade: list[str] = field(default_factory=list)
+    upgrade_title: str = ""
     items: list[Item] = field(default_factory=list)
     compare_prev: str | None = None
     legacy_new_contributors: bool = False
@@ -249,6 +250,8 @@ def parse_body(body: str) -> Parsed:
     last: Item | None = None
     for line in body.splitlines():
         stripped = line.rstrip()
+        if re.fullmatch(r"(-{3,}|\*{3,}|_{3,})", stripped.strip()):
+            continue
         if stripped.strip().startswith(("<details", "</details")):
             mode, section, last = "items", None, None
             continue
@@ -275,6 +278,8 @@ def parse_body(body: str) -> Parsed:
                 last = None
                 continue
             mode, section = _classify_heading(text)
+            if mode == "upgrade" and not parsed.upgrade_title:
+                parsed.upgrade_title = text
             verbatim_level = level
             last = None
             continue
@@ -426,7 +431,8 @@ def render(
             out += [f"### {SECTION_EMOJI[name]}{name}", ""]
             out += [i.line() for i in section_items]
             if parsed.upgrade:
-                out += ["", *map(canon, parsed.upgrade)]
+                title = parsed.upgrade_title or "Upgrade notes"
+                out += ["", f"#### {title}", "", *map(canon, parsed.upgrade)]
             out.append("")
         elif section_items:
             out += [f"### {name}", "", *(i.line() for i in section_items), ""]
@@ -557,6 +563,7 @@ class GhCli:
         self.repo = repo
         self._prs: dict[int, tuple[str, bool]] | None = None
         self._cache: dict[str, Any] = {}
+        self._veterans: set[str] = set()
 
     def _run(self, *args: str, stdin: str | None = None) -> str:
         proc = subprocess.run(  # noqa: S603
@@ -634,14 +641,30 @@ class GhCli:
         return self._prs
 
     def had_prior_contribution(self, login: str, before_tag: str) -> bool:
-        ref = self._api(f"repos/{self.repo}/commits/{before_tag}")
-        before = ref["commit"]["committer"]["date"]
-        commits = self._api(f"repos/{self.repo}/commits?author={login}&until={before}&per_page=1")
-        if commits:
+        """True when GitHub shows an earlier contribution, or when it cannot tell.
+
+        Failing closed means an unverifiable login is never celebrated as new.
+        """
+        if login in self._veterans:
+            return True  # an earlier contribution is also earlier than any later tag
+        try:
+            ref = self._api(f"repos/{self.repo}/commits/{before_tag}")
+            before = ref["commit"]["committer"]["date"]
+            commits = self._api(
+                f"repos/{self.repo}/commits?author={login}&until={before}&per_page=1"
+            )
+            found = bool(commits)
+            if not found:
+                query = f"repo:{self.repo} is:pr is:merged author:{login} merged:<{before}"
+                result = json.loads(
+                    self._run("api", "-X", "GET", "search/issues", "-f", f"q={query}")
+                )
+                found = int(result.get("total_count", 0)) > 0
+        except (subprocess.CalledProcessError, KeyError, ValueError):
             return True
-        query = f"repo:{self.repo} is:pr is:merged author:{login} merged:<{before}"
-        found = json.loads(self._run("api", "-X", "GET", "search/issues", "-f", f"q={query}"))
-        return int(found.get("total_count", 0)) > 0
+        if found:
+            self._veterans.add(login)
+        return found
 
     def set_body(self, tag: str, body: str) -> None:
         self._run("release", "edit", tag, "-R", self.repo, "--notes-file", "-", stdin=body)

@@ -97,6 +97,7 @@ def test_breaking_change_keeps_upgrade_guidance() -> None:
     assert "### \u26a0\ufe0f Breaking Changes" in body
     assert body.index("Drop v1 support") < body.index("rename `foo` to `bar`")
     assert body.index("rename `foo`") < body.index("### Features")
+    assert "#### Upgrade" in body  # keeps the original heading so existing anchors still resolve
 
 
 def test_first_time_contributor_only_when_verified() -> None:
@@ -212,3 +213,16 @@ def test_apply_is_skipped_once_standardised_and_backs_up_nothing_unneeded(
     assert rn.cmd_apply(args, CFG, gh) == 0
     assert gh.bodies["v1.0.1"] == first
     assert "already standardized" in capsys.readouterr().out
+
+
+def test_unverifiable_first_contribution_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    client = rn.GhCli("acme/pkg")
+
+    def boom(*args: str, stdin: str | None = None) -> str:
+        raise subprocess.CalledProcessError(1, ["gh", *args])
+
+    monkeypatch.setattr(client, "_run", boom)
+    # API failure must never turn into "first contribution"
+    assert client.had_prior_contribution("someone", "v1.0.0") is True
