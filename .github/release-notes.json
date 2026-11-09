@@ -1,0 +1,10 @@
+{
+  "repo": "yeongseon/azure-functions-openapi-python",
+  "owner_login": "yeongseon",
+  "legacy_repos": ["yeongseon/azure-functions-openapi"],
+  "non_human_logins": ["sisyphus-dev-ai"],
+  "protected": {
+    "v0.12.0": ["Version `0.11.0` was published to PyPI"],
+    "v0.15.0": ["Drop Pydantic v1 support"]
+  }
+}
