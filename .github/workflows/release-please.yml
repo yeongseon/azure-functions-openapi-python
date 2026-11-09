@@ -67,7 +67,7 @@ jobs:
 
   # Presentation layer only. Rewrites the body of the GitHub Release that Release
   # Please just created into the standard layout (docs/release_process.md) and adds
-  # verified "by @user" credit. It never creates or moves tags, never edits
+  # verified external-contributor credit (not routine owner bylines). It never moves tags or edits
   # CHANGELOG.md and runs independently of publish-pypi.yml, so a failure here can
   # not block or alter a release. tools/release_notes.py refuses to write if the
   # new body would drop a PR/commit reference the Release Please body contained.
