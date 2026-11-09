@@ -70,6 +70,40 @@ it does, or no Release PR will appear.
 
 ---
 
+## Release cadence
+
+The maintainer, not the presence of an open Release Please PR, decides when
+to ship. For a primarily solo-maintained library, **the default is to batch
+routine user-facing changes into no more than one planned release per week**.
+There is no required weekly release: skip an empty week or postpone a change
+that is not ready. Merge ordinary `feat` / `fix` PRs to `main` as they pass
+review; Release Please keeps the single release candidate up to date until
+the maintainer explicitly chooses to merge it.
+
+**Exceptions:** release sooner to fix a genuinely urgent security issue, a
+production-breaking regression, or a failed release candidate that needs
+a fix-forward patch. Explain the affected users and the exceptional timing
+in the Release PR. Do not delay an urgent fix solely to obey the default
+weekly interval.
+
+Before merging a routine Release PR, the maintainer checks:
+
+- What materially changed for package users, and whether multiple ready
+  changes can be shipped together.
+- The latest **actually published PyPI version** and any failed or unpublished
+  GitHub Release candidate; GitHub Release creation is not proof of a PyPI upload.
+- Breaking changes, upgrade instructions, and whether release-specific
+  cookbook/Azure certification gates are expected to pass.
+- Whether a known near-term correction should be included to avoid an
+  unnecessary follow-up patch.
+
+**Do not** auto-merge Release PRs, create time-triggered tags, bypass
+tag-specific verification, or move already-created tags. Release Please still
+owns all version numbers, tags, Release PRs and `CHANGELOG.md`. This is a
+small, human-review timing rule, not a new automated release system.
+
+---
+
 ## Step 3: The release workflow runs
 
 The tag starts `publish-pypi.yml`. Everything else is automatic:

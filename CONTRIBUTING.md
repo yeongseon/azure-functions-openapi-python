@@ -270,7 +270,15 @@ tag that starts the publish workflow. Publishing happens only after the release
 verification requirements have been satisfied. Contributors never need to bump a
 version or tag anything in an ordinary pull request.
 
-See `AGENTS.md` for the maintainer-only release procedure.
+For this primarily solo-maintained project, routine changes are batched into
+at most one planned release per week **when meaningful changes are ready**.
+A quiet week does not require a release. The maintainer may ship urgent
+security, production-regression, or failed-candidate recovery fixes sooner,
+with the exceptional reason recorded in the Release PR. The open Release PR
+is not automatically merged simply because it exists.
+
+See [the release cadence and recovery procedure](docs/release_process.md#release-cadence)
+and `AGENTS.md` for maintainer-only decisions.
 
 ## Code of Conduct
 

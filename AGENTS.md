@@ -251,6 +251,29 @@ Three tools, one job each. Nothing else participates.
 - **`docs:`, `ci:`, `chore:`, `test:`, `build:`, `style:` and `refactor:` do not cut a release.** They are marked `"hidden": true` in `release-please-config.json`, which keeps them out of `CHANGELOG.md`; when a batch of commits contains nothing else, the release notes render empty and Release Please logs `No user facing commits found since <sha> - skipping` and opens no Release PR. Merging such a PR and seeing no version change is the intended outcome, not a broken pipeline. A breaking change still releases whatever its type is.
 - There are **no release Makefile targets**. `make release-*`, `make changelog`, `make tag-release`, and `make publish-pypi` were deleted; a local `hatch publish` would have skipped every gate below.
 
+### Release timing for a solo-maintained library
+
+- **Default cadence: at most one routine release per week**, and only when a
+  meaningful user-facing change is ready. A quiet week has no release. Several
+  merged `feat:` / `fix:` PRs may accumulate in the same Release Please PR;
+  the existence of that PR is **not** permission to publish immediately.
+- The maintainer reviews and explicitly merges the Release PR. Do not enable
+  unconditional auto-merge or add a clock-triggered workflow that cuts tags.
+  Releases are **not** produced for the sake of a calendar date.
+- **Out-of-cycle release** is allowed for a material security issue, a
+  production-breaking regression, or a necessary fix-forward of a failed
+  release candidate. State the user impact and reason for urgency in the
+  Release PR before merging; do not hold such a fix for a weekly window.
+- Before routine release: review the actual latest **PyPI distribution**
+  independently of GitHub Releases, user-facing changes, compatibility and
+  migration notes, expected Azure/cookbook certification, and known pending
+  fixes. Do not release merely to advance the version or publish tooling-only
+  changes.
+- Keep the current Release Please / guarded PyPI workflow and package history
+  immutable. An unpublished release candidate is handled through the
+  documented recovery or fix-forward path, not by moving a tag or bypassing
+  checks. See [release process](docs/release_process.md#release-cadence).
+
 ### Flow
 
 ```
