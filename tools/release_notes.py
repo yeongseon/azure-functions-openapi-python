@@ -418,7 +418,8 @@ def new_contributors(
         if commit.login and _is_external_human(commit.login, commit.login_is_bot, cfg):
             people.append(commit.login)
         people += [
-            login for login in coauthors(commit.message, cfg)
+            login
+            for login in coauthors(commit.message, cfg)
             if _is_external_human(login, False, cfg)
         ]
         for login in people:
