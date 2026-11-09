@@ -9,6 +9,7 @@ from tools import release_notes as rn
 
 CFG = rn.Config(
     repo="acme/pkg",
+    owner_login="maint",
     legacy_repos=["acme/old-pkg"],
     non_human_logins={"agent-bot-user"},
     protected={"v1.0.0": ["Not published to PyPI"]},
@@ -62,12 +63,13 @@ RP_BODY = """## [1.0.1](https://github.com/acme/pkg/compare/v1.0.0...v1.0.1) (20
 """
 
 
-def test_patch_release_credits_pr_author_and_has_no_contributor_section() -> None:
+def test_patch_release_omits_owner_byline_and_contributor_section() -> None:
     gh = FakeGitHub(prs={12: ("maint", False)})
     body = rn.build_notes("v1.0.1", RP_BODY, gh, CFG)
     assert body.startswith("## v1.0.1 (2026-02-02)\n")
     assert "### Bug Fixes" in body
-    assert "- **cli:** reject empty suffix (#12) by @maint" in body
+    assert "- **cli:** reject empty suffix (#12)" in body
+    assert "by @maint" not in body
     assert "New Contributors" not in body
     assert "**Full Changelog**: https://github.com/acme/pkg/compare/v1.0.0...v1.0.1" in body
     assert body.rstrip().endswith(rn.MARKER)
@@ -118,6 +120,42 @@ def test_first_time_contributor_only_when_verified() -> None:
     assert "dependabot" not in body and "agent-bot-user" not in body
 
 
+def test_external_pr_author_is_credited_when_owner_squashes_pr() -> None:
+    gh = FakeGitHub(
+        commits={
+            ("v1.0.0", "v1.0.1"): [
+                commit("e", "feat: add integration (#42)", "maint"),
+            ]
+        },
+        prs={42: ("external-dev", False)},
+        veterans=set(),
+    )
+    body = rn.build_notes(
+        "v1.0.1", "### Features\n- add integration (#42)\n", gh, CFG
+    )
+    assert "(#42) by @external-dev" in body
+    assert "@external-dev made their first contribution in #42" in body
+    assert "by @maint" not in body
+    assert "@maint made their first contribution" not in body
+
+
+def test_owner_never_appears_as_new_contributor_even_without_history() -> None:
+    gh = FakeGitHub(
+        commits={
+            ("v1.0.0", "v1.0.1"): [
+                commit("e", "fix: correct issue (#42)", "maint"),
+            ]
+        },
+        prs={42: ("maint", False)},
+        veterans=set(),
+    )
+    body = rn.build_notes(
+        "v1.0.1", "### Bug Fixes\n- correct issue (#42)\n", gh, CFG
+    )
+    assert "New Contributors" not in body
+    assert "by @maint" not in body
+
+
 def test_bots_and_non_human_accounts_are_never_credited() -> None:
     gh = FakeGitHub(prs={1: ("app/dependabot", True), 2: ("agent-bot-user", False)})
     body = rn.build_notes("v1.0.1", "- bump a (#1)\n- tweak b (#2)\n", gh, CFG)
@@ -142,7 +180,8 @@ def test_coauthor_credit_requires_noreply_address() -> None:
         veterans={"maint", "realperson"},
     )
     body = rn.build_notes("v1.0.1", "### Bug Fixes\n- z (#20)\n", gh, CFG)
-    assert "(#20) by @maint, @realperson" in body
+    assert "(#20) by @realperson" in body
+    assert "by @maint" not in body
     assert "someone" not in body and "agent-bot-user" not in body
 
 
@@ -159,7 +198,8 @@ def test_compare_only_release_is_reconstructed_and_labelled() -> None:
     original = "<!-- generated -->\n\n**Full Changelog**: https://github.com/acme/old-pkg/compare/v1.0.0...v1.0.1\n"
     body = rn.build_notes("v1.0.1", original, gh, CFG)
     assert "reconstructed from the commits in `v1.0.0...v1.0.1`" in body
-    assert "**core:** tolerate empty input (#30) by @maint" in body
+    assert "**core:** tolerate empty input (#30)" in body
+    assert "by @maint" not in body
     assert "release 1.0.1" not in body
 
 
@@ -179,7 +219,8 @@ def test_github_generated_notes_are_normalised_and_legacy_links_rewritten() -> N
         "**Full Changelog**: https://github.com/acme/old-pkg/compare/v0.9.0...v1.0.0\n"
     )
     body = rn.build_notes("v1.0.0", original, FakeGitHub(prs={7: ("maint", False)}), CFG)
-    assert "- **x:** add thing (#7) by @maint" in body
+    assert "- **x:** add thing (#7)" in body
+    assert "by @maint" not in body
     assert "old-pkg" not in body
     assert "@someone" not in body  # unverified claim is dropped, not repeated
 
