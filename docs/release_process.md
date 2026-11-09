@@ -120,7 +120,8 @@ edit `CHANGELOG.md`, and runs separately from `publish-pypi.yml`, so it cannot b
 The items are the ones Release Please already generated, so the Release and `CHANGELOG.md` list
 the same changes. The tool refuses to write if a PR or commit reference would be dropped.
 
-Layout (empty sections are omitted):
+Layout (empty sections are omitted; short owner-only patches can contain only a
+single fix entry and the Full Changelog link):
 
 1. `## vX.Y.Z (YYYY-MM-DD)`
 2. Notes: status annotations such as "not published to PyPI"
@@ -134,12 +135,17 @@ Layout (empty sections are omitted):
 
 Credit rules:
 
-- `by @user` is taken from the merged PR author, the squash-commit author, or a `Co-authored-by`
-  trailer with a GitHub `<id>+<login>@users.noreply.github.com` address. Nothing is guessed.
+- The project is primarily solo-maintained. For changes authored or co-authored by
+  the repository owner (`owner_login` in `.github/release-notes.json`, currently `@yeongseon`),
+  **do not append `by @yeongseon`**. PR/commit references remain visible.
+- External human contributors are credited with `by @username` after verifying the merged
+  PR author, commit author, or a `Co-authored-by` trailer with a GitHub
+  `<id>+<login>@users.noreply.github.com` address. A maintainer squash-merge does not
+  erase attribution to an external PR author. Nothing is guessed.
 - Bots (`[bot]`, `app/…`) and the logins in `non_human_logins` of `.github/release-notes.json`
   are never credited.
-- A login appears under **New Contributors** only when GitHub shows no earlier commit or merged
-  PR by that login before the previous release.
+- **New Contributors** appears only for a verified first merged contribution by an
+  **external human**. It is omitted entirely in owner-only releases.
 
 Release-specific statements that must never be lost (for example a release that was not
 published) are listed under `protected` in `.github/release-notes.json`; the tool fails instead of
