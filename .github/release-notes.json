@@ -1,5 +1,6 @@
 {
   "repo": "yeongseon/azure-functions-openapi-python",
+  "owner_login": "yeongseon",
   "legacy_repos": ["yeongseon/azure-functions-openapi"],
   "non_human_logins": ["sisyphus-dev-ai"],
   "protected": {
