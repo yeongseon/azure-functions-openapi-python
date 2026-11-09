@@ -389,7 +389,10 @@ def attribute(
 
 
 def new_contributors(
-    commits: list[Commit], gh: GitHub, prev_tag: str | None, cfg: Config,
+    commits: list[Commit],
+    gh: GitHub,
+    prev_tag: str | None,
+    cfg: Config,
     pr_authors: dict[int, tuple[str, bool]] | None = None,
 ) -> list[tuple[str, str]]:
     """External humans whose first merged contribution is in this range.
