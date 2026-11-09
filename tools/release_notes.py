@@ -24,11 +24,11 @@ Rules that keep the notes honest:
   (Release Please, GitHub-generated or hand-written). Only a release whose body
   is compare-link-only is reconstructed from the commits in its compare range,
   and it says so.
-* ``by @user`` comes from the merged PR author / commit author reported by the
+* ``by @user`` is reserved for external human contributors, drawn from the
   GitHub API, or from a ``Co-authored-by`` trailer whose address is a GitHub
   ``<id>+<login>@users.noreply.github.com`` address. Bots and logins listed in
   ``non_human_logins`` are never credited; nothing is guessed.
-* "New Contributors" lists a human only when GitHub shows no earlier commit or
+* "New Contributors" excludes the owner and lists an external human only when GitHub shows no earlier commit or
   merged PR by that login before the previous release.
 * ``apply`` refuses to write when the new body drops a PR/commit reference the
   old body had, or loses a ``protected`` phrase from the config.
@@ -156,6 +156,7 @@ class GitHub(Protocol):
 @dataclass
 class Config:
     repo: str
+    owner_login: str | None = None
     legacy_repos: list[str] = field(default_factory=list)
     non_human_logins: set[str] = field(default_factory=set)
     protected: dict[str, list[str]] = field(default_factory=dict)
@@ -167,6 +168,7 @@ class Config:
         data = json.loads(path.read_text(encoding="utf-8"))
         return cls(
             repo=data["repo"],
+            owner_login=data.get("owner_login"),
             legacy_repos=list(data.get("legacy_repos", [])),
             non_human_logins={x.lower() for x in data.get("non_human_logins", [])},
             protected={k: list(v) for k, v in data.get("protected", {}).items()},
@@ -330,6 +332,13 @@ def _is_human(login: str | None, is_bot: bool, cfg: Config) -> bool:
     return not (low.endswith("[bot]") or low.startswith("app/") or low in cfg.non_human_logins)
 
 
+def _is_external_human(login: str | None, is_bot: bool, cfg: Config) -> bool:
+    """Credit verified humans other than this repository's owner."""
+    return _is_human(login, is_bot, cfg) and (
+        cfg.owner_login is None or login.lower() != cfg.owner_login.lower()
+    )
+
+
 def coauthors(message: str, cfg: Config) -> list[str]:
     """Logins from ``Co-authored-by`` trailers with a GitHub noreply address."""
     found: list[str] = []
@@ -354,7 +363,7 @@ def attribute(
     people: list[str] = []
 
     def add(login: str | None, is_bot: bool = False) -> None:
-        if login and _is_human(login, is_bot, cfg) and login not in people:
+        if login and _is_external_human(login, is_bot, cfg) and login not in people:
             people.append(login)
 
     for pr in item.prs:
@@ -378,9 +387,10 @@ def attribute(
 
 
 def new_contributors(
-    commits: list[Commit], gh: GitHub, prev_tag: str | None, cfg: Config
+    commits: list[Commit], gh: GitHub, prev_tag: str | None, cfg: Config,
+    pr_authors: dict[int, tuple[str, bool]] | None = None,
 ) -> list[tuple[str, str]]:
-    """Humans whose first commit in this range is also their first ever.
+    """External humans whose first merged contribution is in this range.
 
     ``commits`` come from the compare API in chronological order, so the first
     commit seen per login is the earliest. A login is celebrated only when GitHub
@@ -395,8 +405,17 @@ def new_contributors(
             continue
         pr = re.search(r"\(#(\d+)\)\s*$", commit.subject)
         ref = f"#{pr[1]}" if pr else commit.sha[:7]
-        people = [commit.login] if _is_human(commit.login, commit.login_is_bot, cfg) else []
-        people += coauthors(commit.message, cfg)
+        people: list[str] = []
+        if pr and pr_authors:
+            known = pr_authors.get(int(pr[1]))
+            if known and _is_external_human(known[0], known[1], cfg):
+                people.append(known[0])
+        if commit.login and _is_external_human(commit.login, commit.login_is_bot, cfg):
+            people.append(commit.login)
+        people += [
+            login for login in coauthors(commit.message, cfg)
+            if _is_external_human(login, False, cfg)
+        ]
         for login in people:
             if login:
                 first_seen.setdefault(login, ref)
@@ -541,7 +560,7 @@ def build_notes(
     pr_authors = gh.pr_authors()
     for item in parsed.items:
         attribute(item, commits, pr_authors, cfg)
-    firsts = new_contributors(commits, gh, prev, cfg)
+    firsts = new_contributors(commits, gh, prev, cfg, pr_authors)
     body = render(tag, parsed, cfg, prev, firsts, reconstructed)
     problems = verify(original, body, tag, cfg)
     if problems:
