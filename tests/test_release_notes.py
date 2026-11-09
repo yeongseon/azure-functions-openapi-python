@@ -130,9 +130,7 @@ def test_external_pr_author_is_credited_when_owner_squashes_pr() -> None:
         prs={42: ("external-dev", False)},
         veterans=set(),
     )
-    body = rn.build_notes(
-        "v1.0.1", "### Features\n- add integration (#42)\n", gh, CFG
-    )
+    body = rn.build_notes("v1.0.1", "### Features\n- add integration (#42)\n", gh, CFG)
     assert "(#42) by @external-dev" in body
     assert "@external-dev made their first contribution in #42" in body
     assert "by @maint" not in body
@@ -149,9 +147,7 @@ def test_owner_never_appears_as_new_contributor_even_without_history() -> None:
         prs={42: ("maint", False)},
         veterans=set(),
     )
-    body = rn.build_notes(
-        "v1.0.1", "### Bug Fixes\n- correct issue (#42)\n", gh, CFG
-    )
+    body = rn.build_notes("v1.0.1", "### Bug Fixes\n- correct issue (#42)\n", gh, CFG)
     assert "New Contributors" not in body
     assert "by @maint" not in body
 
