@@ -334,8 +334,10 @@ def _is_human(login: str | None, is_bot: bool, cfg: Config) -> bool:
 
 def _is_external_human(login: str | None, is_bot: bool, cfg: Config) -> bool:
     """Credit verified humans other than this repository's owner."""
-    return _is_human(login, is_bot, cfg) and (
-        cfg.owner_login is None or login.lower() != cfg.owner_login.lower()
+    return (
+        login is not None
+        and _is_human(login, is_bot, cfg)
+        and (cfg.owner_login is None or login.lower() != cfg.owner_login.lower())
     )
 
 
