@@ -1,10 +1,72 @@
 {
   "repo": "yeongseon/azure-functions-openapi-python",
   "owner_login": "yeongseon",
-  "legacy_repos": ["yeongseon/azure-functions-openapi"],
-  "non_human_logins": ["sisyphus-dev-ai"],
+  "legacy_repos": [
+    "yeongseon/azure-functions-openapi"
+  ],
+  "non_human_logins": [
+    "sisyphus-dev-ai"
+  ],
   "protected": {
-    "v0.12.0": ["Version `0.11.0` was published to PyPI"],
-    "v0.15.0": ["Drop Pydantic v1 support"]
+    "v0.12.0": [
+      "Version `0.11.0` was published to PyPI"
+    ],
+    "v0.15.0": [
+      "Drop Pydantic v1 support"
+    ],
+    "v0.17.2": [
+      "was never published to PyPI"
+    ]
+  },
+  "annotations": {
+    "v0.4.0": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.4.0` was uploaded to PyPI on 2025-05-13 from the commit now tagged `v0.4.0` (`fb95c77`), whose package source matches the PyPI files exactly. The tag itself was created later, on 2025-06-22. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.5.0": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.5.0` was uploaded to PyPI on 2025-09-04 from the existing `v0.5.0` tag (`a175f91`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.5.1": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.5.1` was uploaded to PyPI on 2026-01-21 from the existing `v0.5.1` tag (`887d0b9`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.6.0": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.6.0` was uploaded to PyPI on 2026-01-21 from the existing `v0.6.0` tag (`5e2eb64`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.6.1": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.6.1` was uploaded to PyPI on 2026-01-22 from the existing `v0.6.1` tag (`e79d8d3`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._"
+      ]
+    },
+    "v0.12.0": {
+      "notes": [
+        "See [Release history and provenance](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/docs/release_history.md#0110-published-to-pypi-without-a-tag) for what is and is not known about `0.11.0`."
+      ]
+    },
+    "v0.12.1": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.12.1` was uploaded to PyPI on 2026-03-09 from the existing `v0.12.1` tag (`0e7e687`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._",
+        "",
+        "`CHANGELOG.md` lists *Use working example* under `0.12.1`, but that change (#103) was committed after the `v0.12.1` tag and first shipped in `0.13.1`, so it is left out here."
+      ]
+    },
+    "v0.13.1": {
+      "notes": [
+        "_This GitHub Release was added afterwards for an already-published package: `0.13.1` was uploaded to PyPI on 2026-03-14 from the existing `v0.13.1` tag (`0bc7578`), whose package source matches the PyPI files exactly. No tag, package file or date was changed; the notes are reconstructed from [`CHANGELOG.md`](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/CHANGELOG.md), cross-checked against the commits between the tags._",
+        "",
+        "`CHANGELOG.md` lists *Use working example* (#103) under `0.12.1`, but it was committed after the `v0.12.1` tag and was first included in this release, so it is listed here."
+      ]
+    },
+    "v0.17.2": {
+      "notes": [
+        "> **`v0.17.2` was never published to PyPI and is not a usable release.** The tag points at commit `a25b33f`, whose source still declares version `0.15.1`, on a side branch that is not part of `main`'s history; GitHub's [`v0.17.1...v0.17.2`](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.17.1...v0.17.2) comparison reports it as diverged (2 commits ahead, 38 behind), so the *Full Changelog* link below shows that side branch rather than release changes. The `Publish to PyPI` run for this tag failed, so no `0.17.2` package exists: install `0.17.1` or `0.18.0`. The tag is kept unchanged as an audit record; see [Release history and provenance](https://github.com/yeongseon/azure-functions-openapi-python/blob/main/docs/release_history.md#v0172-invalid-tag-never-published)."
+      ]
+    }
   }
 }

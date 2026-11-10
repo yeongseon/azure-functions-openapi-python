@@ -206,6 +206,44 @@ def test_unrecoverable_release_says_so_instead_of_inventing() -> None:
     assert "No user-facing changes could be reconstructed" in body
 
 
+def test_annotated_non_release_is_not_reconstructed_from_commits() -> None:
+    note = "> **`v1.0.1` was never published to PyPI** and is not a usable release."
+    cfg = rn.Config(
+        repo="acme/pkg",
+        owner_login="maint",
+        protected={"v1.0.1": ["was never published to PyPI"]},
+        annotations={"v1.0.1": {"notes": [note]}},
+    )
+    gh = FakeGitHub(
+        commits={
+            ("v1.0.0", "v1.0.1"): [commit("a", "chore: update repo references (#30)", "maint")]
+        },
+        prs={30: ("maint", False)},
+    )
+    original = "**Full Changelog**: https://github.com/acme/pkg/compare/v1.0.0...v1.0.1\n"
+    body = rn.build_notes("v1.0.1", original, gh, cfg)
+    assert note in body
+    assert "reconstructed" not in body
+    assert "update repo references" not in body
+    assert rn.build_notes("v1.0.1", body, gh, cfg) == body
+
+
+def test_restored_release_note_is_added_once_and_items_are_kept() -> None:
+    note = "_This GitHub Release was recreated afterwards for an already-published package._"
+    cfg = rn.Config(repo="acme/pkg", owner_login="maint", annotations={"v1.0.1": {"notes": [note]}})
+    gh = FakeGitHub(prs={12: ("maint", False)})
+    source = (
+        "## [1.0.1](https://github.com/acme/pkg/compare/v1.0.0...v1.0.1) (2026-02-02)\n\n"
+        "### Bug Fixes\n\n* **core:** tolerate empty input (#12)\n\n"
+        "**Full Changelog**: https://github.com/acme/pkg/compare/v1.0.0...v1.0.1\n"
+    )
+    body = rn.build_notes("v1.0.1", source, gh, cfg)
+    assert body.count(note) == 1
+    assert "## v1.0.1 (2026-02-02)" in body
+    assert "- **core:** tolerate empty input (#12)" in body
+    assert rn.build_notes("v1.0.1", body, gh, cfg) == body
+
+
 def test_github_generated_notes_are_normalised_and_legacy_links_rewritten() -> None:
     original = (
         "Not published to PyPI\n\n## What's Changed\n"
