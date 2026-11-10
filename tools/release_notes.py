@@ -160,6 +160,8 @@ class Config:
     legacy_repos: list[str] = field(default_factory=list)
     non_human_logins: set[str] = field(default_factory=set)
     protected: dict[str, list[str]] = field(default_factory=dict)
+    # Tags that exist but are not real releases: never the compare base of the next release.
+    not_a_release: set[str] = field(default_factory=set)
     # Evidence-backed clarifications per tag: {tag: {"notes"|"highlights"|"upgrade": [lines]}}
     annotations: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
@@ -172,6 +174,7 @@ class Config:
             legacy_repos=list(data.get("legacy_repos", [])),
             non_human_logins={x.lower() for x in data.get("non_human_logins", [])},
             protected={k: list(v) for k, v in data.get("protected", {}).items()},
+            not_a_release=set(data.get("not_a_release", [])),
             annotations={
                 tag: {block: list(lines) for block, lines in blocks.items()}
                 for tag, blocks in data.get("annotations", {}).items()
@@ -552,7 +555,7 @@ def build_notes(
     cfg: Config,
     published: str | None = None,
 ) -> str:
-    releases = gh.releases()
+    releases = [(t, d) for t, d in gh.releases() if t == tag or t not in cfg.not_a_release]
     parsed = parse_body(original)
     prev = previous_tag(tag, releases, parsed)
     if parsed.date is None and published:

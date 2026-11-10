@@ -183,7 +183,8 @@ Credit rules:
 
 Release-specific statements that must never be lost (for example a release that was not
 published) are listed under `protected` in `.github/release-notes.json`; the tool fails instead of
-dropping them.
+dropping them. Tags listed under `not_a_release` (for example `v0.17.2`) exist but were never real
+releases; they are never used as the compare base of the next release.
 
 ```bash
 # Needs a token: export GH_TOKEN=$(gh auth token)

@@ -244,6 +244,23 @@ def test_restored_release_note_is_added_once_and_items_are_kept() -> None:
     assert rn.build_notes("v1.0.1", body, gh, cfg) == body
 
 
+def test_an_invalid_tag_is_never_the_compare_base_of_the_next_release() -> None:
+    cfg = rn.Config(repo="acme/pkg", owner_login="maint", not_a_release={"v1.0.0"})
+    gh = FakeGitHub(
+        commits={
+            ("v0.9.0", "v1.0.1"): [commit("a", "fix(core): tolerate empty input (#30)", "maint")]
+        },
+        prs={30: ("maint", False)},
+    )
+    original = "**Full Changelog**: https://github.com/acme/pkg/compare/v1.0.0...v1.0.1\n"
+    body = rn.build_notes("v1.0.1", original, gh, cfg)
+    assert "compare/v0.9.0...v1.0.1" in body
+    assert "compare/v1.0.0...v1.0.1" not in body
+    assert "tolerate empty input (#30)" in body
+    own = rn.build_notes("v1.0.0", "**Full Changelog**: x/compare/v0.8.0...v1.0.0", gh, cfg)
+    assert "compare/v0.9.0...v1.0.0" in own
+
+
 def test_github_generated_notes_are_normalised_and_legacy_links_rewritten() -> None:
     original = (
         "Not published to PyPI\n\n## What's Changed\n"
