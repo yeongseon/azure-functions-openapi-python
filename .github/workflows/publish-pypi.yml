@@ -302,6 +302,59 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1 # pin-exempt: PyPA official publisher (trusted-publisher OIDC); tracks release/v1 by design
 
 
+  # A successful upload job is not the last word: read the version back from PyPI. A GitHub
+  # Release, which Release Please creates at tag time, is never proof of distribution.
+  verify-pypi:
+    name: Verify the version is on PyPI
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Wait until PyPI serves the version
+        env:
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: python3 -m tools.release_audit check-published "$RELEASE_TAG" --wait-minutes 10
+
+  # When any gate fails nothing is uploaded, yet the GitHub Release for this tag already exists.
+  # Say so where the maintainer is looking. Informational only: the failed gate already fails
+  # this run, and this job holds no token.
+  report-unpublished:
+    name: Report an unpublished release candidate
+    needs: [build, lib-tests, cookbook-smoke, cookbook-host-smoke, azure-e2e, runtime-dependency-audit, publish]
+    if: ${{ !cancelled() && needs.publish.result != 'success' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Write the recovery steps to the job summary
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          echo "::error::This run did not publish $RELEASE_TAG to PyPI"
+          {
+            echo "### This run did not publish \`$RELEASE_TAG\` to PyPI"
+            echo
+            echo "A release gate failed or the upload did not complete. Check PyPI to see whether the"
+            echo "version is already there."
+            echo "The GitHub Release for this tag may exist, but it is not proof of publication."
+            echo
+            echo "- Transient failure (runner, Azure deploy, PyPI outage): re-run the same unchanged tag with"
+            echo "  \`gh workflow run publish-pypi.yml --ref $RELEASE_TAG\`."
+            echo "- Failure that needs a code or workflow change: fix forward on main and let the next"
+            echo "  Release PR cut a new version. Never move or reuse a tag."
+            echo "- Check the history at any time with \`make release-audit\` (the weekly"
+            echo "  \`Release history audit\` run does the same)."
+            echo
+            echo "See docs/release_process.md (Release verification and alerts)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+
   notify-cookbook:
     name: Trigger cookbook e2e re-verification
     needs: [build, publish]

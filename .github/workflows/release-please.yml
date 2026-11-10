@@ -88,3 +88,43 @@ jobs:
           RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
         run: python3 -m tools.release_notes apply "$RELEASE_TAG"
         continue-on-error: true
+
+  # Pre-release validation. Read-only. Release Please has just tagged the release commit and
+  # created the GitHub Release; before anyone relies on that tag, check that the tagged source
+  # declares the tag's version, that the commit is on main and that CHANGELOG.md has its section
+  # (tools/release_audit.py). It never moves a tag or edits the Release. A failure turns this run
+  # red and the job summary says what to do (docs/release_process.md). Like the notes job it is
+  # independent of publish-pypi.yml, so it cannot block or alter a release; publishing is gated
+  # there and separately fails on a version mismatch.
+  verify-release-tag:
+    name: Verify release tag
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the tagged source, mainline history and changelog
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          if python3 -m tools.release_audit check-tag "$RELEASE_TAG" --wait-seconds 60 2> problems.txt; then
+            exit 0
+          fi
+          cat problems.txt >&2
+          {
+            echo "### Release tag \`$RELEASE_TAG\` failed validation"
+            echo
+            sed 's/^/- /' problems.txt
+            echo
+            echo "The tag and GitHub Release exist, but this tag is not a trustworthy release."
+            echo "Do not move or delete the tag. Publishing is gated separately and fails on a"
+            echo "version mismatch, so nothing reaches PyPI; fix forward with the next release."
+            echo "See docs/release_process.md (Release verification and alerts)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1

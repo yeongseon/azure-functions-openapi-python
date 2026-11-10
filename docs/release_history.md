@@ -169,11 +169,12 @@ everything found for that version, fails the audit instead of going stale. A rel
 12 hours that is still in the publish gate is reported as pending rather than as a failure. Do not
 edit the file to silence a real defect: fix forward, or record the case here with its evidence.
 
-Two narrower commands are meant for the release pipeline. `python -m tools.release_audit
+Two narrower commands are used by the release pipeline. `python -m tools.release_audit
 check-tag vX.Y.Z` checks that the tagged source declares that version, that the commit is on
 `main` and that `CHANGELOG.md` has its section. `check-published vX.Y.Z --wait-minutes N` waits
 until PyPI serves the version. Exit codes are 0 for clean, 1 for a discrepancy and 2 when the
-audit itself could not run.
+audit itself could not run. The full audit also runs weekly in the `Release history audit`
+workflow; see [Release verification and alerts](release_process.md#release-verification-and-alerts).
 
 ---
 

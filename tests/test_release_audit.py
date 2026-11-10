@@ -97,6 +97,19 @@ def codes_of(report: ra.Report, version: str, kind: str = "unapproved") -> tuple
     return result
 
 
+class Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
 # ------------------------------------------------------------ the six fixture cases from #904
 
 
@@ -310,20 +323,35 @@ def test_check_tag_rejects_non_release_and_missing_tags() -> None:
     assert "v1.2.3 does not exist" in ra.check_tag("v1.2.3", config(), FakeSources())[0]
 
 
+def test_check_tag_waits_for_a_tag_the_api_does_not_show_yet() -> None:
+    clock = Clock()
+    sources = good("1.2.3")
+    sources.changelog_at = {"a" * 40: frozenset({"1.2.3"})}
+    visible = sources.tags
+    appears = iter([[], [], visible])
+
+    class Late(FakeSources):
+        def tag(self, name: str) -> ra.TagFact | None:
+            self.tags = next(appears)
+            return super().tag(name)
+
+    late = Late(changelog_at=sources.changelog_at)
+    assert ra.check_tag("v1.2.3", config(), late, 60, clock.sleep, clock.monotonic) == []
+    assert clock.sleeps == [5.0, 5.0]
+
+
+def test_check_tag_gives_up_waiting_but_reports_other_problems_at_once() -> None:
+    clock = Clock()
+    problems = ra.check_tag("v1.2.3", config(), FakeSources(), 12, clock.sleep, clock.monotonic)
+    assert problems == ["tag v1.2.3 does not exist"]
+    assert sum(clock.sleeps) == 12
+    wrong = FakeSources(tags=[tag("1.2.3", declared="1.2.0")])
+    quiet = Clock()
+    assert ra.check_tag("v1.2.3", config(), wrong, 60, quiet.sleep, quiet.monotonic)
+    assert quiet.sleeps == []
+
+
 # ------------------------------------------------------------ waiting for PyPI
-
-
-class Clock:
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.sleeps: list[float] = []
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
 
 
 def test_check_published_succeeds_as_soon_as_pypi_serves_the_version() -> None:
@@ -608,6 +636,10 @@ def test_client_maps_failures_to_audit_errors(monkeypatch: pytest.MonkeyPatch) -
     assert ra.Client("h").json("/x", optional=True) is None
     assert ra.Client("h").text("/x") is None
     with pytest.raises(ra.AuditError, match="HTTP 404"):
+        ra.Client("h").json("/x")
+    patch_http(monkeypatch, status=422)  # GitHub's answer for a ref that does not exist
+    assert ra.Client("h").json("/x", optional=True) is None
+    with pytest.raises(ra.AuditError, match="HTTP 422"):
         ra.Client("h").json("/x")
     patch_http(monkeypatch, status=500)
     with pytest.raises(ra.AuditError, match="HTTP 500"):
