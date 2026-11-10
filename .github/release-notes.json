@@ -18,6 +18,9 @@
       "was never published to PyPI"
     ]
   },
+  "not_a_release": [
+    "v0.17.2"
+  ],
   "annotations": {
     "v0.4.0": {
       "notes": [
