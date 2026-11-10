@@ -136,9 +136,11 @@ The cross-check found one discrepancy. `CHANGELOG.md` lists *Use working example
 Release notes follow the commit history, and `CHANGELOG.md` is left as Release Please and
 git-cliff wrote it.
 
-A GitHub Release created afterwards is listed in the order of its tagged commit, not of the day it
-was added. Older Release bodies link to the former repository name `azure-functions-openapi`;
-GitHub redirects those URLs, including compare links, to the current repository.
+GitHub orders Releases by the date of their tag, so each added Release appears next to its
+neighbours rather than at the top of the list; the time it was added is recorded as its
+publication time. Older Release bodies link to the former repository name
+`azure-functions-openapi`; GitHub redirects those URLs, including compare links, to the current
+repository.
 
 ---
 
