@@ -1,0 +1,33 @@
+name: Release history audit
+
+# Reconciliation. Read-only: compares Git tags, GitHub Releases, CHANGELOG.md and PyPI and fails
+# on any discrepancy that is not an approved historical exception (.github/release-audit.json).
+# It catches what the in-line checks cannot see later: a Release whose publish never completed,
+# a tag that was edited afterwards, or an exception that no longer matches. It writes nothing.
+
+on:
+  schedule:
+    - cron: "37 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit release history
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Audit tags, GitHub Releases, CHANGELOG and PyPI
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=0
+          python3 -m tools.release_audit audit > audit.txt 2> audit.err || status=$?
+          cat audit.txt audit.err
+          { echo '```text'; cat audit.txt audit.err; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"

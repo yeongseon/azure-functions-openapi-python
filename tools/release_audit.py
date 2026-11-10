@@ -337,13 +337,28 @@ def to_json(report: Report) -> str:
 # --------------------------------------------------------------------------- single-tag checks
 
 
-def check_tag(name: str, cfg: Config, sources: Sources) -> list[str]:
-    """Problems that make ``name`` an unsafe release tag (empty list means it looks sound)."""
+def check_tag(
+    name: str,
+    cfg: Config,
+    sources: Sources,
+    wait_seconds: float = 0.0,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> list[str]:
+    """Problems that make ``name`` an unsafe release tag (empty list means it looks sound).
+
+    ``wait_seconds`` only covers a tag that is not visible through the API yet; every other
+    problem is deterministic and reported at once.
+    """
     match = re.fullmatch(rf"{re.escape(cfg.tag_prefix)}(\d+\.\d+\.\d+)", name)
     if match is None:
         return [f"{name!r} is not a release tag ({cfg.tag_prefix}X.Y.Z)"]
     version = match[1]
+    deadline = clock() + wait_seconds
     tag = sources.tag(name)
+    while tag is None and clock() < deadline:
+        sleep(min(5.0, deadline - clock()))
+        tag = sources.tag(name)
     if tag is None:
         return [f"tag {name} does not exist"]
     problems: list[str] = []
@@ -437,7 +452,7 @@ class Client:
 
     def json(self, path: str, optional: bool = False) -> Any:
         status, body = self.get(path)
-        if status == 404 and optional:
+        if status in (404, 422) and optional:
             return None
         if status >= 400:
             raise AuditError(f"GET {self.host}{path} -> HTTP {status}")
@@ -602,6 +617,9 @@ def main(
     p_audit.add_argument("--grace-hours", type=float, help="override the configured grace period")
     p_tag = sub.add_parser("check-tag", help="verify one new release tag before it is trusted")
     p_tag.add_argument("tag")
+    p_tag.add_argument(
+        "--wait-seconds", type=float, default=0.0, help="wait for a tag the API does not show yet"
+    )
     p_pub = sub.add_parser("check-published", help="wait until PyPI serves the tag's version")
     p_pub.add_argument("tag")
     p_pub.add_argument("--wait-minutes", type=float, default=0.0)
@@ -618,7 +636,7 @@ def main(
             sys.stdout.write(to_json(report) + "\n" if args.json else render(report, grace))
             return 0 if report.ok else 1
         if args.command == "check-tag":
-            problems = check_tag(args.tag, cfg, live)
+            problems = check_tag(args.tag, cfg, live, args.wait_seconds, sleep)
             for problem in problems:
                 print(f"{args.tag}: {problem}", file=sys.stderr)
             if not problems:

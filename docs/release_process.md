@@ -14,8 +14,11 @@ gated step.
 |---|---|
 | `release-please.yml` | version calculation, `CHANGELOG.md`, the Release PR, the tag, the GitHub Release |
 | `release-please.yml` → `standardize-release-notes` | presentation of the GitHub Release body only (layout + credits, see [Release notes layout](#release-notes-layout-and-credits)) |
+| `release-please.yml` → `verify-release-tag` | read-only check that the new tag is sound (see [Release verification and alerts](#release-verification-and-alerts)); owns nothing |
 | `e2e-azure.yml` | real-Azure certification of one exact commit |
 | `publish-pypi.yml` | the only path that uploads to PyPI (automatic on `v*` tag push, with `workflow_dispatch` as its recovery path — see [Recovery](#recovery)) |
+| `publish-pypi.yml` → `verify-pypi`, `report-unpublished` | read-only: read the version back from PyPI after the upload, and explain an unpublished candidate |
+| `release-audit.yml` | weekly read-only audit of tags, GitHub Releases, `CHANGELOG.md` and PyPI |
 
 **Do not hand-edit** `src/azure_functions_openapi/__init__.py` version strings, `CHANGELOG.md`, or
 `.release-please-manifest.json`. Release Please maintains all three.
@@ -195,6 +198,41 @@ python3 -m tools.release_notes apply v0.31.0 --force --backup ./release-backup
 ```
 
 Editing a historical Release never republishes a package and never touches the tag.
+
+---
+
+## Release verification and alerts
+
+Release Please creates the tag and the GitHub Release at the moment the Release PR is merged,
+before any gate has run. A GitHub Release therefore says nothing about PyPI. Three read-only checks
+(`tools/release_audit.py`, see [Release History](release_history.md)) close that gap without taking
+over any of Release Please's jobs; none of them moves a tag, edits a Release or uploads anything.
+
+| Check | When | What it does on failure |
+|---|---|---|
+| `verify-release-tag` (`release-please.yml`) | right after Release Please cuts a release | the run turns red and the job summary lists the problem: the tagged source declares a different version than the tag, the commit is not on `main`, or `CHANGELOG.md` has no section for it. It runs beside the other jobs and gates nothing |
+| `verify-pypi` (`publish-pypi.yml`) | after the `publish` job | waits up to 10 minutes for PyPI to serve the version and fails the run if it does not |
+| `report-unpublished` (`publish-pypi.yml`) | whenever `publish` did not succeed | writes an error annotation and a job summary with the recovery steps; it holds no token and changes nothing |
+| `release-audit.yml` | weekly, and on demand | runs the full audit and fails on any discrepancy that is not an approved exception. A release younger than 12 hours that is still in the publish gate is pending, not a failure |
+
+The alert is the failed run itself: GitHub reports a failed workflow run to the person who
+triggered it, and the job summary says what happened. The weekly run is the reconciliation: it
+catches a Release whose publish never completed, an edited tag, or an exception that no longer
+matches, even if nobody watched the original run.
+
+**Recovery.** None of these checks repairs anything, by design.
+
+- *The tag check fails.* The tag is not a trustworthy release. Do not move or delete it. Publishing
+  fails on a version mismatch, so nothing reaches PyPI; fix forward and let the next Release PR cut
+  a new version. If the tag and Release must stay as an audit record, document the case in
+  [Release History](release_history.md) and add it to `.github/release-audit.json` with the
+  evidence.
+- *`report-unpublished` or `verify-pypi` fails.* Check PyPI first, never the GitHub Release. For a
+  transient failure re-run the same unchanged tag as described in [Recovery](#recovery); for a
+  failure that needs a code or workflow change, fix forward.
+- *The weekly audit fails.* Run `make release-audit` for the report. A new discrepancy is either a
+  real defect (fix forward) or a case to record with evidence. Do not edit the exceptions file to
+  make a real defect pass.
 
 ---
 
