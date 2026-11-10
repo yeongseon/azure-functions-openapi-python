@@ -223,6 +223,7 @@ for the version, changelog, or tags — or push an ungated artifact to PyPI.
 | Tag exists but was never published | A valid resting state. Re-run publish, or abandon the version and let the next release take the following number. |
 | Release PR stopped appearing | Check for a stale `autorelease: pending` label on an already-merged Release PR. Release Please treats that as a release in flight and will not open another. This failure is silent — the workflow still reports success. |
 | Automation unavailable (break-glass) | Bump `__version__`, match `.release-please-manifest.json`, commit, tag, push. The tag starts the same gated workflow — never bypass it. |
+| Release audit reports a discrepancy | Run `make release-audit` (set `GH_TOKEN`). Never move, delete or re-create a tag to make it pass. A new tag that declares another version, or is not on `main`, is a failed release candidate: fix forward with the next release. A published version without a tag or Release is recorded in [Release History](release_history.md) and `.github/release-audit.json`, with evidence. |
 
 Historical cases where a tag, a GitHub Release and a PyPI distribution do not line up (an invalid
 tag, a published version without a tag, tag-only versions) are recorded in
