@@ -1,0 +1,44 @@
+{
+  "repo": "yeongseon/azure-functions-openapi-python",
+  "package": "azure-functions-openapi",
+  "mainline": "main",
+  "tag_prefix": "v",
+  "version_files": [
+    "src/azure_functions_openapi/__init__.py",
+    "azure_functions_openapi/__init__.py"
+  ],
+  "changelog": "CHANGELOG.md",
+  "grace_hours": 12,
+  "approved": {
+    "0.2.0": {
+      "codes": ["TAG_ONLY"],
+      "reason": "Tag created retroactively on 2025-06-22. PyPI shows no distribution, so it is not presumed published; no GitHub Release is created.",
+      "ref": "docs/release_history.md#tag-only-versions-020-030-and-041"
+    },
+    "0.3.0": {
+      "codes": ["TAG_ONLY"],
+      "reason": "Tag created retroactively on 2025-06-22. PyPI shows no distribution, so it is not presumed published; no GitHub Release is created.",
+      "ref": "docs/release_history.md#tag-only-versions-020-030-and-041"
+    },
+    "0.4.1": {
+      "codes": ["TAG_ONLY"],
+      "reason": "Tagged on 2025-06-22. PyPI shows no distribution, so it is not presumed published; no GitHub Release is created.",
+      "ref": "docs/release_history.md#tag-only-versions-020-030-and-041"
+    },
+    "0.11.0": {
+      "codes": ["PYPI_WITHOUT_TAG", "CHANGELOG_MISSING"],
+      "reason": "Published to PyPI on 2026-02-10 without a tag. No commit carries that package (the closest differ only in the version string), so no tag is invented.",
+      "ref": "docs/release_history.md#0110-published-to-pypi-without-a-tag"
+    },
+    "0.17.2": {
+      "codes": [
+        "TAG_VERSION_MISMATCH",
+        "TAG_NOT_ON_MAINLINE",
+        "RELEASE_WITHOUT_PYPI",
+        "CHANGELOG_MISSING"
+      ],
+      "reason": "Invalid tag on a side-branch commit that declares 0.15.1; the publish run failed and the version was never on PyPI. Tag and Release are kept as an audit record.",
+      "ref": "docs/release_history.md#v0172-invalid-tag-never-published"
+    }
+  }
+}

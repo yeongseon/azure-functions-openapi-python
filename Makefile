@@ -117,6 +117,12 @@ lint-workflows: ensure-hatch
 	@$(HATCH) run python tools/lint_workflow_pins.py
 	@$(HATCH) run python tools/lint_hatch_matrix.py
 
+# Read-only: compares Git tags, GitHub Releases, CHANGELOG.md and PyPI. Needs network and a token
+# to stay under GitHub's anonymous rate limit: GH_TOKEN=$(gh auth token) make release-audit
+.PHONY: release-audit
+release-audit: ensure-hatch
+	@$(HATCH) run python -m tools.release_audit audit
+
 .PHONY: check-all
 check-all: ensure-hatch
 	@$(MAKE) check

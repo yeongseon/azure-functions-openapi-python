@@ -144,6 +144,39 @@ repository.
 
 ---
 
+## Checking the history automatically
+
+`make release-audit` re-reads Git tags, GitHub Releases, `CHANGELOG.md` and PyPI and exits
+non-zero for any discrepancy that is not an approved exception. It only reads: it never moves,
+creates or deletes a tag, a Release or a package. Set `GH_TOKEN` to stay under GitHub's anonymous
+rate limit, for example `GH_TOKEN=$(gh auth token) make release-audit`.
+
+| Code | Meaning |
+|---|---|
+| `TAG_VERSION_MISMATCH` | the tagged source declares a different version than the tag |
+| `TAG_NOT_ON_MAINLINE` | the tagged commit is not on the history of `main` |
+| `TAG_ONLY` | a tag with neither a PyPI distribution nor a GitHub Release |
+| `PYPI_WITHOUT_TAG` | published to PyPI, but no Git tag exists |
+| `PYPI_WITHOUT_RELEASE` | published and tagged, but no GitHub Release exists |
+| `RELEASE_WITHOUT_PYPI` | a GitHub Release exists, but nothing was published to PyPI |
+| `RELEASE_WITHOUT_TAG` | a GitHub Release exists, but its tag does not |
+| `CHANGELOG_MISSING` | tagged, released or published, but `CHANGELOG.md` has no section for it |
+
+The approved exceptions are the cases documented on this page, kept in
+`.github/release-audit.json` with their reason and a link to the section that explains them. An
+exception must match the findings exactly, so one that no longer applies, or no longer covers
+everything found for that version, fails the audit instead of going stale. A release younger than
+12 hours that is still in the publish gate is reported as pending rather than as a failure. Do not
+edit the file to silence a real defect: fix forward, or record the case here with its evidence.
+
+Two narrower commands are meant for the release pipeline. `python -m tools.release_audit
+check-tag vX.Y.Z` checks that the tagged source declares that version, that the commit is on
+`main` and that `CHANGELOG.md` has its section. `check-published vX.Y.Z --wait-minutes N` waits
+until PyPI serves the version. Exit codes are 0 for clean, 1 for a discrepancy and 2 when the
+audit itself could not run.
+
+---
+
 ## How this was verified
 
 1. **Tag, commit and version.** `git show vX.Y.Z:src/azure_functions_openapi/__init__.py` gives the
