@@ -51,6 +51,7 @@ nav:
   - FAQ: faq.md
   - Security: security.md
   - Release Process: release_process.md
+  - Release History: release_history.md
   - Changelog: changelog.md
 
 markdown_extensions:

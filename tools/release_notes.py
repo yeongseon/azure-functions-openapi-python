@@ -28,8 +28,8 @@ Rules that keep the notes honest:
   GitHub API, or from a ``Co-authored-by`` trailer whose address is a GitHub
   ``<id>+<login>@users.noreply.github.com`` address. Bots and logins listed in
   ``non_human_logins`` are never credited; nothing is guessed.
-* "New Contributors" excludes the owner and lists an external human only when GitHub shows no earlier commit or
-  merged PR by that login before the previous release.
+* "New Contributors" excludes the owner and lists an external human only when GitHub
+  shows no earlier commit or merged PR by that login before the previous release.
 * ``apply`` refuses to write when the new body drops a PR/commit reference the
   old body had, or loses a ``protected`` phrase from the config.
 
@@ -558,11 +558,13 @@ def build_notes(
     if parsed.date is None and published:
         parsed.date = published[:10]
     commits = gh.compare(prev, tag) if prev else []
+    # Annotations come first: a documented non-release (e.g. a divergent tag) must not
+    # also get an auto-reconstructed "Changes" list that makes it look like a release.
+    apply_annotations(parsed, cfg.annotations.get(tag, {}))
     reconstructed = None
     if not parsed.items and not (parsed.highlights or parsed.notes or parsed.upgrade) and commits:
         parsed.items = _commit_items(commits)
         reconstructed = f"{prev}...{tag}"
-    apply_annotations(parsed, cfg.annotations.get(tag, {}))
     pr_authors = gh.pr_authors()
     for item in parsed.items:
         attribute(item, commits, pr_authors, cfg)
