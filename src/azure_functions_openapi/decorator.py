@@ -561,8 +561,7 @@ def openapi(
         When ``True`` (default), gap-fill the ``200`` response schema from the
         handler's return annotation whenever no explicit ``responses=`` is
         supplied. Set ``False`` to suppress return-type inference entirely
-        (analogous to FastAPI's ``response_model=None``);
-        an explicit
+        (analogous to FastAPI's ``response_model=None``); an explicit
         ``responses=`` always wins regardless of this flag.
 
     Returns

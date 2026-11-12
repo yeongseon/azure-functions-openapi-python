@@ -164,6 +164,30 @@ git ls-remote https://github.com/actions/setup-python 'refs/tags/v6' 'refs/tags/
 Single-quote the `refs/...^{}` argument so the `{}` and `^` are not
 interpreted by your shell (notably zsh with `EXTENDED_GLOB`).
 
+## Comments and Docstrings
+
+Ruff (`line-length = 100`) and `ruff format` already decide *formatting*. This section is the
+contributor-facing policy for *what to write*. Write everything in English and choose the lightest
+form that fits:
+
+| Where | Convention |
+|---|---|
+| Public API (exported from `azure_functions_openapi`, e.g. `@openapi`, `scan_validation_metadata`) | A docstring. Start with a one-line summary, then add parameter, return, or raised-exception contracts **only where they are useful** (non-obvious defaults, opt-in flags, which inputs raise). Keep examples runnable and in line with actual behavior; update them in the same PR as the behavior. |
+| Complex internal function (ordering, security boundary, OpenAPI-compatibility workaround) | A short docstring or a `#` comment stating **why** it exists and which invariant it protects. Link the issue (`#123`) when the reason is a past defect. |
+| Small, obvious function or private helper | No docstring. A clear name and type hints are the documentation. |
+| Inline `#` comment | Explain **why**: security, OpenAPI compatibility, non-obvious ordering, or an intentional exception to a rule. Do not restate **what** the next line does. Delete or fix a comment when the code it describes changes. |
+| Tests | A descriptive `test_...` name is the default. Add a one-line comment only for a surprising invariant or a regression's cause (e.g. which issue it guards). No Given/When/Then boilerplate, and no comment-count quotas. |
+| Test fixtures and shared helpers | A one-line docstring when the fixture's contract is not obvious from its name (what it yields, what it isolates). |
+
+Do not add docstrings to every private function and do not reformat existing files only to apply
+this policy; touch a comment when you touch the code it describes.
+
+Docstring lint (pydocstyle `D` rules) is deliberately **not** enabled. Measured against `src/` with
+Ruff's `D` rules and no convention, 124 existing violations would be reported (12 for missing
+docstrings alone), mostly section-formatting style in existing NumPy-style docstrings. Enabling the
+rules would force mass churn without improving accuracy. Revisit only as a targeted rule set with a
+baseline, not a blanket `D`.
+
 ## Example Coverage Policy
 
 Examples are part of the supported API experience and should stay verified.
