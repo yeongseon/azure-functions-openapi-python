@@ -237,6 +237,10 @@ defaults to `True`):
 )
 ```
 
+To document typed error bodies (for example `application/problem+json` for `404`
+and `500`) next to a success body, see the runnable
+[HTTP Error Responses example](examples/http_error_responses.md).
+
 ### Migrating to `requests` / `responses`
 
 | Old (removed from `@openapi`) | New |
