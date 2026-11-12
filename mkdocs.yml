@@ -36,6 +36,7 @@ nav:
       - Notification Request: examples/notification_request.md
       - Inference Cookbook: examples/inference_cookbook.md
       - Partner Import Bridge: examples/partner_import_bridge.md
+      - Versioned Response Metadata: examples/versioned_response_metadata.md
   - API Reference: api.md
   - Extending:
       - Producer Guide: extending/producer-guide.md
