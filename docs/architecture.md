@@ -96,7 +96,7 @@ Because `build()` is idempotent, **re-scanning is safe**: repeated scans neither
 
 ### `@openapi` below `@app.route`
 
-Decorator order is a valid degree of freedom. When `@openapi` is applied *below* `@app.route`, it runs before the route decorator and cannot see the binding. Generate with `generate_openapi_spec(app=app)` or call `scan_endpoint_metadata(app)` before generating so discovery can reconcile the registered metadata with the completed binding. It then uses the binding route and explodes the unresolved method into one operation per bound method. Without an app scan, a bare registry has no evidence of a decorator that has not run yet and keeps the historical function-name fallback.
+Decorator order is a valid degree of freedom. When `@openapi` is applied *below* `@app.route`, it runs before the route decorator and cannot see the binding. Generate with `generate_openapi_spec(app=app)` or call `scan_endpoint_metadata(app)` before generating so discovery can reconcile the registered metadata with the completed binding. It then uses the binding route and explodes the unresolved method into one operation per bound method. Without an app scan, a bare registry has no evidence of a decorator that has not run yet and keeps the historical function-name fallback. A runnable side-by-side of both orders is in the [Decorator Order example](examples/decorator_order.md).
 
 ### `--isolate-app` fails closed
 
