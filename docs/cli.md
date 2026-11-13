@@ -302,6 +302,80 @@ leaves a half-written `openapi.json` or `openapi.yaml` to be compared by mistake
 Equivalence of the two serializations does not validate the specification itself; use
 [a validator](#validate-generated-output) for that.
 
+## Walkthrough: strict validation of custom HTTP methods
+
+This walkthrough uses two tiny local projects to show what `--strict` and
+`--fail-on-warnings` do with a custom HTTP method (for example `PROPFIND`), which
+only OpenAPI 3.2 can describe (under `additionalOperations`). It runs offline and
+needs no Azure resources. Create the two files in an empty directory:
+
+```python
+# ok_methods.py
+from azure_functions_openapi import openapi
+
+
+@openapi(route="files/{id}", method="PROPFIND")
+def propfind() -> None: ...
+```
+
+```python
+# bad_methods.py
+from azure_functions_openapi import openapi
+
+
+@openapi(
+    route="files/{id}",
+    method="PROPFIND",
+    parameters=[{"name": "file", "in": "path", "required": True, "schema": {"type": "string"}}],
+)
+def propfind() -> None: ...
+```
+
+`bad_methods.py` declares a path parameter `file`, but the route template only
+contains `{id}`.
+
+**1. The valid declaration passes.**
+
+```bash
+azure-functions-openapi generate --app ok_methods --openapi-version 3.2 \
+  --strict --fail-on-warnings --output ok.json
+echo $?   # 0, and ok.json contains paths["/api/files/{id}"]["additionalOperations"]["PROPFIND"]
+```
+
+**2. The invalid declaration is rejected.**
+
+```bash
+azure-functions-openapi generate --app bad_methods --openapi-version 3.2 \
+  --strict --fail-on-warnings --output bad.json
+echo $?   # 1, and bad.json is not written
+```
+
+stderr includes `Strict mode: generated spec has validation errors:` followed by a
+line like `Path parameter 'file' in PROPFIND /api/files/{id} is not present in route
+template`. Match on that message prefix and the exit code in scripts, not on
+tracebacks or the exact full text.
+
+**3. The flags are the gate.** With neither flag, the same command prints the
+validation message and a `spec-validation` warning on stderr, but exits `0` and
+writes `bad.json`, so a CI job that omits the flags would publish the wrong
+document. `--strict` alone exits `1` and `--fail-on-warnings` alone exits `2`; in
+both cases no output file is written. The walkthrough uses both so that either kind
+of problem stops the build.
+
+**4. The version matters.** A custom method needs `--openapi-version 3.2`. Running
+step 1 with `--openapi-version 3.1` exits `1` under `--strict`, because the generator
+drops `PROPFIND` from a 3.1 document and reports that it requires 3.2.
+
+Return codes follow [Exit codes](#exit-codes): `1` is a generation or validation error,
+and `2` is returned for invalid CLI arguments or when `--fail-on-warnings` is set
+and gating warnings were emitted.
+
+!!! note "What this check does not do"
+    CLI validation only checks the generated OpenAPI document. It does not add
+    authentication to your routes and is not a certification of behavior on a real
+    Azure Functions host; custom HTTP methods still need to be accepted by your
+    hosting and gateway setup.
+
 ## CI example
 
 Two different things can be checked in CI, and they are not the same recipe:

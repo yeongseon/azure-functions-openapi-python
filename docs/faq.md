@@ -9,6 +9,8 @@ downgraded) and recommends 2.0 or 3.0.x for full fidelity. See
 [API formats support in Azure API Management](https://learn.microsoft.com/en-us/azure/api-management/api-management-api-import-restrictions).
 
 Use 3.1.0 if your tooling supports it and you want newer JSON Schema alignment.
+For a copyable comparison of how an optional field is rendered in each version, see
+[Nullable fields side by side](configuration.md#nullable-fields-side-by-side-30-vs-3132).
 
 Use 3.2.0 if you specifically need to advertise a 3.2 document. It is a
 backward-compatible superset of 3.1.0 and shares the same JSON Schema 2020-12

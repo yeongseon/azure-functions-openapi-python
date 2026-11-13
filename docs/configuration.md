@@ -420,6 +420,69 @@ non-standard HTTP methods via `additionalOperations`, the `query` HTTP method,
 and streaming media types via `itemSchema`). Note that some
 viewers — including the bundled Swagger UI — may not yet render 3.2.0 documents.
 
+### Nullable fields side by side (3.0 vs 3.1/3.2)
+
+One Pydantic model with an optional scalar and an optional nested model,
+generated for each target version:
+
+```python
+class Address(BaseModel):
+    city: str
+
+
+class Profile(BaseModel):
+    user_id: int
+    nickname: str | None = None
+    address: Address | None = None
+```
+
+Pydantic itself always emits the JSON Schema 2020-12 form (`anyOf` with a
+`{"type": "null"}` branch). `generate_openapi_spec()` keeps that form for 3.1 and
+3.2, and rewrites it for 3.0 through the same conversion path described above. The
+`Profile.properties` excerpt for each version (the `Address` component is the same
+plain object schema in all three):
+
+**OpenAPI 3.0.0** (`nullable: true`, nested model inlined):
+
+```json
+{
+  "nickname": {"default": null, "title": "Nickname", "nullable": true, "type": "string"},
+  "address": {
+    "properties": {"city": {"title": "City", "type": "string"}},
+    "required": ["city"],
+    "title": "Address",
+    "type": "object",
+    "nullable": true,
+    "default": null
+  }
+}
+```
+
+**OpenAPI 3.1.0 and 3.2.0** (JSON Schema 2020-12 union with a `null` branch):
+
+```json
+{
+  "nickname": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null, "title": "Nickname"},
+  "address": {"anyOf": [{"$ref": "#/components/schemas/Address"}, {"type": "null"}], "default": null}
+}
+```
+
+Intentional differences — they are different schema dialects, not a bug in either:
+
+- 3.0 uses the OpenAPI Schema Object's own `nullable` keyword and has no
+  `{"type": "null"}`; 3.1 and 3.2 use JSON Schema 2020-12 and have no `nullable`.
+- A bare `$ref` cannot carry `nullable` in 3.0, so the optional `Address` is
+  inlined there (`nullable: true` sits beside its `type`); 3.1/3.2 keep the shared
+  `$ref` inside `anyOf`.
+- The 3.2.0 output is identical to 3.1.0 for these schemas, which is what the
+  "superset of 3.1" statement predicts; the regression test asserts this for the model above
+  rather than for every possible schema.
+- Both forms accept `null` and the populated value under the matching validator
+  (OAS 3.0 or OAS 3.1), which the test also checks.
+
+Verified offline by `tests/test_nullable_version_comparison.py`, which regenerates
+these excerpts and fails if this page drifts from the real output.
+
 ### Querystring parameters (3.2 only)
 
 OpenAPI 3.2 introduces the `querystring` parameter location, which describes the
