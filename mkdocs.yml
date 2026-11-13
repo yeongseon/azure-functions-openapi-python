@@ -38,6 +38,7 @@ nav:
       - Partner Import Bridge: examples/partner_import_bridge.md
       - HTTP Error Responses: examples/http_error_responses.md
       - Querystring Encoding (3.2): examples/querystring_encoding.md
+      - Response Shorthand Generics: examples/response_shorthand_generics.md
       - Versioned Response Metadata: examples/versioned_response_metadata.md
   - API Reference: api.md
   - Extending:
