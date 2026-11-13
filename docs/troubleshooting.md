@@ -118,6 +118,71 @@ Keep them aligned by design:
 !!! tip
     Documented routes often include `/api/...` while `app.route` may be relative. Be consistent across your app and docs conventions.
 
+### Generated prefix differs from the Functions host (CLI)
+
+The CLI documents the prefix you give it; it never changes how the host routes
+requests. The host prefix comes from `host.json` (`extensions.http.routePrefix`)
+or the app-setting override. `generate` defaults to `/api`, so an app whose
+`host.json` sets `"routePrefix": "v1"` produces `/api/...` paths unless you
+say otherwise. Full rules live in [Route Prefix Policy](route-prefix.md); use
+these steps to diagnose a difference. Every command below runs locally and
+needs no Azure resources.
+
+Assume `function_app.py` defines `@app.route(route="widgets")` and `host.json`
+contains `{"version": "2.0", "extensions": {"http": {"routePrefix": "v1"}}}`.
+
+1. **Run with the default and read stderr.** A configured file prefix that differs
+   from the effective one prints a `route-prefix-mismatch` JSON warning, and
+   `--fail-on-warnings` turns it into exit code `2`:
+
+    ```bash
+    azure-functions-openapi generate --app function_app:app --format json --fail-on-warnings
+    ```
+
+    Expected: `route-prefix-mismatch` on stderr naming `'/api'` and `'/v1'`, exit
+    code `2`, and no output written.
+
+2. **Follow the host with `auto`, or pass the prefix explicitly.**
+
+    ```bash
+    azure-functions-openapi generate --app function_app:app --route-prefix auto --format json
+    azure-functions-openapi generate --app function_app:app --route-prefix /v1 --format json
+    ```
+
+    Expected: both document `/v1/widgets` and print no warning. A literal prefix
+    named `auto` must be written `--route-prefix /auto`.
+
+3. **Check which `host.json` was read.** `auto` and the mismatch check read the
+   `host.json` beside the imported `--app` module, not the one in your shell's
+   working directory. The working directory is used only when `--app` is omitted or
+   the module has no `__file__`. If the app lives in a subfolder, the file in the
+   repository root is ignored.
+
+4. **Check for an environment override.** In `auto` mode,
+   `AzureFunctionsJobHost__extensions__http__routePrefix` wins over the file, even when
+   it is empty (no prefix):
+
+    ```bash
+    AzureFunctionsJobHost__extensions__http__routePrefix=gw \
+      azure-functions-openapi generate --app function_app:app --route-prefix auto --format json
+    ```
+
+    Expected: `/gw/widgets`. The override is not consulted for an explicit
+    `--route-prefix` and does not raise the mismatch warning, which compares only
+    against the file.
+
+5. **Unreadable `host.json` in `auto` mode is an error.** Invalid JSON (including
+   comments or trailing commas) or a non-string `routePrefix` exits `1` with
+   `Cannot use <path> for --route-prefix auto: <reason>. Fix the file or pass
+   --route-prefix explicitly.`, before any output is written, regardless of
+   `--fail-on-warnings`. A missing file or key silently uses `/api`.
+
+!!! warning
+    `@openapi(route=...)` and `--route-prefix` only change the documented URLs.
+    The runtime URL is decided by the Functions host from `host.json` or app
+    settings, so fix mismatches by aligning the documentation input with the host,
+    not the other way around.
+
 ## 5) Invalid route or operation ID validation errors
 
 ### Symptoms
