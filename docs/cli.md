@@ -239,6 +239,69 @@ For YAML:
 openapi-spec-validator openapi.yaml
 ```
 
+## Check that JSON and YAML outputs are equivalent
+
+JSON and YAML are two serializations of the same specification. Compare them by
+**parsing both and comparing the data**, never the text: YAML whitespace, quoting
+and key order are not meaningful. The recipe below uses `examples/report_jobs`
+(three operations with a Bearer security scheme); copy its `function_app.py` into an
+empty directory first. It runs offline and needs no Azure resources.
+
+```bash
+azure-functions-openapi generate --app function_app:app --format json --output openapi.json --strict --fail-on-warnings
+azure-functions-openapi generate --app function_app:app --format yaml --output openapi.yaml --strict --fail-on-warnings
+python compare_specs.py
+```
+
+Save this as `compare_specs.py` (PyYAML is already installed with the package):
+
+```python
+# compare_specs.py
+import json
+import sys
+
+import yaml
+
+with open("openapi.json", encoding="utf-8") as handle:
+    from_json = json.load(handle)
+with open("openapi.yaml", encoding="utf-8") as handle:
+    from_yaml = yaml.safe_load(handle)
+
+
+def operations(spec):
+    return {
+        (path, method): operation
+        for path, item in spec["paths"].items()
+        for method, operation in item.items()
+    }
+
+
+problems = []
+json_ops, yaml_ops = operations(from_json), operations(from_yaml)
+if json_ops.keys() != yaml_ops.keys():
+    problems.append("paths or methods differ")
+for key in json_ops.keys() & yaml_ops.keys():
+    for field in ("responses", "security"):
+        if json_ops[key].get(field) != yaml_ops[key].get(field):
+            problems.append(f"{key[1].upper()} {key[0]}: {field} differ")
+schemes = "securitySchemes"
+if from_json["components"].get(schemes) != from_yaml["components"].get(schemes):
+    problems.append("security schemes differ")
+if not problems and from_json != from_yaml:
+    problems.append("documents differ outside paths, responses and security")
+
+if problems:
+    sys.exit("JSON and YAML specifications differ: " + "; ".join(problems))
+print(f"OK: {len(json_ops)} operations are equivalent in JSON and YAML")
+```
+
+Exit code `0` and the `OK:` line mean the two files carry the same data; a non-zero
+exit lists which part differs. `--strict` and `--fail-on-warnings` (see the [Options reference](#options-reference))
+fail before any file is written, and file output stays atomic, so a failed run never
+leaves a half-written `openapi.json` or `openapi.yaml` to be compared by mistake.
+Equivalence of the two serializations does not validate the specification itself; use
+[a validator](#validate-generated-output) for that.
+
 ## Walkthrough: strict validation of custom HTTP methods
 
 This walkthrough uses two tiny local projects to show what `--strict` and
