@@ -520,6 +520,9 @@ from the model. Constraints enforced at generation time:
 The raw `parameters=[{"in": "querystring", "content": {...}}]` escape hatch is
 also supported for callers who need full control over the media type or schema.
 
+For the exact generated parameter object and the query string a client should send,
+see the [Querystring Encoding example](examples/querystring_encoding.md).
+
 ## Spec generation options
 
 ### `generate_openapi_spec(...)`
