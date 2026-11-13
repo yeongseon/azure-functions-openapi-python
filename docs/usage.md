@@ -161,6 +161,10 @@ class OrderResponse(BaseModel):
 
 `responses=OrderResponse` derives the `200` response schema from the model.
 
+`responses={200: list[OrderResponse]}` is accepted the same way (an array schema), but
+non-container generics such as `Callable[...]` are rejected at decoration time; see the
+[Response Shorthand Generics example](examples/response_shorthand_generics.md).
+
 The request schema describes what a model *accepts* (Pydantic's
 `validation` mode); the response schema describes what a handler's return
 value actually *produces* (`serialization` mode). These usually match, but
