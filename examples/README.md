@@ -21,5 +21,6 @@ cleanup. Keep its public reachability for certification, not as a production def
 | Complex | `examples/report_jobs` | Async report generation with Bearer auth. Shows `security`, `security_scheme`, `OPENAPI_VERSION_3_1`, `generate_openapi_spec()`, `render_swagger_ui(custom_csp=..., enable_client_logging=True)`. |
 | Integration | `examples/notification_request` | Email notification with `@openapi` + `@validate_http` stacked. Shows `requests=`, `responses=` unified params and shared Pydantic models. |
 | Inference | `examples/inference_cookbook` | Minimal API documented from a Pydantic return annotation and an opt-in handler docstring. |
+| Error responses | `examples/http_error_responses` | Success plus typed `404`/`500` `application/problem+json` responses sharing one Pydantic error model. |
 | Versioned metadata | `examples/versioned_response_metadata` | Versioned vendor media type and `Location`/`ETag` response headers via the `version: 2` endpoint metadata payload. |
 | Bridge | `examples/partner_import_bridge` | Partner data import with `scan_endpoint_metadata(app)`, `register_openapi_metadata()`, `OpenAPIOperationMetadata`, and `request_body_required`. |
