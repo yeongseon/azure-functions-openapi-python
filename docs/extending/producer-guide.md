@@ -113,6 +113,9 @@ payload = {
   sibling responses and request/parameter hints survive. Missing content never
   becomes inferred JSON or inferred body absence.
 
+For a runnable walkthrough with the expected OpenAPI fragment, see the
+[Versioned Response Metadata example](../examples/versioned_response_metadata.md).
+
 Response media and header schemas may contain nested `$defs`. The same compiler
 hoists both, resolves component-name collisions, and converts schemas for the
 selected OpenAPI 3.0, 3.1 or 3.2 target. Endpoint payload versions and OpenAPI
