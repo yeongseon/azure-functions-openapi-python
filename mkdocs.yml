@@ -38,6 +38,7 @@ nav:
       - Partner Import Bridge: examples/partner_import_bridge.md
       - HTTP Error Responses: examples/http_error_responses.md
       - Decorator Order: examples/decorator_order.md
+      - Versioned Response Metadata: examples/versioned_response_metadata.md
   - API Reference: api.md
   - Extending:
       - Producer Guide: extending/producer-guide.md

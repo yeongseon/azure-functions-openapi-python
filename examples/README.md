@@ -23,4 +23,5 @@ cleanup. Keep its public reachability for certification, not as a production def
 | Inference | `examples/inference_cookbook` | Minimal API documented from a Pydantic return annotation and an opt-in handler docstring. |
 | Error responses | `examples/http_error_responses` | Success plus typed `404`/`500` `application/problem+json` responses sharing one Pydantic error model. |
 | Decorator order | `examples/decorator_order` | `@openapi` above vs below `@app.route` on two small apps generating the same operation, and the no-app fallback limit. |
+| Versioned metadata | `examples/versioned_response_metadata` | Versioned vendor media type and `Location`/`ETag` response headers via the `version: 2` endpoint metadata payload. |
 | Bridge | `examples/partner_import_bridge` | Partner data import with `scan_endpoint_metadata(app)`, `register_openapi_metadata()`, `OpenAPIOperationMetadata`, and `request_body_required`. |
