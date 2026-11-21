@@ -2,6 +2,16 @@
 
 We welcome contributions to the `azure-functions-openapi` project.
 
+
+## Contributor-reserved issues
+
+Issues labeled `good first issue` or `help wanted`, and issues assigned to or actively claimed by an external contributor, are **reserved for outside human-led contributors** (including code prepared with AI tools under a contributor's direction and review).
+
+- You may start an **unclaimed** issue and submit a PR without advance maintainer approval or GitHub Assignee permission. First check the issue, Assignees, discussion and open PRs. A comment expressing interest is encouraged but optional; coordinate rather than duplicate someone else's work.
+- The owner, maintainer-operated coding agents, and automated backlog-clearing jobs must not take these issues away, implement competing solutions, silently change their labels/scope or close them. A generic instruction to clear the backlog is **not** an exception.
+- Maintainers are available to answer questions, confirm assignments, run protected verification, review and merge contributor PRs. They may change a reservation only through a **documented, issue-specific decision**, after coordinating any active contributor handoff; claims are not automatically expired.
+- See [AGENTS.md — Contributor-reserved issues](AGENTS.md#contributor-reserved-issues) for the full owner/agent workflow. Required CI, review and release rules remain unchanged.
+
 ## Branch Strategy
 
 Use GitHub Flow and branch from `main`.
