@@ -1,6 +1,7 @@
 {
   "repo": "yeongseon/azure-functions-openapi-python",
   "owner_login": "yeongseon",
+  "pypi_project": "azure-functions-openapi",
   "legacy_repos": [
     "yeongseon/azure-functions-openapi"
   ],
