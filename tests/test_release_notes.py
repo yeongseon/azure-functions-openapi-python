@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
+import http.client
 
 import pytest
 
@@ -350,7 +351,7 @@ def test_pypi_lookup_failure_allows_standardization(
     def unavailable(*args: object, **kwargs: object) -> None:
         raise OSError("private transport detail")
 
-    monkeypatch.setattr(rn.http.client, "HTTPSConnection", unavailable)
+    monkeypatch.setattr(http.client, "HTTPSConnection", unavailable)
     assert not rn._load_pypi_tags("acme-pkg")
     error = capsys.readouterr().err
     assert "::warning::PyPI release history unavailable" in error
