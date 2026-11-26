@@ -63,6 +63,9 @@ relevant root document in the same pull request or commit series.
 
 ## Unified PR Review and Merge Policy
 
+Agents must not request or re-request GitHub Copilot code review on pull requests,
+including after new pushes. Do not wait for a Copilot review before merging.
+
 The same review and merge criteria apply to changes written by humans,
 OpenCode, Codex, Claude Code, ChatGPT, Copilot, or other coding tools.
 No mandatory AI reviewer, Oracle design/post review, or tool-specific

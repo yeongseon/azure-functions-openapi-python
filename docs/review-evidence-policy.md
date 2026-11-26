@@ -14,7 +14,7 @@ pull request template link here instead of restating it.
 
 - Review effort scales with risk. Most changes need a compact record; only the high-risk list
   below needs more.
-- Copilot, Codex, Claude, OpenCode and human reviewers are interchangeable **review sources**.
+- Human reviewers, Codex, Claude and OpenCode can provide review feedback.
   No specific tool, subscription or number of review rounds is required. An external contributor
   can follow this process with no AI reviewer: record "no automated review" and a maintainer
   reviews the diff.
