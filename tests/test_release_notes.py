@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass, field
+import http.client
 
 import pytest
 
@@ -316,3 +317,42 @@ def test_unverifiable_first_contribution_fails_closed(monkeypatch: pytest.Monkey
     monkeypatch.setattr(client, "_request", boom)
     # API failure must never turn into "first contribution"
     assert client.had_prior_contribution("someone", "v1.0.0") is True
+
+
+def test_pypi_upgrade_range_links_intervening_candidates() -> None:
+    gh = FakeGitHub(
+        tags=[("v0.9.0", "2026-01-01"), ("v1.0.0", "2026-02-01"), ("v1.0.1", "2026-02-02")]
+    )
+    cfg = rn.Config(repo="acme/pkg", pypi_project="acme-pkg")
+    notes = rn.build_notes("v1.0.1", RP_BODY, gh, cfg, pypi_tags={"v0.9.0"})
+    assert notes.index("**Installation:**") < notes.index("### Bug Fixes")
+    assert "[v1.0.0](https://github.com/acme/pkg/releases/tag/v1.0.0)" in notes
+    assert "[full upgrade comparison](https://github.com/acme/pkg/compare/v0.9.0...v1.0.1)" in notes
+    assert "**Full Changelog**: https://github.com/acme/pkg/compare/v1.0.0...v1.0.1" in notes
+    rerendered = rn.build_notes("v1.0.1", notes, gh, cfg, pypi_tags={"v0.9.0"})
+    assert rerendered.count("**Installation:**") == 1
+    assert rerendered.count("full upgrade comparison") == 1
+
+
+def test_pypi_note_survives_unavailable_history_and_respects_explicit_status() -> None:
+    cfg = rn.Config(repo="acme/pkg", pypi_project="acme-pkg")
+    notes = rn.build_notes("v1.0.1", RP_BODY, FakeGitHub(), cfg)
+    assert "**Installation:**" in notes
+    assert "full upgrade comparison" not in notes
+    cfg.annotations["v1.0.1"] = {"notes": ["**Status: not published to PyPI.**"]}
+    notes = rn.build_notes("v1.0.1", RP_BODY, FakeGitHub(), cfg)
+    assert "**Status: not published to PyPI.**" in notes
+    assert "**Installation:**" not in notes
+
+
+def test_pypi_lookup_failure_allows_standardization(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unavailable(*args: object, **kwargs: object) -> None:
+        raise OSError("private transport detail")
+
+    monkeypatch.setattr(http.client, "HTTPSConnection", unavailable)
+    assert not rn._load_pypi_tags("acme-pkg")
+    error = capsys.readouterr().err
+    assert "::warning::PyPI release history unavailable" in error
+    assert "private transport detail" not in error
