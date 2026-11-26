@@ -37,7 +37,7 @@ Copilot or another tool. No specific AI review stage is required.
   practical, but local execution is a recommendation rather than a separate
   merge requirement. GitHub CI does not imply a particular runner type.
 - Review behavior, tests, compatibility, security and maintainability.
-  Oracle, Copilot and other AI review outputs are optional advisory context.
+  Oracle and other AI review outputs are optional advisory context.
 - Resolve or disposition blocking findings, respect existing coverage,
   Azure integration and release protection, and have the responsible
   maintainer make the final merge decision. Security/CI permission and
