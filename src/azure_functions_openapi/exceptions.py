@@ -25,7 +25,9 @@ class UnsupportedRouteTemplateError(ValueError):
         # Route fields stay read-only, but BaseException machinery (add_note,
         # __traceback__, __cause__) must remain assignable, so frozen=True
         # cannot be used here.
-        if name in ("function_name", "route", "token") and name in self.__dict__:
+        # Re-assigning an identical value is allowed so pickle and copy, which
+        # restore the instance state, keep working.
+        if name in ("function_name", "route", "token") and self.__dict__.get(name, value) != value:
             raise FrozenInstanceError(f"cannot assign to field {name!r}")
         super().__setattr__(name, value)
 
