@@ -183,8 +183,9 @@ class TestRenderSwaggerUI:
         """Test that render_swagger_ui logs correctly."""
         render_swagger_ui(openapi_url="/test/openapi.json")
 
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
+        mock_logger.debug.assert_called_once()
+        mock_logger.info.assert_not_called()
+        call_args = mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
         assert "Swagger UI rendered with enhanced security headers" in call_args
         assert "/test/openapi.json" in call_args
 
@@ -196,8 +197,9 @@ class TestRenderSwaggerUI:
         # The served page still carries the real key — only the log is redacted.
         assert "DUMMY-NOT-A-REAL-KEY" in response.get_body().decode()
 
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
+        mock_logger.debug.assert_called_once()
+        mock_logger.info.assert_not_called()
+        call_args = mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
         assert "DUMMY-NOT-A-REAL-KEY" not in call_args
         assert "code=" not in call_args
         assert "/api/openapi.json" in call_args
@@ -217,8 +219,9 @@ class TestRenderSwaggerUI:
 
         assert "host+key%2F%2B" in response.get_body().decode()
 
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
+        mock_logger.debug.assert_called_once()
+        mock_logger.info.assert_not_called()
+        call_args = mock_logger.debug.call_args[0][0] % mock_logger.debug.call_args[0][1:]
         assert "host+key%2F%2B" not in call_args
         assert "code=" not in call_args
 
@@ -430,3 +433,71 @@ class TestRedactQueryForLogging:
         """Test sanitizing None content."""
         result = _redact_query_for_logging(None)  # type: ignore
         assert result is None
+
+
+class TestHeaderPolicy:
+    """Configurable HSTS and X-Requested-With policy (#953)."""
+
+    def test_defaults_are_unchanged(self) -> None:
+        response = render_swagger_ui()
+
+        assert (
+            response.headers["Strict-Transport-Security"] == "max-age=31536000; includeSubDomains"
+        )
+        assert (
+            "request.headers['X-Requested-With'] = 'XMLHttpRequest'" in response.get_body().decode()
+        )
+
+    def test_hsts_can_be_customized_or_omitted(self) -> None:
+        custom = render_swagger_ui(hsts="max-age=60")
+        omitted = render_swagger_ui(hsts=None)
+
+        assert custom.headers["Strict-Transport-Security"] == "max-age=60"
+        assert "Strict-Transport-Security" not in omitted.headers
+        assert "Content-Security-Policy" in omitted.headers
+
+    def test_requested_with_header_can_be_disabled(self) -> None:
+        body = render_swagger_ui(send_requested_with_header=False).get_body().decode()
+
+        assert "X-Requested-With" not in body
+        assert "requestInterceptor: function(request)" in body
+        assert "return request;" in body
+
+    def test_ineffective_meta_equivalents_are_gone_but_http_headers_remain(self) -> None:
+        response = render_swagger_ui()
+        body = response.get_body().decode()
+
+        for name in ("X-Content-Type-Options", "X-Frame-Options", "Referrer-Policy"):
+            assert f'http-equiv="{name}"' not in body
+            assert name in response.headers
+        assert 'http-equiv="Content-Security-Policy"' in body
+
+    def test_same_origin_key_forwarding_works_without_requested_with(self) -> None:
+        body = (
+            render_swagger_ui(forward_page_key_header=True, send_requested_with_header=False)
+            .get_body()
+            .decode()
+        )
+
+        assert "x-functions-key" in body
+        assert "X-Requested-With" not in body
+
+    def test_cross_origin_spec_with_explicit_csp_and_no_extra_header(self) -> None:
+        csp = (
+            "default-src 'self'; script-src 'nonce-{nonce}'; connect-src 'self' https://api.example"
+        )
+        response = render_swagger_ui(
+            openapi_url="https://api.example/openapi.json",
+            custom_csp=csp,
+            send_requested_with_header=False,
+        )
+        body = response.get_body().decode()
+
+        directives = {
+            parts[0]: parts[1:]
+            for parts in (d.split() for d in response.headers["Content-Security-Policy"].split(";"))
+            if parts
+        }
+        assert directives["connect-src"] == ["'self'", "https://api.example"]
+        assert 'url: "https://api.example/openapi.json"' in body
+        assert "X-Requested-With" not in body

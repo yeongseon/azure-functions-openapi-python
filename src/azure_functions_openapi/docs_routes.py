@@ -16,7 +16,7 @@ from azure_functions_openapi.routes import (
     apply_host_prefix,
     normalize_route_prefix,
 )
-from azure_functions_openapi.swagger_ui import render_swagger_ui
+from azure_functions_openapi.swagger_ui import _DEFAULT_HSTS, render_swagger_ui
 
 DocsHandler = Callable[[func.HttpRequest], func.HttpResponse]
 RouteApp = func.FunctionApp | func.Blueprint
@@ -46,6 +46,8 @@ def register_openapi_routes(
     spec_options: Mapping[str, Any] | None = None,
     enabled: bool = True,
     docs_key_forwarding: Literal["header", "query", "none"] | None = None,
+    hsts: str | None = _DEFAULT_HSTS,
+    send_requested_with_header: bool = True,
 ) -> DocsRoutes:
     """Register opt-in JSON, YAML, and Swagger UI routes on ``app``.
 
@@ -69,6 +71,9 @@ def register_openapi_routes(
     setting, ``extensions.http.routePrefix`` in ``host_json`` (default ``./host.json``), then
     ``"/api"``. Any explicit string, including ``"auto"`` (the literal ``/auto`` prefix), is
     used as given and never resolved.
+
+    ``hsts`` and ``send_requested_with_header`` are forwarded to
+    :func:`render_swagger_ui` for the docs page; see it for host and subdomain scope.
     """
     routes = (json_route, yaml_route, docs_route)
     for route in routes:
@@ -154,6 +159,8 @@ def register_openapi_routes(
             title=f"{title} Docs",
             openapi_url=openapi_url,
             forward_page_key_header=protected and docs_key_forwarding == "header",
+            hsts=hsts,
+            send_requested_with_header=send_requested_with_header,
         )
 
     registered_json = _register_handler(app, openapi_json, json_route, auth_level, name_prefix)
