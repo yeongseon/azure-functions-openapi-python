@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import os
 import re
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -9,6 +10,7 @@ import warnings
 
 import azure.functions as func
 
+from azure_functions_openapi.host_config import resolve_route_prefix
 from azure_functions_openapi.routes import (
     DEFAULT_ROUTE_PREFIX,
     apply_host_prefix,
@@ -37,7 +39,8 @@ def register_openapi_routes(
     json_route: str = "openapi.json",
     yaml_route: str = "openapi.yaml",
     docs_route: str = "docs",
-    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    route_prefix: str | None = DEFAULT_ROUTE_PREFIX,
+    host_json: str | os.PathLike[str] | None = None,
     auth_level: func.AuthLevel = func.AuthLevel.ANONYMOUS,
     name_prefix: str = "openapi",
     spec_options: Mapping[str, Any] | None = None,
@@ -60,6 +63,12 @@ def register_openapi_routes(
     protected routes; it will change to ``"header"`` in a future minor before 1.0.
     Anonymous routes never forward. The key must authorize both docs and JSON
     functions. The initial navigation URL can still be retained in access logs.
+
+    ``route_prefix`` defaults to ``"/api"``. Pass ``route_prefix=None`` to resolve it once at
+    registration, in this order: the ``AzureFunctionsJobHost__extensions__http__routePrefix``
+    setting, ``extensions.http.routePrefix`` in ``host_json`` (default ``./host.json``), then
+    ``"/api"``. Any explicit string, including ``"auto"`` (the literal ``/auto`` prefix), is
+    used as given and never resolved.
     """
     routes = (json_route, yaml_route, docs_route)
     for route in routes:
@@ -80,6 +89,9 @@ def register_openapi_routes(
 
     if not enabled:
         return DocsRoutes(json=None, yaml=None, docs=None)
+
+    if route_prefix is None:
+        route_prefix = resolve_route_prefix(host_json)
 
     options = dict(spec_options or {})
     reserved_options = {"title", "version", "route_prefix", "app"}.intersection(options)

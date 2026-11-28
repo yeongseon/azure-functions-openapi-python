@@ -69,6 +69,21 @@ This keeps generated paths and Swagger UI's specification URL aligned. Reuse
 the resolved value for standalone generation or scanning calls as needed.
 Python API calls do not emit mismatch warnings.
 
+### Automatic resolution in `register_openapi_routes`
+
+`register_openapi_routes(..., route_prefix=None)` resolves the prefix once at
+registration with the same precedence as `resolve_route_prefix()`:
+
+1. An explicit string `route_prefix` is used as given and never resolved. This
+   includes the string `"auto"`, which stays the literal `/auto` prefix.
+2. `AzureFunctionsJobHost__extensions__http__routePrefix`, when present.
+3. `extensions.http.routePrefix` in `host_json=` (default `./host.json`).
+4. `/api`.
+
+The default remains `"/api"`; `None` is opt-in, so existing applications are
+unchanged. Generated paths and the Swagger UI specification URL use the same
+resolved value.
+
 For CLI generation, opt in with `auto`:
 
 ```bash
