@@ -493,6 +493,6 @@ class TestHeaderPolicy:
         )
         body = response.get_body().decode()
 
-        assert "https://api.example" in response.headers["Content-Security-Policy"]
+        assert "https://api.example" in response.headers["Content-Security-Policy"].split()
         assert 'url: "https://api.example/openapi.json"' in body
         assert "X-Requested-With" not in body
