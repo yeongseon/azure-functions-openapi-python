@@ -114,7 +114,9 @@ class TestAPISurface:
 
         deprecations = [w for w in captured if issubclass(w.category, DeprecationWarning)]
         assert deprecations, "expected DeprecationWarning when importing the shim"
-        assert "azure_functions_openapi.spec" in str(deprecations[0].message)
+        message = str(deprecations[0].message)
+        assert "from azure_functions_openapi instead" in message
+        assert "use azure_functions_openapi.spec" not in message
 
     def test_generate_openapi_spec_is_callable(self) -> None:
         assert callable(azure_functions_openapi.generate_openapi_spec)
