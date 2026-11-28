@@ -34,17 +34,17 @@
         "/api/users": {
             "post": {
                 "summary": "Create user",
-                "requestBody": { "...": "..." },
-                "responses": { "200": { "...": "..." } }
+                "requestBody": {"...": "..."},
+                "responses": {"200": {"...": "..."}},
             }
         }
     }
 }
 
+
 # function_app.py — 与上方的规范没有任何关联
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
 ```
 
 规范会偏离，使用者只能猜测，也没有 Swagger UI。
@@ -70,8 +70,8 @@ class UserResponse(BaseModel):
     responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
+
 
 # 自动生成的端点：
 # GET /api/openapi.json  — 始终与代码同步
@@ -161,12 +161,11 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_routes,
     render_swagger_ui,
 )
 
 app = func.FunctionApp()
-
-> 当 `@openapi` 位于 `@app.route` 下方（最内层）时，它会在路由绑定存在之前执行。使用此顺序时，请通过包根目录的 `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)` 或 `generate_openapi_report(app=app)` 扫描应用以获得正确路径。省略 `app=` 时，无法验证的路由会发出非致命的 `unresolved-route` 警告并回退到函数名。由于该回退可能正是 Azure 的默认路由，因此即使 `strict=True` 也不会报错。
 
 
 # 使用普通的 Pydantic 模型描述你的 API。
@@ -198,10 +197,20 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2 为可选项。** 推荐使用 `requests=` / `responses=`，但如果你不想添加依赖，也可以改为传入原始 JSON Schema dict（见下文）。
+> 当 `@openapi` 位于 `@app.route` 下方（最内层）时，它会在路由绑定存在之前执行。使用此顺序时，请通过包根目录的 `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)` 或 `generate_openapi_report(app=app)` 扫描应用以获得正确路径。省略 `app=` 时，无法验证的路由会发出非致命的 `unresolved-route` 警告并回退到函数名。由于该回退可能正是 Azure 的默认路由，因此即使 `strict=True` 也不会报错。
+
+> **Pydantic v2 是必需依赖**，会随本包一起安装。`requests=` / `responses=` 接受 Pydantic 模型（推荐）**或**原始 JSON Schema dict（见下文）。
+
+在完成的 app 上，用一次调用显式注册三个文档端点。
+
+```python
+register_openapi_routes(app, title="Sample API", version="1.0.0")
+```
+
+这个 opt-in 辅助函数只是在现有的 `FunctionApp` 上添加普通路由，不会在 import 时自动注册。如果主机的 `routePrefix` 不是 `/api`，请传入 `route_prefix=resolve_route_prefix(Path(__file__).with_name("host.json"))`（见[路由前缀指南](docs/route-prefix.md)）。
 
 <details>
-<summary>连接规范 + Swagger UI 端点 (openapi.json / openapi.yaml / docs)</summary>
+<summary>手动连接的替代方式: openapi.json / openapi.yaml / docs</summary>
 
 ```python
 # 将生成的规范和 Swagger UI 作为普通 HTTP 路由提供。
@@ -263,8 +272,7 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     },
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
-def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 </details>
