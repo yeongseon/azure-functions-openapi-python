@@ -31,7 +31,7 @@ dependencies = [
     # certified against real Azure via e2e-azure.yml; see #528 and #488.
     "azure-functions>=1.21.0,<2.0.0; python_version < '3.13'",
     "azure-functions>=1.21.0,<3.0.0; python_version >= '3.13'",
-    "pydantic>=2.0,<3.0",
+    "pydantic>=2.11.0,<3.0",
     "PyYAML",
 ]
 
