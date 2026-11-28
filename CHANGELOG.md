@@ -1,6 +1,27 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
+## [0.32.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.31.0...v0.32.0) (2026-11-28)
+
+
+### Features
+
+* **routes:** resolve the host route prefix during documentation registration ([#990](https://github.com/yeongseon/azure-functions-openapi-python/issues/990)) ([2090460](https://github.com/yeongseon/azure-functions-openapi-python/commit/20904602a7ac59fe0331ea8506acdbfcc1060020))
+
+
+### Bug Fixes
+
+* **ci:** restore Playwright browser lane after Ubuntu 26.04 runner change ([#989](https://github.com/yeongseon/azure-functions-openapi-python/issues/989)) ([987b900](https://github.com/yeongseon/azure-functions-openapi-python/commit/987b900dc7f2b9434f92cf65eb5f85a53b550b9b))
+* **errors:** allow exception notes on unsupported Azure route templates ([#987](https://github.com/yeongseon/azure-functions-openapi-python/issues/987)) ([5f10d69](https://github.com/yeongseon/azure-functions-openapi-python/commit/5f10d6983e34a0cc56e42d9c7c49f0c522d0df8a))
+* **migration:** direct legacy generation imports to the app-aware public API ([#988](https://github.com/yeongseon/azure-functions-openapi-python/issues/988)) ([07e29f9](https://github.com/yeongseon/azure-functions-openapi-python/commit/07e29f9c45a04a538f1423aab57abba12137fef2))
+* **schema:** raise the Pydantic floor to 2.11.0 and pin it in CI ([#986](https://github.com/yeongseon/azure-functions-openapi-python/issues/986)) ([97d1a7e](https://github.com/yeongseon/azure-functions-openapi-python/commit/97d1a7ef1ed14606b24dd06ccf0dab26ee90686f))
+* **swagger:** make transport and request header policy configurable ([#992](https://github.com/yeongseon/azure-functions-openapi-python/issues/992)) ([469cc64](https://github.com/yeongseon/azure-functions-openapi-python/commit/469cc64faee06155021534b93252da0e4d281c40))
+
+
+### Performance
+
+* **routes:** cache rendered specifications per registration and support conditional GET ([#993](https://github.com/yeongseon/azure-functions-openapi-python/issues/993)) ([208538e](https://github.com/yeongseon/azure-functions-openapi-python/commit/208538e5c6a5ac9a30ad95c42da3550282487072))
+
 ## [0.31.0](https://github.com/yeongseon/azure-functions-openapi-python/compare/v0.30.1...v0.31.0) (2026-11-01)
 
 
