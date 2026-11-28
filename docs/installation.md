@@ -59,7 +59,7 @@ If your endpoints use Pydantic models for request or response schemas, add Pydan
 as well:
 
 ```text
-pydantic>=2.0
+pydantic>=2.11.0
 ```
 
 ## Local Development Setup

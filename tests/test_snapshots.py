@@ -10,6 +10,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 import pytest
@@ -45,8 +46,12 @@ def _reload_example(module_path: str) -> None:
     with decorator_module._registry_lock:
         decorator_module._openapi_registry.clear()
     try:
-        mod = importlib.import_module(module_path)
-        importlib.reload(mod)
+        # Execute the module exactly once against the clean registry.
+        loaded = sys.modules.get(module_path)
+        if loaded is None:
+            importlib.import_module(module_path)
+        else:
+            importlib.reload(loaded)
     except ModuleNotFoundError as exc:
         if exc.name != "azure_functions_validation":
             raise
