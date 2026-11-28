@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import hashlib
 import os
 import re
+import threading
 from typing import Any, Literal
 from urllib.parse import urlencode
 import warnings
@@ -22,6 +24,10 @@ DocsHandler = Callable[[func.HttpRequest], func.HttpResponse]
 RouteApp = func.FunctionApp | func.Blueprint
 
 
+def _noop() -> None:
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class DocsRoutes:
     """Handlers registered by :func:`register_openapi_routes`."""
@@ -29,6 +35,7 @@ class DocsRoutes:
     json: DocsHandler | None
     yaml: DocsHandler | None
     docs: DocsHandler | None
+    invalidate_cache: Callable[[], None] = _noop
 
 
 def register_openapi_routes(
@@ -48,6 +55,7 @@ def register_openapi_routes(
     docs_key_forwarding: Literal["header", "query", "none"] | None = None,
     hsts: str | None = _DEFAULT_HSTS,
     send_requested_with_header: bool = True,
+    cache_spec: bool = False,
 ) -> DocsRoutes:
     """Register opt-in JSON, YAML, and Swagger UI routes on ``app``.
 
@@ -74,6 +82,14 @@ def register_openapi_routes(
 
     ``hsts`` and ``send_requested_with_header`` are forwarded to
     :func:`render_swagger_ui` for the docs page; see it for host and subdomain scope.
+
+    The JSON and YAML handlers send a strong ``ETag`` and honor ``If-None-Match`` (a list of
+    tags, weak tags and ``*``), answering ``304`` with an empty body. They send
+    ``Cache-Control: no-cache`` (``private, no-cache`` for protected routes), so clients
+    revalidate every time. ``cache_spec=True`` additionally keeps each rendered representation
+    in memory for this registration only; it is never shared between apps. Call
+    ``routes.invalidate_cache()`` after the app, registry or options change. A failed render
+    is never cached and the next request retries.
     """
     routes = (json_route, yaml_route, docs_route)
     for route in routes:
@@ -114,33 +130,50 @@ def register_openapi_routes(
             stacklevel=2,
         )
 
-    def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+    def render_json() -> str:
         from azure_functions_openapi import get_openapi_json
 
-        return func.HttpResponse(
-            get_openapi_json(
-                title=title,
-                version=version,
-                route_prefix=route_prefix,
-                app=app,
-                **options,
-            ),
-            mimetype="application/json",
+        return get_openapi_json(
+            title=title, version=version, route_prefix=route_prefix, app=app, **options
         )
 
-    def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
+    def render_yaml() -> str:
         from azure_functions_openapi import get_openapi_yaml
 
-        return func.HttpResponse(
-            get_openapi_yaml(
-                title=title,
-                version=version,
-                route_prefix=route_prefix,
-                app=app,
-                **options,
-            ),
-            mimetype="application/x-yaml",
+        return get_openapi_yaml(
+            title=title, version=version, route_prefix=route_prefix, app=app, **options
         )
+
+    cache_control = "private, no-cache" if protected else "no-cache"
+    cache: dict[str, str] = {}
+    cache_lock = threading.Lock()
+
+    def respond(
+        req: func.HttpRequest, key: str, render: Callable[[], str], mimetype: str
+    ) -> func.HttpResponse:
+        if cache_spec:
+            with cache_lock:
+                body = cache.get(key)
+                if body is None:
+                    body = render()
+                    cache[key] = body
+        else:
+            body = render()
+        etag = _etag(body)
+        headers = {"ETag": etag, "Cache-Control": cache_control}
+        if _if_none_match(req.headers.get("if-none-match"), etag):
+            return func.HttpResponse(status_code=304, headers=headers)
+        return func.HttpResponse(body, mimetype=mimetype, headers=headers)
+
+    def openapi_json(req: func.HttpRequest) -> func.HttpResponse:
+        return respond(req, "json", render_json, "application/json")
+
+    def openapi_yaml(req: func.HttpRequest) -> func.HttpResponse:
+        return respond(req, "yaml", render_yaml, "application/x-yaml")
+
+    def invalidate_cache() -> None:
+        with cache_lock:
+            cache.clear()
 
     def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
         prefix = normalize_route_prefix(route_prefix)
@@ -166,7 +199,25 @@ def register_openapi_routes(
     registered_json = _register_handler(app, openapi_json, json_route, auth_level, name_prefix)
     registered_yaml = _register_handler(app, openapi_yaml, yaml_route, auth_level, name_prefix)
     registered_docs = _register_handler(app, swagger_ui, docs_route, auth_level, name_prefix)
-    return DocsRoutes(json=registered_json, yaml=registered_yaml, docs=registered_docs)
+    return DocsRoutes(
+        json=registered_json,
+        yaml=registered_yaml,
+        docs=registered_docs,
+        invalidate_cache=invalidate_cache,
+    )
+
+
+def _etag(body: str) -> str:
+    return '"' + hashlib.sha256(body.encode("utf-8")).hexdigest()[:32] + '"'
+
+
+def _if_none_match(header: str | None, etag: str) -> bool:
+    if header is None:
+        return False
+    if header.strip() == "*":
+        return True
+    current = etag.removeprefix("W/")
+    return any(candidate.strip().removeprefix("W/") == current for candidate in header.split(","))
 
 
 def _register_handler(
