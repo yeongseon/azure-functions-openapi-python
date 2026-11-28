@@ -107,3 +107,31 @@ def test_serialization_facades_wrap_plain_value_errors(
     with pytest.raises(RuntimeError, match=f"^{message}$") as exc_info:
         facade()
     assert exc_info.value.__cause__ is cause
+
+
+def test_shim_generation_functions_are_the_app_aware_root_functions(
+    shim_api: ModuleType,
+) -> None:
+    import json
+
+    import azure.functions as func
+
+    from azure_functions_openapi import clear_openapi_registry
+    from azure_functions_openapi.decorator import openapi
+
+    clear_openapi_registry()
+    app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+
+    @app.route(route="named-things/{thing_id}", methods=["GET"])
+    @openapi(summary="Get a thing")
+    def get_thing(req: func.HttpRequest) -> func.HttpResponse:
+        return func.HttpResponse("ok")
+
+    try:
+        for name in ("get_openapi_json", "generate_openapi_spec"):
+            assert getattr(shim_api, name) is getattr(package_api, name)
+        document = json.loads(shim_api.get_openapi_json(app=app))
+    finally:
+        clear_openapi_registry()
+
+    assert "/api/named-things/{thing_id}" in document["paths"]

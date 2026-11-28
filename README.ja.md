@@ -34,17 +34,17 @@ Azure Functions の HTTP API をドキュメント化するには、通常、別
         "/api/users": {
             "post": {
                 "summary": "Create user",
-                "requestBody": { "...": "..." },
-                "responses": { "200": { "...": "..." } }
+                "requestBody": {"...": "..."},
+                "responses": {"200": {"...": "..."}},
             }
         }
     }
 }
 
+
 # function_app.py — 上のスペックとは何の連携もない
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
 ```
 
 スペックはずれ、利用者は推測し、Swagger UI もありません。
@@ -70,8 +70,8 @@ class UserResponse(BaseModel):
     responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
+
 
 # 自動生成されるエンドポイント:
 # GET /api/openapi.json  — 常にコードと同期
@@ -161,12 +161,11 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_routes,
     render_swagger_ui,
 )
 
 app = func.FunctionApp()
-
-> `@openapi` を `@app.route` の下（最内層）に置くと、ルートバインディングより先に実行されます。この順序では、正しいパスを検出するため、パッケージルートの `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)`、または `generate_openapi_report(app=app)` を使用してください。`app=` なしでは、検証できないルートに対して非致命的な `unresolved-route` 警告が発生し、関数名へフォールバックします。このフォールバックが Azure の正しい既定ルートである場合があるため、`strict=True` でもエラーにはなりません。
 
 
 # 普通の Pydantic モデルで API を記述します。
@@ -198,10 +197,20 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2 は任意です。** `requests=` / `responses=` を推奨しますが、依存関係を追加したくなければ生の JSON Schema dict を代わりに渡すこともできます（下記参照）。
+> `@openapi` を `@app.route` の下（最内層）に置くと、ルートバインディングより先に実行されます。この順序では、正しいパスを検出するため、パッケージルートの `generate_openapi_spec(app=app)`、`get_openapi_json(app=app)`、`get_openapi_yaml(app=app)`、または `generate_openapi_report(app=app)` を使用してください。`app=` なしでは、検証できないルートに対して非致命的な `unresolved-route` 警告が発生し、関数名へフォールバックします。このフォールバックが Azure の正しい既定ルートである場合があるため、`strict=True` でもエラーにはなりません。
+
+> **Pydantic v2 は必須の依存関係**で、このパッケージと一緒にインストールされます。`requests=` / `responses=` は Pydantic モデル（推奨）**または**生の JSON Schema dict（下記参照）を受け取ります。
+
+完成した app に、3 つのドキュメントエンドポイントを明示的に 1 回の呼び出しで登録します。
+
+```python
+register_openapi_routes(app, title="Sample API", version="1.0.0")
+```
+
+この opt-in ヘルパーは既存の `FunctionApp` に通常のルートを追加するだけで、import 時に自動登録はしません。ホストの `routePrefix` が `/api` でない場合は `route_prefix=resolve_route_prefix(Path(__file__).with_name("host.json"))` を渡してください（[ルートプレフィックスガイド](docs/route-prefix.md)）。
 
 <details>
-<summary>スペック + Swagger UI エンドポイントの接続 (openapi.json / openapi.yaml / docs)</summary>
+<summary>手動で接続する代替方法: openapi.json / openapi.yaml / docs</summary>
 
 ```python
 # 生成されたスペックと Swagger UI を通常の HTTP ルートとして提供します。
@@ -263,8 +272,7 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     },
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
-def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 </details>

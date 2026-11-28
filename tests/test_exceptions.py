@@ -1,5 +1,7 @@
 """Tests for the public exception hierarchy."""
 
+import pytest
+
 from azure_functions_openapi.exceptions import (
     OpenAPISpecConfigError,
     SDKIncompatibleError,
@@ -19,3 +21,43 @@ def test_sdk_incompatible_error_is_a_config_error() -> None:
     assert isinstance(error, OpenAPISpecConfigError)
     assert isinstance(error, ValueError)
     assert str(error) == "unsupported azure-functions SDK"
+
+
+def test_unsupported_route_template_error_supports_notes_and_stays_read_only() -> None:
+    import dataclasses
+
+    from azure_functions_openapi.exceptions import UnsupportedRouteTemplateError
+
+    err = UnsupportedRouteTemplateError("fn", "items/{x:guid}", "x:guid")
+    err.add_note("context")
+    assert err.__notes__ == ["context"]
+    assert isinstance(err, ValueError)
+    assert "x:guid" in str(err)
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        err.route = "other"
+    assert hash(err) == hash(UnsupportedRouteTemplateError("fn", "items/{x:guid}", "x:guid"))
+
+    try:
+        try:
+            raise err
+        except UnsupportedRouteTemplateError as caught:
+            caught.add_note("more")
+            raise
+    except UnsupportedRouteTemplateError as final:
+        assert final is err
+        assert final.__traceback__ is not None
+        assert final.__notes__ == ["context", "more"]
+
+
+def test_unsupported_route_template_error_survives_pickle_and_copy() -> None:
+    import copy
+    import pickle
+
+    from azure_functions_openapi.exceptions import UnsupportedRouteTemplateError
+
+    err = UnsupportedRouteTemplateError("fn", "items/{x:guid}", "x:guid")
+    err.add_note("context")
+
+    for clone in (pickle.loads(pickle.dumps(err)), copy.copy(err), copy.deepcopy(err)):
+        assert clone == err
+        assert str(clone) == str(err)

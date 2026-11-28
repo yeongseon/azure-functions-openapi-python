@@ -1,7 +1,7 @@
 # src/azure_functions_openapi/exceptions.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import FrozenInstanceError, dataclass
 
 
 class OpenAPISpecConfigError(ValueError):
@@ -13,13 +13,23 @@ class OpenAPISpecConfigError(ValueError):
     """
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(unsafe_hash=True)
 class UnsupportedRouteTemplateError(ValueError):
     """Raised when an Azure route cannot be represented faithfully in OpenAPI."""
 
     function_name: str
     route: str
     token: str
+
+    def __setattr__(self, name: str, value: object) -> None:
+        # Route fields stay read-only, but BaseException machinery (add_note,
+        # __traceback__, __cause__) must remain assignable, so frozen=True
+        # cannot be used here.
+        # Re-assigning an identical value is allowed so pickle and copy, which
+        # restore the instance state, keep working.
+        if name in ("function_name", "route", "token") and self.__dict__.get(name, value) != value:
+            raise FrozenInstanceError(f"cannot assign to field {name!r}")
+        super().__setattr__(name, value)
 
     def __str__(self) -> str:
         return (

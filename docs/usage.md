@@ -830,17 +830,15 @@ Update any imports as follows:
 from azure_functions_openapi.openapi import get_openapi_json, get_openapi_yaml
 ```
 
-**Canonical internal path**:
-
-```python
-from azure_functions_openapi.spec import get_openapi_json, get_openapi_yaml
-```
-
-**Recommended public API** (preferred for application code):
+**Recommended public API** (migrate generation functions here; it supports `app=`):
 
 ```python
 from azure_functions_openapi import get_openapi_json, get_openapi_yaml
 ```
+
+The low-level `azure_functions_openapi.spec` module is the compiler: use it only for
+compilation helpers and constants such as `OPENAPI_VERSION_3_1`. Its `get_openapi_json` and
+`get_openapi_yaml` do not accept `app=`, so do not migrate generation calls to it.
 
 The root package re-exports `get_openapi_json`, `get_openapi_yaml`,
 `generate_openapi_spec`, `OPENAPI_VERSION_3_0`, `OPENAPI_VERSION_3_1`,

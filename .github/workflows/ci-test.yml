@@ -395,18 +395,19 @@ jobs:
       - name: Install minimum runtime and development dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install "azure-functions==1.21.0"
+          pip install "azure-functions==1.21.0" "pydantic==2.11.0"
           pip install -e ".[dev]"
 
-      - name: Assert the declared azure-functions floor is resolved
+      - name: Assert the declared runtime floors are resolved
         run: |
-          pip show azure-functions azure-functions-openapi
+          pip show azure-functions pydantic azure-functions-openapi
           python - <<'PY'
           from importlib.metadata import version
 
-          resolved = version("azure-functions")
-          print(f"resolved azure-functions={resolved}")
-          assert resolved == "1.21.0"
+          for name, expected in (("azure-functions", "1.21.0"), ("pydantic", "2.11.0")):
+              resolved = version(name)
+              print(f"resolved {name}={resolved}")
+              assert resolved == expected
           PY
 
       - name: Run full suite against minimum runtime dependencies
