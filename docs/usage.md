@@ -161,6 +161,10 @@ class OrderResponse(BaseModel):
 
 `responses=OrderResponse` derives the `200` response schema from the model.
 
+`responses={200: list[OrderResponse]}` is accepted the same way (an array schema), but
+non-container generics such as `Callable[...]` are rejected at decoration time; see the
+[Response Shorthand Generics example](examples/response_shorthand_generics.md).
+
 The request schema describes what a model *accepts* (Pydantic's
 `validation` mode); the response schema describes what a handler's return
 value actually *produces* (`serialization` mode). These usually match, but
@@ -236,6 +240,10 @@ defaults to `True`):
     request_body_required=False,
 )
 ```
+
+To document typed error bodies (for example `application/problem+json` for `404`
+and `500`) next to a success body, see the runnable
+[HTTP Error Responses example](examples/http_error_responses.md).
 
 ### Migrating to `requests` / `responses`
 
@@ -712,6 +720,10 @@ spec = generate_openapi_spec(openapi_version=OPENAPI_VERSION_3_2)
 Standard methods are unaffected — they stay first-class path-item fields. When
 you target 3.0/3.1, a non-standard method cannot be represented, so it is
 dropped from the spec with a warning (and raises under `strict=True`).
+
+To see how the CLI's `--strict` and `--fail-on-warnings` gates treat a valid and an
+invalid custom-method declaration, follow the
+[CLI strict-validation walkthrough](cli.md#walkthrough-strict-validation-of-custom-http-methods).
 
 ## Swagger UI route
 

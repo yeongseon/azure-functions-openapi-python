@@ -37,6 +37,17 @@ relevant root document in the same pull request or commit series.
 
 ## Working Rules
 
+### Contributor-reserved issues
+
+- **Reserved for outside contributors:** An issue labeled `good first issue` or `help wanted`, or already assigned to or actively claimed by an external contributor, is reserved for human-led outside work, including AI-assisted contributions directed and reviewed by that contributor. Unlabeled, unclaimed issues are not automatically reserved.
+- **Owner and automation exclusion:** The repository owner, maintainer-operated coding agents, bots, and scheduled backlog-cleanup work must not claim, self-assign, implement, open competing PRs for, close, silently re-scope, or remove the reservation labels from reserved issues. General instructions to "clear the backlog", "fix all issues", or "prepare a release" do **not** waive this restriction.
+- **Check before working:** Inspect issue labels, Assignees, comments, and existing/open linked PRs before any maintainer-driven or automated implementation. If work is reserved or someone is already contributing, stop the overlapping implementation. Do not reclaim work, unassign people, or expire a claim automatically.
+- **External contributors:** Anyone may work on an unclaimed issue and submit a PR without prior approval, self-assignment permission, or use of the maintainer's tools. A comment to coordinate is welcome, not required; coordinate before overlapping an active contributor. Human-directed AI assistance is welcome.
+- **Maintainer role:** Maintainers may clarify requirements, perform non-destructive triage, offer help, run protected checks, review and merge external PRs, and manage assignments after coordinating with contributors.
+- **Issue-specific exception only:** Changing a reservation requires an explicit maintainer decision recorded on the **specific issue**, after checking current claims/PRs and agreeing on a handoff with any active contributor. A broad automation or backlog request never counts. Do not silently remove labels or close a reserved issue.
+- These are human/agent workflow rules, not GitHub permission enforcement. Existing CI, review, release and branch protection rules still apply.
+
+
 ### Test Coverage
 - Maintain test coverage at **95% or above** for committed changes and PRs.
 - For optional local verification, run `hatch run pytest --cov --cov-report=term-missing -q`; required GitHub CI remains authoritative.
