@@ -34,17 +34,17 @@ Azure Functions HTTP API를 문서화하려면 일반적으로 별도의 OpenAPI
         "/api/users": {
             "post": {
                 "summary": "Create user",
-                "requestBody": { "...": "..." },
-                "responses": { "200": { "...": "..." } }
+                "requestBody": {"...": "..."},
+                "responses": {"200": {"...": "..."}},
             }
         }
     }
 }
 
+
 # function_app.py — 위 스펙과 아무런 연결이 없음
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
 ```
 
 스펙은 어긋나고, 사용자는 추측하며, Swagger UI도 없습니다.
@@ -70,8 +70,8 @@ class UserResponse(BaseModel):
     responses=UserResponse,
 )
 @app.route(route="users", methods=["POST"])
-def create_user(req):
-    ...
+def create_user(req): ...
+
 
 # 자동 생성되는 엔드포인트:
 # GET /api/openapi.json  — 항상 코드와 동기화
@@ -161,12 +161,11 @@ from azure_functions_openapi import (
     get_openapi_json,
     get_openapi_yaml,
     openapi,
+    register_openapi_routes,
     render_swagger_ui,
 )
 
 app = func.FunctionApp()
-
-> `@openapi`가 `@app.route` 아래(가장 안쪽)에 있으면 라우트 바인딩보다 먼저 실행됩니다. 이 순서를 사용할 때는 정확한 경로를 검색하도록 패키지 루트의 `generate_openapi_spec(app=app)`, `get_openapi_json(app=app)`, `get_openapi_yaml(app=app)` 또는 `generate_openapi_report(app=app)`를 사용하세요. `app=` 없이 생성하면 확인할 수 없는 경로에 대해 치명적이지 않은 `unresolved-route` 경고가 발생하고 함수 이름으로 대체됩니다. 이 대체 경로가 Azure의 올바른 기본 경로일 수 있으므로 `strict=True`에서도 오류가 발생하지 않습니다.
 
 
 # 일반 Pydantic 모델로 API를 기술합니다.
@@ -198,10 +197,20 @@ def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
     )
 ```
 
-> **Pydantic v2는 선택 사항입니다.** `requests=` / `responses=`을 권장하지만, 의존성을 추가하고 싶지 않다면 원시 JSON Schema dict를 대신 전달할 수 있습니다(아래 참고).
+> `@openapi`가 `@app.route` 아래(가장 안쪽)에 있으면 라우트 바인딩보다 먼저 실행됩니다. 이 순서를 사용할 때는 정확한 경로를 검색하도록 패키지 루트의 `generate_openapi_spec(app=app)`, `get_openapi_json(app=app)`, `get_openapi_yaml(app=app)` 또는 `generate_openapi_report(app=app)`를 사용하세요. `app=` 없이 생성하면 확인할 수 없는 경로에 대해 치명적이지 않은 `unresolved-route` 경고가 발생하고 함수 이름으로 대체됩니다. 이 대체 경로가 Azure의 올바른 기본 경로일 수 있으므로 `strict=True`에서도 오류가 발생하지 않습니다.
+
+> **Pydantic v2는 필수 의존성**이며 이 패키지와 함께 설치됩니다. `requests=` / `responses=`는 Pydantic 모델(권장) **또는** 원시 JSON Schema dict(아래 참고)를 받습니다.
+
+완성된 app에서 세 개의 문서 엔드포인트를 명시적으로 한 번에 등록합니다.
+
+```python
+register_openapi_routes(app, title="Sample API", version="1.0.0")
+```
+
+이 opt-in 헬퍼는 기존 `FunctionApp`에 일반 라우트를 추가할 뿐이며, import 시점에 자동으로 등록하지 않습니다. 호스트의 `routePrefix`가 `/api`가 아니면 `route_prefix=resolve_route_prefix(Path(__file__).with_name("host.json"))`를 전달하세요([라우트 접두사 가이드](docs/route-prefix.md)).
 
 <details>
-<summary>스펙 + Swagger UI 엔드포인트 연결 (openapi.json / openapi.yaml / docs)</summary>
+<summary>직접 연결하는 대안: openapi.json / openapi.yaml / docs</summary>
 
 ```python
 # 생성된 스펙과 Swagger UI를 일반 HTTP 라우트로 제공합니다.
@@ -263,8 +272,7 @@ def swagger_ui(req: func.HttpRequest) -> func.HttpResponse:
     },
 )
 @app.route(route="http_trigger", auth_level=func.AuthLevel.ANONYMOUS, methods=["POST"])
-def http_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    ...
+def http_trigger(req: func.HttpRequest) -> func.HttpResponse: ...
 ```
 
 </details>
