@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import hashlib
+import os
 import re
 import threading
 from typing import Any, Literal
@@ -11,12 +12,13 @@ import warnings
 
 import azure.functions as func
 
+from azure_functions_openapi.host_config import resolve_route_prefix
 from azure_functions_openapi.routes import (
     DEFAULT_ROUTE_PREFIX,
     apply_host_prefix,
     normalize_route_prefix,
 )
-from azure_functions_openapi.swagger_ui import render_swagger_ui
+from azure_functions_openapi.swagger_ui import _DEFAULT_HSTS, render_swagger_ui
 
 DocsHandler = Callable[[func.HttpRequest], func.HttpResponse]
 RouteApp = func.FunctionApp | func.Blueprint
@@ -44,12 +46,15 @@ def register_openapi_routes(
     json_route: str = "openapi.json",
     yaml_route: str = "openapi.yaml",
     docs_route: str = "docs",
-    route_prefix: str = DEFAULT_ROUTE_PREFIX,
+    route_prefix: str | None = DEFAULT_ROUTE_PREFIX,
+    host_json: str | os.PathLike[str] | None = None,
     auth_level: func.AuthLevel = func.AuthLevel.ANONYMOUS,
     name_prefix: str = "openapi",
     spec_options: Mapping[str, Any] | None = None,
     enabled: bool = True,
     docs_key_forwarding: Literal["header", "query", "none"] | None = None,
+    hsts: str | None = _DEFAULT_HSTS,
+    send_requested_with_header: bool = True,
     cache_spec: bool = False,
 ) -> DocsRoutes:
     """Register opt-in JSON, YAML, and Swagger UI routes on ``app``.
@@ -68,6 +73,15 @@ def register_openapi_routes(
     protected routes; it will change to ``"header"`` in a future minor before 1.0.
     Anonymous routes never forward. The key must authorize both docs and JSON
     functions. The initial navigation URL can still be retained in access logs.
+
+    ``route_prefix`` defaults to ``"/api"``. Pass ``route_prefix=None`` to resolve it once at
+    registration, in this order: the ``AzureFunctionsJobHost__extensions__http__routePrefix``
+    setting, ``extensions.http.routePrefix`` in ``host_json`` (default ``./host.json``), then
+    ``"/api"``. Any explicit string, including ``"auto"`` (the literal ``/auto`` prefix), is
+    used as given and never resolved.
+
+    ``hsts`` and ``send_requested_with_header`` are forwarded to
+    :func:`render_swagger_ui` for the docs page; see it for host and subdomain scope.
 
     The JSON and YAML handlers send a strong ``ETag`` and honor ``If-None-Match`` (a list of
     tags, weak tags and ``*``), answering ``304`` with an empty body. They send
@@ -96,6 +110,9 @@ def register_openapi_routes(
 
     if not enabled:
         return DocsRoutes(json=None, yaml=None, docs=None)
+
+    if route_prefix is None:
+        route_prefix = resolve_route_prefix(host_json)
 
     options = dict(spec_options or {})
     reserved_options = {"title", "version", "route_prefix", "app"}.intersection(options)
@@ -175,6 +192,8 @@ def register_openapi_routes(
             title=f"{title} Docs",
             openapi_url=openapi_url,
             forward_page_key_header=protected and docs_key_forwarding == "header",
+            hsts=hsts,
+            send_requested_with_header=send_requested_with_header,
         )
 
     registered_json = _register_handler(app, openapi_json, json_route, auth_level, name_prefix)

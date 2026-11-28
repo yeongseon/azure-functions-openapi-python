@@ -144,6 +144,23 @@ to require the intended identity or policy for `/api/docs`,
 URL from bypassing that control (for example, with access restrictions or
 private networking).
 
+### Swagger UI response headers
+
+`render_swagger_ui()` always sends the Content-Security-Policy, `X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy` and cache-control headers as HTTP response headers
+(the former `<meta>` copies of the last three were ineffective and are removed). Two
+behaviors are configurable, and `register_openapi_routes()` accepts the same keywords:
+
+- `hsts=` sets `Strict-Transport-Security`. The default,
+  `max-age=31536000; includeSubDomains`, applies to the responding host **and all of its
+  subdomains**. Pass a narrower value, or `None` to omit the header, when other subdomains
+  are served over HTTP or your edge already sets HSTS.
+- `send_requested_with_header=False` stops Swagger UI adding `X-Requested-With:
+  XMLHttpRequest` to its requests, for APIs whose CORS policy rejects that header. Same-origin
+  key forwarding does not depend on it.
+
+Routine render logging is emitted at DEBUG, with the query string redacted.
+
 ### Swagger UI Try-it-out behavior
 
 **Local demonstration versus production:** the default anonymous documentation

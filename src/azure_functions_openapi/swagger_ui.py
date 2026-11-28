@@ -24,6 +24,7 @@ _SWAGGER_UI_CDN_BASE = f"https://cdn.jsdelivr.net/npm/swagger-ui-dist@{_SWAGGER_
 #   curl -sSL "$BASE/swagger-ui-bundle.js" | openssl dgst -sha384 -binary | openssl base64 -A
 _SWAGGER_UI_CSS_SRI = "sha384-AHNbXeU7DPcgcihnwKYc3FOT0hTfhEwVFc2JRxxF5S/mplUdt/7G1g6nIblzENrX"
 _SWAGGER_UI_BUNDLE_SRI = "sha384-FgJpbEfGqpFeiFJh0+HNvyohx84XMd+IwgPyxJxjuDFMHVYmoFqrDEJNrVFexwA0"
+_DEFAULT_HSTS = "max-age=31536000; includeSubDomains"
 
 
 def render_swagger_ui(
@@ -33,6 +34,8 @@ def render_swagger_ui(
     enable_client_logging: bool = False,
     *,
     forward_page_key_header: bool = False,
+    hsts: str | None = _DEFAULT_HSTS,
+    send_requested_with_header: bool = True,
 ) -> HttpResponse:
     """
     Render Swagger UI with enhanced security headers and CSP protection.
@@ -45,6 +48,12 @@ def render_swagger_ui(
         forward_page_key_header: Read and remove the page's code query in the browser,
             forwarding it only as a header on the same-origin spec download. Absolute
             HTTPS spec URLs are supported but never receive the page key.
+        hsts: Value of the ``Strict-Transport-Security`` response header, or ``None`` to omit
+            it. The default ``max-age=31536000; includeSubDomains`` applies to the responding
+            host and all of its subdomains, so applications that serve other subdomains over
+            HTTP, or that set HSTS at their own edge, should pass a narrower value or ``None``.
+        send_requested_with_header: Add ``X-Requested-With: XMLHttpRequest`` to Swagger UI
+            requests (default). Pass ``False`` where a CORS policy would reject the header.
 
     Returns:
         HttpResponse with Swagger UI HTML and security headers
@@ -120,6 +129,12 @@ def render_swagger_ui(
                 }}
               }}"""
 
+    requested_with_line = (
+        "              request.headers['X-Requested-With'] = 'XMLHttpRequest';"
+        if send_requested_with_header
+        else ""
+    )
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -127,9 +142,6 @@ def render_swagger_ui(
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta http-equiv="Content-Security-Policy" content="{safe_csp}">
-        <meta http-equiv="X-Content-Type-Options" content="nosniff">
-        <meta http-equiv="X-Frame-Options" content="DENY">
-        <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
         <title>{safe_title}</title>
         <link rel="stylesheet"
               type="text/css"
@@ -153,8 +165,7 @@ def render_swagger_ui(
             tryItOutEnabled: true,
             supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch', 'head', 'options'],
             requestInterceptor: function(request) {{
-              // Add security headers to requests
-              request.headers['X-Requested-With'] = 'XMLHttpRequest';{key_interceptor}
+{requested_with_line}{key_interceptor}
               return request;
             }},
             {response_interceptor}
@@ -173,7 +184,6 @@ def render_swagger_ui(
         "X-Content-Type-Options": "nosniff",
         "X-Frame-Options": "DENY",
         "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
@@ -181,9 +191,11 @@ def render_swagger_ui(
 
     for header, value in headers.items():
         response.headers[header] = value
+    if hsts is not None:
+        response.headers["Strict-Transport-Security"] = hsts
 
     redacted_url = _redact_query_for_logging(sanitized_url)
-    logger.info(f"Swagger UI rendered with enhanced security headers for URL: {redacted_url}")
+    logger.debug("Swagger UI rendered with enhanced security headers for URL: %s", redacted_url)
     return response
 
 

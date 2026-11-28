@@ -28,7 +28,9 @@ from azure_functions_openapi.spec import (
 
 warnings.warn(
     "Importing from azure_functions_openapi.openapi is deprecated; "
-    "use azure_functions_openapi.spec instead. "
+    "import generate_openapi_spec, get_openapi_json and get_openapi_yaml from "
+    "azure_functions_openapi instead (azure_functions_openapi.spec is the low-level "
+    "compiler and does not accept app=). "
     "The shim is scheduled for removal in 1.0 (see issue #194).",
     DeprecationWarning,
     stacklevel=2,
