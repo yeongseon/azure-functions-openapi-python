@@ -34,7 +34,7 @@ def test_unsupported_route_template_error_supports_notes_and_stays_read_only() -
     assert isinstance(err, ValueError)
     assert "x:guid" in str(err)
     with pytest.raises(dataclasses.FrozenInstanceError):
-        err.route = "other"  # type: ignore[misc]
+        err.route = "other"
     assert hash(err) == hash(UnsupportedRouteTemplateError("fn", "items/{x:guid}", "x:guid"))
 
     try:
