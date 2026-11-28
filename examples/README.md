@@ -13,7 +13,7 @@ and the partner purge example checks only that `X-API-Key` is present, not its i
 for certification with synthetic data, anonymous warmup/test/docs routes, and resource-group
 cleanup. Keep its public reachability for certification, not as a production default.
 
-`azure-functions-openapi` ships five smoke-tested examples:
+`azure-functions-openapi` ships these smoke-tested examples:
 
 | Role | Path | Description |
 | --- | --- | --- |
@@ -21,4 +21,9 @@ cleanup. Keep its public reachability for certification, not as a production def
 | Complex | `examples/report_jobs` | Async report generation with Bearer auth. Shows `security`, `security_scheme`, `OPENAPI_VERSION_3_1`, `generate_openapi_spec()`, `render_swagger_ui(custom_csp=..., enable_client_logging=True)`. |
 | Integration | `examples/notification_request` | Email notification with `@openapi` + `@validate_http` stacked. Shows `requests=`, `responses=` unified params and shared Pydantic models. |
 | Inference | `examples/inference_cookbook` | Minimal API documented from a Pydantic return annotation and an opt-in handler docstring. |
+| Error responses | `examples/http_error_responses` | Success plus typed `404`/`500` `application/problem+json` responses sharing one Pydantic error model. |
+| Decorator order | `examples/decorator_order` | `@openapi` above vs below `@app.route` on two small apps generating the same operation, and the no-app fallback limit. |
+| Querystring (3.2) | `examples/querystring_encoding` | OpenAPI 3.2 `querystring=` whole-query-string parameter with the exact generated fields and a valid client query string. |
+| Shorthand | `examples/response_shorthand_generics` | Supported `list[Model]` response shorthand, a rejected `Callable` generic, and the explicit Response Object alternative. |
+| Versioned metadata | `examples/versioned_response_metadata` | Versioned vendor media type and `Location`/`ETag` response headers via the `version: 2` endpoint metadata payload. |
 | Bridge | `examples/partner_import_bridge` | Partner data import with `scan_endpoint_metadata(app)`, `register_openapi_metadata()`, `OpenAPIOperationMetadata`, and `request_body_required`. |

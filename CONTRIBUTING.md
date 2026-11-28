@@ -2,6 +2,16 @@
 
 We welcome contributions to the `azure-functions-openapi` project.
 
+
+## Contributor-reserved issues
+
+Issues labeled `good first issue` or `help wanted`, and issues assigned to or actively claimed by an external contributor, are **reserved for outside human-led contributors** (including code prepared with AI tools under a contributor's direction and review).
+
+- You may start an **unclaimed** issue and submit a PR without advance maintainer approval or GitHub Assignee permission. First check the issue, Assignees, discussion and open PRs. A comment expressing interest is encouraged but optional; coordinate rather than duplicate someone else's work.
+- The owner, maintainer-operated coding agents, and automated backlog-clearing jobs must not take these issues away, implement competing solutions, silently change their labels/scope or close them. A generic instruction to clear the backlog is **not** an exception.
+- Maintainers are available to answer questions, confirm assignments, run protected verification, review and merge contributor PRs. They may change a reservation only through a **documented, issue-specific decision**, after coordinating any active contributor handoff; claims are not automatically expired.
+- See [AGENTS.md — Contributor-reserved issues](AGENTS.md#contributor-reserved-issues) for the full owner/agent workflow. Required CI, review and release rules remain unchanged.
+
 ## Branch Strategy
 
 Use GitHub Flow and branch from `main`.
@@ -163,6 +173,30 @@ git ls-remote https://github.com/actions/setup-python 'refs/tags/v6' 'refs/tags/
 
 Single-quote the `refs/...^{}` argument so the `{}` and `^` are not
 interpreted by your shell (notably zsh with `EXTENDED_GLOB`).
+
+## Comments and Docstrings
+
+Ruff (`line-length = 100`) and `ruff format` already decide *formatting*. This section is the
+contributor-facing policy for *what to write*. Write everything in English and choose the lightest
+form that fits:
+
+| Where | Convention |
+|---|---|
+| Public API (exported from `azure_functions_openapi`, e.g. `@openapi`, `scan_validation_metadata`) | A docstring. Start with a one-line summary, then add parameter, return, or raised-exception contracts **only where they are useful** (non-obvious defaults, opt-in flags, which inputs raise). Keep examples runnable and in line with actual behavior; update them in the same PR as the behavior. |
+| Complex internal function (ordering, security boundary, OpenAPI-compatibility workaround) | A short docstring or a `#` comment stating **why** it exists and which invariant it protects. Link the issue (`#123`) when the reason is a past defect. |
+| Small, obvious function or private helper | No docstring. A clear name and type hints are the documentation. |
+| Inline `#` comment | Explain **why**: security, OpenAPI compatibility, non-obvious ordering, or an intentional exception to a rule. Do not restate **what** the next line does. Delete or fix a comment when the code it describes changes. |
+| Tests | A descriptive `test_...` name is the default. Add a one-line comment only for a surprising invariant or a regression's cause (e.g. which issue it guards). No Given/When/Then boilerplate, and no comment-count quotas. |
+| Test fixtures and shared helpers | A one-line docstring when the fixture's contract is not obvious from its name (what it yields, what it isolates). |
+
+Do not add docstrings to every private function and do not reformat existing files only to apply
+this policy; touch a comment when you touch the code it describes.
+
+Docstring lint (pydocstyle `D` rules) is deliberately **not** enabled. Measured against `src/` with
+Ruff's `D` rules and no convention, 124 existing violations would be reported (12 for missing
+docstrings alone), mostly section-formatting style in existing NumPy-style docstrings. Enabling the
+rules would force mass churn without improving accuracy. Revisit only as a targeted rule set with a
+baseline, not a blanket `D`.
 
 ## Example Coverage Policy
 
