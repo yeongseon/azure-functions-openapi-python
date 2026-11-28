@@ -25,3 +25,16 @@ def test_swagger_uses_resolved_host_prefix(
     response = routes.docs(request)
     # Then
     assert f'url: "{expected_url}"' in response.get_body().decode()
+
+
+def test_register_openapi_routes_forwards_header_policy(tmp_path: Path) -> None:
+    app = func.FunctionApp()
+    routes = register_openapi_routes(
+        app, title="API", version="1.0.0", hsts=None, send_requested_with_header=False
+    )
+    assert routes.docs is not None
+
+    response = routes.docs(func.HttpRequest(method="GET", url="/docs", body=b""))
+
+    assert "Strict-Transport-Security" not in response.headers
+    assert "X-Requested-With" not in response.get_body().decode()
