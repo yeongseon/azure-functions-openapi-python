@@ -725,6 +725,32 @@ To see how the CLI's `--strict` and `--fail-on-warnings` gates treat a valid and
 invalid custom-method declaration, follow the
 [CLI strict-validation walkthrough](cli.md#walkthrough-strict-validation-of-custom-http-methods).
 
+## Conditional requests and caching of served specifications
+
+The JSON and YAML routes from `register_openapi_routes()` send a strong `ETag` and answer
+`If-None-Match` (one tag, a comma-separated list, weak `W/` tags, or `*`) with `304` and an
+empty body. They send `Cache-Control: no-cache` (`private, no-cache` when the routes are
+key-protected), so clients and shared caches always revalidate. Each request still renders
+the document unless you opt in to server-side caching:
+
+```python
+routes = register_openapi_routes(app, title="Orders API", version="1.0.0", cache_spec=True)
+# After changing the app, registry or spec options at runtime:
+routes.invalidate_cache()
+```
+
+`cache_spec=True` keeps the rendered JSON and YAML in memory for that one registration. Two
+registrations never share a cache, concurrent first requests render once, and a failed render
+is not cached. It is off by default because a document that changes after the first request
+(late registration, a mutated explicit registry) would otherwise be served stale.
+
+**Static artifact alternative.** For an immutable deployment you can generate the document at
+build time with `azure-functions-openapi generate` and serve the file instead. That removes
+all per-request work, but the file can drift from the code if the build step is skipped, and
+it cannot reflect `app=`-time route discovery that happens only at runtime unless the CLI is
+run against the same app. Prefer `cache_spec=True` when the document must always match the
+running code.
+
 ## Swagger UI route
 
 ```python
