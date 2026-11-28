@@ -493,6 +493,11 @@ class TestHeaderPolicy:
         )
         body = response.get_body().decode()
 
-        assert "https://api.example" in response.headers["Content-Security-Policy"].split()
+        directives = {
+            parts[0]: parts[1:]
+            for parts in (d.split() for d in response.headers["Content-Security-Policy"].split(";"))
+            if parts
+        }
+        assert directives["connect-src"] == ["'self'", "https://api.example"]
         assert 'url: "https://api.example/openapi.json"' in body
         assert "X-Requested-With" not in body
